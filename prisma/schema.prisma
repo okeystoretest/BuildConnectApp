@@ -1,0 +1,807 @@
+// Build.Connect — schema completo.
+// Domínios: identidade/hierarquia, conteúdo de setor + progresso, chamados
+// (TI e Motoristas) com imagens, rastreamento de viagem, RH (avaliações e
+// mapas de integração) e notificações.
+//
+// Regras invioláveis do projeto refletidas aqui:
+//  - Imagens NUNCA como binário. Só o caminho do arquivo já tratado (.webp).
+//  - Escritas interdependentes usam transação na camada de aplicação
+//    (ex.: concluir chamado + gravar comprovante + fechar viagem).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Identidade e hierarquia
+// ─────────────────────────────────────────────────────────────
+
+enum Role {
+  COLABORADOR
+  GESTOR
+  ADMIN
+}
+
+model User {
+  id           String @id @default(cuid())
+  // Credencial no padrão nome#BC. Única e imutável.
+  username     String @unique
+  fullName     String
+  passwordHash String
+  role         Role   @default(COLABORADOR)
+
+  // Hierarquia agora relacional. `sector`/`unit` textuais foram promovidos a FK.
+  sectorId String?
+  sector   Sector? @relation(fields: [sectorId], references: [id], onDelete: SetNull)
+  unitId   String?
+  unit     Unit?   @relation(fields: [unitId], references: [id], onDelete: SetNull)
+
+  // Subsetores do colaborador (many-to-many via tabela de junção).
+  subsectors UserSubsector[]
+
+  // Caminho do avatar já tratado (.webp). Nunca o binário.
+  avatarPath String?
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relações de atividade.
+  contentProgress    ContentProgress[]
+  contentPosts       ContentPost[]      @relation("ContentPostOwner")
+  authoredPosts      ContentPost[]      @relation("ContentPostAuthor")
+  requestedTickets   Ticket[]           @relation("TicketRequester")
+  assignedTickets    Ticket[]           @relation("TicketAssignee")
+  evaluationsReceived Evaluation[]      @relation("EvaluationSubject")
+  evaluationsGiven    Evaluation[]      @relation("EvaluationEvaluator")
+  evaluationCycles    EvaluationCycle[] @relation("EvaluationCycleSubject")
+  // Rodadas multidirecionais (Eficácia): como avaliado e como avaliador designado.
+  evaluationRounds       EvaluationRound[]      @relation("EvaluationRoundSubject")
+  evaluationAssignments  EvaluationAssignment[] @relation("EvaluationAssignmentRater")
+  integrationMaps    IntegrationMap[]
+  notifications      NotificationRead[]
+  // Notificações direcionadas a este usuário (alvo individual).
+  directNotifications Notification[]    @relation("NotificationTarget")
+
+  @@index([role])
+  @@index([sectorId])
+  @@index([unitId])
+}
+
+model Sector {
+  id    String @id @default(cuid())
+  slug  String @unique
+  label String
+  icon  String
+  // Ordena a exibição na sidebar.
+  order Int    @default(0)
+
+  subsectors Subsector[]
+  users      User[]
+
+  @@index([order])
+}
+
+enum SectorKind {
+  VITRINE
+  PADRAO
+}
+
+model Subsector {
+  id       String     @id @default(cuid())
+  slug     String     @unique
+  label    String
+  icon     String
+  kind     SectorKind @default(PADRAO)
+  order    Int        @default(0)
+
+  sectorId String
+  sector   Sector @relation(fields: [sectorId], references: [id], onDelete: Cascade)
+
+  // Herança de aplicativos: quando preenchido, este subsetor NÃO tem base
+  // própria — ele lê e escreve na base do subsetor de origem (aplicativos e
+  // cronograma compartilhados). Ex.: Marketing herda de Vendas.
+  appsSourceId String?
+  appsSource   Subsector?  @relation("SubsectorApps", fields: [appsSourceId], references: [id], onDelete: SetNull)
+  appsHeirs    Subsector[] @relation("SubsectorApps")
+
+  // Habilita a ferramenta Cronograma no escopo deste subsetor.
+  scheduleEnabled Boolean @default(false)
+
+  // Conteúdo do subsetor.
+  photos    Photo[]
+  videos    Video[]
+  documents Document[]
+  links     ExternalLink[]
+  posts     ContentPost[]
+
+  members UserSubsector[]
+
+  @@index([sectorId, order])
+  @@index([appsSourceId])
+}
+
+// Junção colaborador ↔ subsetor.
+model UserSubsector {
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subsectorId String
+  subsector   Subsector @relation(fields: [subsectorId], references: [id], onDelete: Cascade)
+
+  @@id([userId, subsectorId])
+  @@index([subsectorId])
+}
+
+model Unit {
+  id      String  @id @default(cuid())
+  label   String  @unique
+  // Endereço; nulo cai em preenchimento manual nos chamados de motorista.
+  street     String?
+  number     String?
+  district   String?
+  city       String?
+  state      String?
+  complement String?
+
+  users   User[]
+  tickets Ticket[]
+
+  @@index([label])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Conteúdo de setor
+// ─────────────────────────────────────────────────────────────
+
+// Vídeos, workshops e instruções em vídeo. `kind` separa as abas.
+enum VideoKind {
+  VIDEO
+  WORKSHOP
+  INSTRUCAO
+}
+
+model Video {
+  id       String    @id @default(cuid())
+  title    String
+  kind     VideoKind @default(VIDEO)
+  isNew    Boolean   @default(false)
+  tags     String[]  @default([])
+  // Caminho do arquivo/stream. Nunca binário.
+  filePath String?
+  order    Int       @default(0)
+
+  // Conteúdo auxiliar da instrução em vídeo. Sempre caminho de arquivo,
+  // nunca binário. `transcriptText` guarda o texto já extraído do arquivo
+  // de transcrição para exibição imediata no modal, sem I/O na renderização.
+  instructionPath String?
+  transcriptPath  String?
+  transcriptText  String? @db.Text
+
+  subsectorId String
+  subsector   Subsector @relation(fields: [subsectorId], references: [id], onDelete: Cascade)
+
+  progress ContentProgress[]
+
+  createdAt DateTime @default(now())
+
+  @@index([subsectorId, kind, order])
+}
+
+model Photo {
+  id       String @id @default(cuid())
+  title    String
+  // Caminho da imagem já tratada (.webp). Nunca binário.
+  filePath String
+  order    Int    @default(0)
+
+  subsectorId String
+  subsector   Subsector @relation(fields: [subsectorId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([subsectorId, order])
+}
+
+enum FileKind {
+  PDF
+  DOCX
+  XLSX
+  PNG
+}
+
+// "Documentos" — arquivos para baixar/visualizar.
+model Document {
+  id       String   @id @default(cuid())
+  name     String
+  kind     FileKind
+  // Tamanho em bytes; a UI formata (ex.: 2.4 MB).
+  sizeBytes Int      @default(0)
+  filePath String
+  tags     String[] @default([])
+  order    Int      @default(0)
+
+  subsectorId String
+  subsector   Subsector @relation(fields: [subsectorId], references: [id], onDelete: Cascade)
+
+  progress ContentProgress[]
+
+  createdAt DateTime @default(now())
+
+  @@index([subsectorId, order])
+}
+
+model ExternalLink {
+  id    String @id @default(cuid())
+  label String
+  url   String
+  // Ícone da plataforma já tratado (.webp). Nunca binário.
+  iconPath String?
+  order Int    @default(0)
+
+  subsectorId String
+  subsector   Subsector @relation(fields: [subsectorId], references: [id], onDelete: Cascade)
+
+  @@index([subsectorId, order])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Cronograma — planejamento de conteúdo por etapa do funil
+// ─────────────────────────────────────────────────────────────
+
+// Etapa do funil de conteúdo.
+enum FunnelStage {
+  TOFU // Topo: atrair novo público
+  MOFU // Meio: aquecer e educar
+  BOFU // Fundo: converter em venda
+}
+
+enum ContentFormat {
+  REEL
+  STORY
+  FEED
+  REEL_FEED
+  CARROSSEL
+  LIVE
+}
+
+enum ContentStatus {
+  IDEIA
+  EM_PRODUCAO
+  AGENDADO
+  PUBLICADO
+}
+
+// Marca do conteúdo. Opcional — define a cor de fundo do card no calendário.
+enum ContentBrand {
+  OKEY
+  LOV_CLUB
+}
+
+// Alcance do post dentro da base compartilhada.
+// SHARED  = criado no Marketing: aparece para todos, editável só pelo autor.
+// PRIVATE = criado fora do Marketing: aparece só para o autor (e Admin).
+enum ContentVisibility {
+  SHARED
+  PRIVATE
+}
+
+// Um post planejado no cronograma. Fica sempre no subsetor de ESCOPO
+// (o de origem, quando há herança) — é o que faz Marketing e Vendas
+// enxergarem exatamente a mesma agenda.
+model ContentPost {
+  id          String        @id @default(cuid())
+  title       String
+  scheduledAt DateTime
+  funnel      FunnelStage
+  format      ContentFormat
+  status      ContentStatus @default(IDEIA)
+  brand       ContentBrand?
+  notes       String?
+
+  // Quem enxerga o post. Definido na criação a partir da aba de origem.
+  visibility ContentVisibility @default(SHARED)
+  // Slug do subsetor onde o post foi criado (marketing, vendas…). Serve de
+  // rastro de origem para a UI; a regra de acesso mora em `visibility`.
+  originSlug String?
+
+  subsectorId String
+  subsector   Subsector @relation(fields: [subsectorId], references: [id], onDelete: Cascade)
+
+  // Responsável pela produção. Nulo = sem dono definido.
+  ownerId String?
+  owner   User?   @relation("ContentPostOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  // Autor do registro. É ele — e só ele — quem pode editar o post depois.
+  createdById String?
+  createdBy   User?   @relation("ContentPostAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([subsectorId, scheduledAt])
+  @@index([subsectorId, visibility])
+  @@index([ownerId])
+  @@index([createdById])
+}
+
+// Progresso por usuário e por item de conteúdo. Uma linha marca "assistido"/
+// "lido". Alimenta as barras de Meu Progresso e o histórico do RH.
+// Exatamente um dos FKs de conteúdo é preenchido por linha.
+model ContentProgress {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  videoId String?
+  video   Video?  @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  documentId String?
+  document   Document? @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  completed   Boolean   @default(true)
+  completedAt DateTime  @default(now())
+
+  @@unique([userId, videoId])
+  @@unique([userId, documentId])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Chamados (TI e Motoristas)
+// ─────────────────────────────────────────────────────────────
+
+enum TicketDestination {
+  TI
+  MOTORISTAS
+}
+
+// Estados unificados. TI usa os quatro; Motoristas mapeia seu ciclo aqui
+// (ATRIBUIDO = motorista designado, EM_ANDAMENTO = em rota).
+enum TicketStatus {
+  PENDENTE
+  ATRIBUIDO
+  EM_ANDAMENTO
+  CONCLUIDO
+  CANCELADO
+}
+
+model Ticket {
+  id          String            @id @default(cuid())
+  // Código sequencial exibido (#2051). Gerado pela aplicação.
+  code        String            @unique
+  destination TicketDestination
+  status      TicketStatus      @default(PENDENTE)
+  title       String
+  description String?
+
+  requesterId String
+  requester   User   @relation("TicketRequester", fields: [requesterId], references: [id])
+
+  assigneeId String?
+  assignee   User?   @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  // Unidade de origem do chamado (TI e Motoristas).
+  unitId String?
+  unit   Unit?   @relation(fields: [unitId], references: [id], onDelete: SetNull)
+
+  // ——— Campos de TI ———
+  category String?
+
+  // ——— Campos de Motoristas ———
+  serviceType     String?
+  // Origem: ou referência de unidade (acima) ou endereço manual.
+  departureStreet   String?
+  departureNumber   String?
+  departureDistrict String?
+  // Destino.
+  destStreet   String?
+  destNumber   String?
+  destDistrict String?
+  contact      String?
+
+  // ——— Cronometragem / conclusão ———
+  startedAt  DateTime?
+  finishedAt DateTime?
+  distanceKm Float?
+  // Comprovante de entrega (.webp). Só o caminho.
+  proofPath  String?
+  // Descrição técnica da solução aplicada (obrigatória ao concluir chamado de TI).
+  resolutionNote String?
+
+  images  TicketImage[]
+  trip    Trip?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([destination, status])
+  @@index([requesterId])
+  @@index([assigneeId])
+  @@index([createdAt])
+}
+
+// Imagens do chamado. Sempre caminho para arquivo .webp tratado por sharp.
+model TicketImage {
+  id       String @id @default(cuid())
+  ticketId String
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  filePath String
+  order    Int    @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([ticketId, order])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Rastreamento de viagem (chamado de Motoristas)
+// ─────────────────────────────────────────────────────────────
+
+enum TripStatus {
+  AGUARDANDO
+  EM_ROTA
+  CONCLUIDA
+  CANCELADA
+}
+
+model Trip {
+  id        String     @id @default(cuid())
+  ticketId  String     @unique
+  ticket    Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  status    TripStatus @default(AGUARDANDO)
+
+  // Coordenadas opcionais: quando a geocodificação (Nominatim) falha, o Trip
+  // nasce sem pino e o mapa mostra só o GPS ao vivo. O label guarda o
+  // endereço textual do Ticket mesmo sem coordenada.
+  originLat   Float?
+  originLng   Float?
+  originLabel String
+  destLat     Float?
+  destLng     Float?
+  destLabel   String
+
+  vehicleLabel String?
+  startedAt    DateTime?
+  finishedAt   DateTime?
+
+  positions TripPosition[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model TripPosition {
+  id         String   @id @default(cuid())
+  tripId     String
+  trip       Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  lat        Float
+  lng        Float
+  heading    Float?
+  speed      Float?
+  recordedAt DateTime @default(now())
+
+  @@index([tripId, recordedAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// RH — avaliações e mapas de integração
+// ─────────────────────────────────────────────────────────────
+
+// Cada um dos 5 instrumentos de avaliação. `kind` identifica o instrumento;
+// `hasCycle` marca o único com ciclo temporal (Pré-Efetivo 7/14/21 dias úteis).
+enum EvaluationKind {
+  PRE_EFETIVO
+  COMPORTAMENTAL
+  MATRIZ_DECISAO
+  EFICACIA
+  INTELIGENCIA_EMOCIONAL
+}
+
+model EvaluationType {
+  id          String         @id @default(cuid())
+  slug        String         @unique
+  kind        EvaluationKind @default(COMPORTAMENTAL)
+  title       String
+  description String?
+  // Nota máxima da escala por questão (Pré-Efetivo = 5; Comportamental = 4).
+  scaleMax    Int            @default(5)
+  // Rótulos da escala, do menor (índice 0 = valor 1) ao maior valor. Vazio =
+  // escala numérica pura (1..scaleMax). Ex.: Comportamental usa
+  // ["Insatisfatório","Regular","Satisfatório","Excelente"].
+  scaleLabels String[]       @default([])
+  // Só o Pré-Efetivo tem ciclo de 3 etapas; as demais são avulsas.
+  hasCycle    Boolean        @default(false)
+  order       Int            @default(0)
+
+  sections    EvaluationSection[]
+  evaluations Evaluation[]
+  cycles      EvaluationCycle[]
+  rounds      EvaluationRound[]
+
+  @@index([order])
+}
+
+// Seções paginadas do formulário. A UI renderiza uma seção por página.
+model EvaluationSection {
+  id     String @id @default(cuid())
+  typeId String
+  type   EvaluationType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+  title  String
+  order  Int    @default(0)
+
+  questions EvaluationQuestion[]
+
+  @@index([typeId, order])
+}
+
+// Uma pergunta/critério. Para o Pré-Efetivo, `label` é o critério e
+// `helpText` a descrição (ex.: "Disciplina" / "Obediência às normas...").
+model EvaluationQuestion {
+  id        String @id @default(cuid())
+  sectionId String
+  section   EvaluationSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  label     String
+  helpText  String?
+  order     Int    @default(0)
+
+  answers EvaluationAnswer[]
+
+  @@index([sectionId, order])
+}
+
+enum EvaluationStatus {
+  RASCUNHO
+  CONCLUIDA
+}
+
+// Uma submissão preenchida do formulário (um ciclo, no caso do Pré-Efetivo).
+model Evaluation {
+  id     String @id @default(cuid())
+  typeId String
+  type   EvaluationType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+
+  // Colaborador avaliado.
+  subjectId String
+  subject   User   @relation("EvaluationSubject", fields: [subjectId], references: [id], onDelete: Cascade)
+
+  // Quem preencheu (Gestor ou Admin).
+  evaluatorId String?
+  evaluator   User?   @relation("EvaluationEvaluator", fields: [evaluatorId], references: [id], onDelete: SetNull)
+
+  // Ciclo 1..3 para o Pré-Efetivo; nulo para avaliações avulsas.
+  cycle  Int?
+  status EvaluationStatus @default(CONCLUIDA)
+
+  // Rodada multidirecional (Eficácia): agrupa as N submissões de avaliadores +
+  // a autoavaliação de um mesmo colaborador. Nulo para as demais avaliações.
+  roundId String?
+  round   EvaluationRound? @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  // Marca a submissão de autoavaliação (o próprio sujeito respondendo).
+  isSelfAssessment Boolean @default(false)
+
+  // Soma dos pontos das respostas, calculada no envio.
+  total        Int?
+  observations String?
+
+  answers EvaluationAnswer[]
+
+  createdAt DateTime @default(now())
+
+  @@index([typeId])
+  @@index([subjectId])
+  @@index([evaluatorId])
+  @@index([roundId])
+}
+
+model EvaluationAnswer {
+  id           String @id @default(cuid())
+  evaluationId String
+  evaluation   Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  questionId   String
+  question     EvaluationQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  // Valor marcado na escala (ex.: 1..5).
+  value        Int
+
+  @@unique([evaluationId, questionId])
+  @@index([questionId])
+}
+
+enum EvaluationCycleStatus {
+  AGENDADO
+  DISPONIVEL
+  CONCLUIDO
+}
+
+// Agenda de 3 etapas do Pré-Efetivo por colaborador. Cada linha é um ciclo
+// (1,2,3). `availableAt` é calculado em dias úteis; a varredura de liberação
+// promove AGENDADO→DISPONIVEL e notifica o Gestor do setor.
+model EvaluationCycle {
+  id      String @id @default(cuid())
+  typeId  String
+  type    EvaluationType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+
+  subjectId String
+  subject   User   @relation("EvaluationCycleSubject", fields: [subjectId], references: [id], onDelete: Cascade)
+
+  // 1, 2 ou 3.
+  cycle       Int
+  status      EvaluationCycleStatus @default(AGENDADO)
+  // Quando o ciclo fica disponível para preenchimento (dias úteis).
+  availableAt DateTime
+  // Conclusão do ciclo (dispara o cálculo do próximo).
+  completedAt DateTime?
+  // Evita notificar o Gestor mais de uma vez por ciclo.
+  notifiedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([subjectId, typeId, cycle])
+  @@index([status, availableAt])
+  @@index([subjectId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Avaliação multidirecional (Eficácia no Trabalho)
+// ─────────────────────────────────────────────────────────────
+//
+// A Eficácia rompe o modelo de "1 avaliação = 1 avaliador": um colaborador é
+// avaliado por N pessoas (feedback) MAIS uma autoavaliação dele mesmo. O RH
+// abre uma RODADA por colaborador, define a quota de avaliadores (padrão 2) e
+// designa quem avalia. Regras:
+//  - Sigilo: nenhum avaliador vê a resposta de outro; a consolidação (médias
+//    por competência + coluna de autoavaliação) é exclusiva do RH.
+//  - Simultaneidade: cada avaliador é uma submissão independente; @@unique
+//    impede voto duplo e a corrida de fechamento é resolvida em transação.
+//  - Quando as submissões de feedback == raterQuota, a rodada passa a
+//    AGUARDANDO_AUTO e notifica o próprio colaborador (Notification.targetUserId)
+//    para fazer a autoavaliação. Ao enviá-la, a rodada fica CONCLUIDA.
+
+enum EvaluationRoundStatus {
+  // Coletando feedback dos avaliadores designados.
+  COLETANDO_FEEDBACK
+  // Quota de feedback atingida; aguardando a autoavaliação do colaborador.
+  AGUARDANDO_AUTO
+  // Feedback + autoavaliação completos.
+  CONCLUIDA
+}
+
+model EvaluationRound {
+  id     String @id @default(cuid())
+  typeId String
+  type   EvaluationType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+
+  // Colaborador avaliado nesta rodada.
+  subjectId String
+  subject   User   @relation("EvaluationRoundSubject", fields: [subjectId], references: [id], onDelete: Cascade)
+
+  // Quantos avaliadores de feedback o RH definiu (padrão 2). A autoavaliação
+  // é sempre 1 e não conta nesta quota.
+  raterQuota Int                   @default(2)
+  status     EvaluationRoundStatus @default(COLETANDO_FEEDBACK)
+
+  // Marca quando o colaborador foi notificado para a autoavaliação (idempotência).
+  selfNotifiedAt DateTime?
+  completedAt    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  assignments EvaluationAssignment[]
+  evaluations Evaluation[]
+
+  @@index([subjectId])
+  @@index([status])
+}
+
+enum EvaluationAssignmentStatus {
+  PENDENTE
+  CONCLUIDA
+}
+
+// Designação de um avaliador para uma rodada. É também o alvo da notificação
+// individual ("você foi designado para avaliar X"). Uma linha por avaliador.
+model EvaluationAssignment {
+  id      String @id @default(cuid())
+  roundId String
+  round   EvaluationRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+
+  raterId String
+  rater   User   @relation("EvaluationAssignmentRater", fields: [raterId], references: [id], onDelete: Cascade)
+
+  status      EvaluationAssignmentStatus @default(PENDENTE)
+  notifiedAt  DateTime?
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  // Um avaliador não é designado duas vezes na mesma rodada.
+  @@unique([roundId, raterId])
+  @@index([raterId, status])
+}
+
+// Feriados para o cálculo de dias úteis. Preparado; hoje o cálculo usa só
+// fins de semana. Popular esta tabela habilita o desconto de feriados sem
+// alterar a engine.
+model Holiday {
+  id    String   @id @default(cuid())
+  date  DateTime @unique
+  label String
+
+  @@index([date])
+}
+
+enum IntegrationMapStatus {
+  CONCLUIDO
+  EM_ANDAMENTO
+}
+
+model IntegrationMap {
+  id       String               @id @default(cuid())
+  title    String
+  scope    String
+  progress Int                  @default(0)
+  status   IntegrationMapStatus @default(EM_ANDAMENTO)
+  // PDF do mapa (.pdf). Só o caminho.
+  filePath String?
+
+  // Opcional: mapa atrelado a um colaborador.
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Notificações
+// ─────────────────────────────────────────────────────────────
+
+enum NotificationKind {
+  CHAMADO_TI
+  CHAMADO_MOTORISTAS
+  CONTEUDO
+  AVALIACAO
+  SISTEMA
+}
+
+model Notification {
+  id    String           @id @default(cuid())
+  kind  NotificationKind
+  title String
+  body  String
+  href  String?
+  // Setores destinatários ("*" = todos). Espelha NOTIFICATION_AUDIENCE.
+  audience String[]       @default([])
+
+  // Alvo individual opcional. Quando preenchido, a notificação é para um único
+  // usuário (ex.: "faça sua autoavaliação"), independente da audiência de setor.
+  targetUserId String?
+  target       User?   @relation("NotificationTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  reads NotificationRead[]
+
+  @@index([kind])
+  @@index([createdAt])
+  @@index([targetUserId])
+}
+
+// Leitura por usuário: a existência da linha marca como lida.
+model NotificationRead {
+  notificationId String
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  readAt         DateTime     @default(now())
+
+  @@id([notificationId, userId])
+  @@index([userId])
+}

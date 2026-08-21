@@ -1,0 +1,4 @@
+# Adicione estas linhas ao seu .gitignore, se ainda não existirem:
+.env
+node_modules
+/.next

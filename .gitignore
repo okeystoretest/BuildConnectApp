@@ -1,0 +1,29 @@
+# Dependências
+node_modules
+
+# Build do Next
+/.next
+/out
+next-env.d.ts
+
+# Ambiente — NUNCA commitar credenciais
+.env
+.env.local
+.env.production
+.env.*.local
+
+# Uploads: os binários vivem no volume da VPS, não no repositório
+/uploads
+
+# Prisma
+prisma/*.db
+prisma/*.db-journal
+
+# Sistema / editor
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+
+# Pacotes de entrega
+*.zip
