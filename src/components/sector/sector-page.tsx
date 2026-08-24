@@ -235,6 +235,7 @@ export function SectorPage({
               roster={evaluations.roster}
               preEfetivoForm={evaluations.preEfetivoForm}
               forms={evaluations.forms}
+              scope={evaluations.scope}
             />
           ) : (
             <EmptyState

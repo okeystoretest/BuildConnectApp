@@ -119,9 +119,18 @@ export interface EvaluationResultSummary {
   createdAtLabel: string;
 }
 
+/**
+ * Abrangência do `roster` que veio do servidor.
+ *  - GLOBAL: Admin — todos os colaboradores ativos da empresa.
+ *  - SETOR: Gestor — só os colaboradores do setor da página.
+ * A UI usa isto para escrever o estado vazio corretamente.
+ */
+export type EvaluationScope = "GLOBAL" | "SETOR";
+
 /** Payload da aba "Avaliações" de um setor (preenchimento no próprio setor). */
 export interface SectorEvaluations {
   sectorLabel: string;
+  scope: EvaluationScope;
   pending: PendingEvaluation[];
   subjects: SubjectCycles[];
   preEfetivoForm: EvalForm | null;

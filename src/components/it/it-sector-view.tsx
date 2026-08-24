@@ -138,6 +138,7 @@ export function ItSectorView({ content, tickets, dashboard, evaluations }: ItSec
               roster={evaluations.roster}
               preEfetivoForm={evaluations.preEfetivoForm}
               forms={evaluations.forms}
+              scope={evaluations.scope}
             />
           ) : (
             <EmptyState

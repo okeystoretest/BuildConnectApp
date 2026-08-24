@@ -14,6 +14,7 @@ import type {
   SubjectCycles,
   EvalForm,
   EvaluationSubject,
+  EvaluationScope,
 } from "@/types/evaluation";
 
 export interface EvaluationsPanelProps {
@@ -24,7 +25,26 @@ export interface EvaluationsPanelProps {
   preEfetivoForm: EvalForm | null;
   /** Formulários das avaliações avulsas, por slug. */
   forms: Record<string, EvalForm>;
+  /**
+   * Abrangência do `roster`. Sem isto o estado vazio mente para o Admin: o
+   * escopo dele é a empresa inteira (`scope = null` no servidor), não "este
+   * setor". Opcional para não quebrar chamadas antigas — cai em "SETOR".
+   */
+  scope?: EvaluationScope;
 }
+
+/** Texto do estado vazio, honesto quanto ao escopo de quem está olhando. */
+const EMPTY_ROSTER: Record<EvaluationScope, { title: string; description: string }> = {
+  GLOBAL: {
+    title: "Nenhum colaborador cadastrado",
+    description:
+      "Só colaboradores podem ser avaliados — gestores e admins não entram como avaliados. Cadastre em DHO › Gestão de Usuários com o papel Colaborador.",
+  },
+  SETOR: {
+    title: "Nenhum colaborador para avaliar",
+    description: "Não há colaboradores lotados neste setor para avaliação.",
+  },
+};
 
 const PRE_EFETIVO_SLUG = "acompanhamento-pre-efetivo";
 
@@ -42,6 +62,7 @@ export function EvaluationsPanel({
   roster,
   preEfetivoForm,
   forms,
+  scope = "SETOR",
 }: EvaluationsPanelProps) {
   const { error } = useToast();
   const [typeSlug, setTypeSlug] = useState("");
@@ -116,8 +137,8 @@ export function EvaluationsPanel({
 
         {roster.length === 0 ? (
           <EmptyState
-            title="Nenhum colaborador para avaliar"
-            description="Não há colaboradores lotados neste setor para avaliação."
+            title={EMPTY_ROSTER[scope].title}
+            description={EMPTY_ROSTER[scope].description}
           />
         ) : (
           <div className="rounded-xl border border-border bg-surface p-4">
