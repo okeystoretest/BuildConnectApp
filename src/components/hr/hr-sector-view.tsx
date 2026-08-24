@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { ShieldAlert } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
-import { Tabs, type TabItem } from "@/components/ui/tabs";
+import { Tabs, TabPanel, type TabItem } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/ui/empty-state";
 import { EmployeeHistoryPanel } from "@/components/hr/employee-history";
 import { EvaluationResultsPanel } from "@/components/hr/evaluation-results-panel";
@@ -110,7 +110,7 @@ export function HrSectorView({
         <Tabs items={tabs} value={active} onValueChange={setActive} />
       </div>
 
-      <div className="mt-5">
+      <TabPanel tabId={active} className="mt-5">
         {active === "historico" && canHrAdmin && (
           <EmployeeHistoryPanel roster={roster} initial={initialHistory} />
         )}
@@ -134,7 +134,7 @@ export function HrSectorView({
           <HrDocumentsPanel documents={documents} onUpload={() => setDocModalOpen(true)} />
         )}
         {active === "usuarios" && canHrAdmin && <UserManagementPanel users={users} />}
-      </div>
+      </TabPanel>
 
       <MapUploadModal open={mapModalOpen} onClose={() => setMapModalOpen(false)} />
       <FileUploadModal

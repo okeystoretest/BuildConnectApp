@@ -3,6 +3,7 @@ import { Outfit, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { RoleProvider } from "@/providers/role-provider";
 import { SidebarProvider } from "@/providers/sidebar-provider";
+import { NavigationProvider } from "@/providers/navigation-provider";
 import { ThemeProvider, THEME_SCRIPT } from "@/providers/theme-provider";
 import { TicketModalProvider } from "@/providers/ticket-modal-provider";
 import { NotificationProvider } from "@/providers/notification-provider";
@@ -72,12 +73,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <NotificationProvider>
               <ToastProvider>
                 <SidebarProvider>
-                  <TicketModalProvider>
-                    {children}
-                    {/* Vídeo obrigatório: bloqueia toda a plataforma até a conclusão. */}
-                    <OnboardingGate />
-                    <TicketModalHost />
-                  </TicketModalProvider>
+                  {/* Navegação client-side: mantém a casca montada entre setores. */}
+                  <NavigationProvider>
+                    <TicketModalProvider>
+                      {children}
+                      {/* Vídeo obrigatório: bloqueia toda a plataforma até a conclusão. */}
+                      <OnboardingGate />
+                      <TicketModalHost />
+                    </TicketModalProvider>
+                  </NavigationProvider>
                 </SidebarProvider>
               </ToastProvider>
             </NotificationProvider>

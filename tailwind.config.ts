@@ -55,10 +55,44 @@ const config: Config = {
           from: { opacity: "0", transform: "scale(0.97)" },
           to: { opacity: "1", transform: "scale(1)" },
         },
+        // Entrada da área de conteúdo a cada troca de rota (setor/subsetor).
+        "page-in": {
+          from: { opacity: "0", transform: "translateY(10px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
+        // Entrada do painel ao trocar de aba dentro do setor.
+        "tab-in": {
+          from: { opacity: "0", transform: "translateY(6px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
+        // Itens do menu de subsetores, em cascata.
+        "item-in": {
+          from: { opacity: "0", transform: "translateX(-6px)" },
+          to: { opacity: "1", transform: "translateX(0)" },
+        },
+        // Popover de subsetores no modo retraído.
+        "popover-in": {
+          from: { opacity: "0", transform: "translateX(-8px) scale(0.96)" },
+          to: { opacity: "1", transform: "translateX(0) scale(1)" },
+        },
+        // Barra de progresso da navegação (topo da tela).
+        "nav-progress": {
+          "0%": { transform: "translateX(-100%)" },
+          "60%": { transform: "translateX(-25%)" },
+          "100%": { transform: "translateX(-8%)" },
+        },
       },
       animation: {
         "fade-in": "fade-in 180ms ease-out",
         "scale-in": "scale-in 160ms ease-out",
+        "page-in": "page-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both",
+        "tab-in": "tab-in 240ms cubic-bezier(0.22, 1, 0.36, 1) both",
+        "item-in": "item-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both",
+        "popover-in": "popover-in 180ms cubic-bezier(0.22, 1, 0.36, 1) both",
+        "nav-progress": "nav-progress 1.6s cubic-bezier(0.16, 1, 0.3, 1) forwards",
+      },
+      transitionTimingFunction: {
+        smooth: "cubic-bezier(0.22, 1, 0.36, 1)",
       },
     },
   },

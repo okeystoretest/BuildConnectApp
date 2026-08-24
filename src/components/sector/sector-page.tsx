@@ -3,7 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
-import { Tabs, type TabItem } from "@/components/ui/tabs";
+import { Tabs, TabPanel, type TabItem } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useRole } from "@/providers/role-provider";
 import type { LinkItem, SectorContent, TabId } from "@/types/sector";
@@ -171,7 +171,7 @@ export function SectorPage({
         )}
       </div>
 
-      <div className="mt-5">
+      <TabPanel tabId={activeId} className="mt-5">
         {activeId === "fotos" && <PhotoGrid photos={sector.photos} />}
 
         {(activeId === "videos" || activeId === "workshop" || activeId === "instrucoes-video") && (
@@ -256,7 +256,7 @@ export function SectorPage({
             onEdit={(link) => openLinkModal(link)}
           />
         )}
-      </div>
+      </TabPanel>
 
       <PhotoUploadModal
         slug={sector.slug}

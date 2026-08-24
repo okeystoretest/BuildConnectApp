@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ShieldAlert } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
-import { Tabs, type TabItem } from "@/components/ui/tabs";
+import { Tabs, TabPanel, type TabItem } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/ui/empty-state";
 import { EvaluationsPanel } from "@/components/hr/evaluations-panel";
 import type { SectorEvaluations } from "@/types/evaluation";
@@ -98,7 +98,7 @@ export function ItSectorView({ content, tickets, dashboard, evaluations }: ItSec
         {uploadLabel && <UploadAction label={uploadLabel} onClick={openUpload} />}
       </div>
 
-      <div className="mt-5">
+      <TabPanel tabId={active} className="mt-5">
         {active === "chamados" && <KanbanBoard tickets={tickets} />}
         {active === "dashboard" && <ItDashboard data={dashboard} tickets={tickets} />}
 
@@ -154,7 +154,7 @@ export function ItSectorView({ content, tickets, dashboard, evaluations }: ItSec
             onEdit={(link) => openLinkModal(link)}
           />
         )}
-      </div>
+      </TabPanel>
 
       {fileModal && (
         <FileUploadModal

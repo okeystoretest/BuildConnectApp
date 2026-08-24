@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { useSidebar } from "@/providers/sidebar-provider";
 import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
+import { RouteTransition } from "./route-transition";
 
 export interface AppShellProps {
   eyebrow: string;
@@ -25,18 +26,19 @@ export function AppShell({ eyebrow, title, wide = false, children }: AppShellPro
       <Sidebar />
       <div
         className={cn(
-          "transition-[padding] duration-200",
+          "transition-[padding] duration-300 ease-smooth",
           collapsed ? "lg:pl-sidebar-collapsed" : "lg:pl-sidebar",
         )}
       >
         <Topbar eyebrow={eyebrow} title={title} />
         <main
           className={cn(
-            "mx-auto w-full animate-fade-in px-4 py-6 transition-[max-width] duration-200 sm:px-6 lg:px-8",
+            "mx-auto w-full px-4 py-6 transition-[max-width] duration-300 ease-smooth sm:px-6 lg:px-8",
             wide ? "max-w-[1800px]" : "max-w-6xl",
           )}
         >
-          {children}
+          {/* Transição de entrada a cada troca de setor/subsetor. */}
+          <RouteTransition>{children}</RouteTransition>
         </main>
       </div>
     </div>
