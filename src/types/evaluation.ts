@@ -85,38 +85,100 @@ export interface EvaluationDraftSummary {
   totalQuestions: number;
 }
 
-/** Resultado completo para a aba de Resultados (RH). */
+// ─────────────────────────────────────────────────────────────
+// Resultados de Avaliação — fluxo em 3 níveis (cards → avaliado → resultado)
+// ─────────────────────────────────────────────────────────────
+
+/** Uma resposta já resolvida para exibição (valor + rótulo da escala). */
+export interface EvaluationResultAnswer {
+  label: string;
+  helpText?: string;
+  value: number;
+  /** Rótulo da escala quando qualitativa; senão o próprio número. */
+  valueLabel: string;
+}
+
+/** Seção do instrumento com suas respostas e o subtotal calculado. */
+export interface EvaluationResultSection {
+  title: string;
+  answers: EvaluationResultAnswer[];
+  total: number;
+  maxTotal: number;
+}
+
+/** Resultado completo de UMA submissão (tela cheia da aba de Resultados). */
 export interface EvaluationResultDetail {
   id: string;
   typeTitle: string;
+  typeSlug: string;
+  kind: EvaluationKind;
   subjectName: string;
+  subjectSector: string;
   evaluatorName?: string;
   cycle?: number;
   total: number;
   maxTotal: number;
+  scaleMax: number;
   /** Rótulos da escala, para exibir E/S/R/I no lugar de números. */
   scaleLabels: string[];
   observations?: string;
-  createdAtLabel: string;
-  answers: readonly { label: string; value: number }[];
+  /** Data em que a avaliação foi finalizada (dd/mm/aaaa). */
+  finishedAtLabel: string;
+  /** Horário em que a avaliação foi finalizada (HH:mm). */
+  finishedAtTimeLabel: string;
+  sections: EvaluationResultSection[];
 }
 
-/** Agrupamento de resultados por colaborador para a aba de Resultados. */
-export interface EvaluationResultGroup {
-  subjectId: string;
-  subjectName: string;
-  sector: string;
-  results: readonly EvaluationResultSummary[];
-}
-
-export interface EvaluationResultSummary {
+/** Submissão avulsa (um avaliador, uma nota final). */
+export interface EvaluationSingleEntry {
+  mode: "SIMPLES";
   id: string;
-  typeTitle: string;
-  kind: EvaluationKind;
   cycle?: number;
   total: number;
   maxTotal: number;
-  createdAtLabel: string;
+  evaluatorName?: string;
+  finishedAtLabel: string;
+  finishedAtTimeLabel: string;
+}
+
+/** Rodada multidirecional (N avaliadores + autoavaliação). */
+export interface EvaluationRoundEntry {
+  mode: "MULTI";
+  id: string;
+  status: EfficacyRoundStatus;
+  /** Avaliadores de feedback designados (não conta a autoavaliação). */
+  raterQuota: number;
+  feedbackDone: number;
+  selfDone: boolean;
+  startedAtLabel: string;
+  /** Preenchidos só quando a rodada fecha. */
+  finishedAtLabel?: string;
+  finishedAtTimeLabel?: string;
+}
+
+export type EvaluationResultEntry = EvaluationSingleEntry | EvaluationRoundEntry;
+
+/** Nível 2: um avaliado com todos os seus registros daquele instrumento. */
+export interface EvaluationResultSubject {
+  subjectId: string;
+  subjectName: string;
+  sector: string;
+  entries: EvaluationResultEntry[];
+  /** Data/hora do registro mais recente ("dd/mm/aaaa às HH:mm"). */
+  lastLabel: string;
+}
+
+/** Nível 1: card de instrumento no seletor de resultados. */
+export interface EvaluationResultTypeCard {
+  typeId: string;
+  slug: string;
+  kind: EvaluationKind;
+  title: string;
+  /** Instrumento com múltiplos avaliadores (rodada + autoavaliação). */
+  multiRater: boolean;
+  /** Total de registros (submissões avulsas + rodadas). */
+  count: number;
+  subjects: EvaluationResultSubject[];
 }
 
 /**
@@ -161,18 +223,32 @@ export interface EfficacyRaterState {
   done: boolean;
 }
 
-/** Linha da lista de rodadas de Eficácia (gestão do RH). */
+/** Linha da lista de rodadas (card "Atribuir Avaliações"). */
 export interface EfficacyRoundRow {
   id: string;
+  typeSlug: string;
+  typeTitle: string;
   subjectId: string;
   subjectName: string;
   sector: string;
+  /** Avaliadores de feedback. O total exibido é `raterQuota + 1` (autoavaliação). */
   raterQuota: number;
   feedbackDone: number;
   status: EfficacyRoundStatus;
   selfDone: boolean;
   createdAtLabel: string;
+  createdAtTimeLabel: string;
   raters: EfficacyRaterState[];
+}
+
+/** Instrumento que aceita atribuição de múltiplos avaliadores. */
+export interface AssignableEvaluationType {
+  id: string;
+  slug: string;
+  kind: EvaluationKind;
+  title: string;
+  /** 0 = instrumento ainda sem perguntas cadastradas (não pode ser atribuído). */
+  questionCount: number;
 }
 
 /** Uma competência na consolidação (imagem 3): notas por avaliador + médias. */
@@ -190,9 +266,16 @@ export interface EfficacyCompetencyRow {
 export interface EfficacyConsolidated {
   roundId: string;
   typeTitle: string;
+  typeSlug: string;
   scaleMax: number;
+  scaleLabels: string[];
   subjectName: string;
   sector: string;
+  /** Abertura da rodada. */
+  startedAtLabel: string;
+  /** Fechamento (só quando a autoavaliação chega). */
+  finishedAtLabel?: string;
+  finishedAtTimeLabel?: string;
   raterCount: number;
   raterQuota: number;
   hasSelf: boolean;

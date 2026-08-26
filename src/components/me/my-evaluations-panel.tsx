@@ -6,13 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { EvaluationFormModal } from "@/components/hr/evaluation-form-modal";
-import { submitEfficacyEvaluation } from "@/lib/efficacy-actions";
+import { submitRoundEvaluation } from "@/lib/evaluation-rounds-actions";
 import type { EvalForm, MyEvaluationTask } from "@/types/evaluation";
 
 export interface MyEvaluationsPanelProps {
   tasks: readonly MyEvaluationTask[];
-  /** Formulário da Eficácia (único instrumento por rodada, hoje). */
-  eficaciaForm: EvalForm | null;
+  /** Formulários dos instrumentos de rodada, indexados por slug. */
+  forms: Record<string, EvalForm>;
 }
 
 interface ActiveTask {
@@ -26,12 +26,13 @@ interface ActiveTask {
  *  - AUTOAVALIACAO: as avaliações sobre você fecharam; registre a sua.
  * Sigilo: o usuário nunca vê respostas alheias — só o próprio formulário.
  */
-export function MyEvaluationsPanel({ tasks, eficaciaForm }: MyEvaluationsPanelProps) {
+export function MyEvaluationsPanel({ tasks, forms }: MyEvaluationsPanelProps) {
   const [active, setActive] = useState<ActiveTask | null>(null);
 
   function start(task: MyEvaluationTask) {
-    if (!eficaciaForm) return;
-    setActive({ task, form: eficaciaForm });
+    const form = forms[task.typeSlug];
+    if (!form || form.sections.length === 0) return;
+    setActive({ task, form });
   }
 
   if (tasks.length === 0) {
@@ -75,7 +76,7 @@ export function MyEvaluationsPanel({ tasks, eficaciaForm }: MyEvaluationsPanelPr
             <Badge tone={t.self ? "primary" : "accent"}>
               {t.self ? "Autoavaliação" : "Feedback"}
             </Badge>
-            <Button size="sm" onClick={() => start(t)} disabled={!eficaciaForm}>
+            <Button size="sm" onClick={() => start(t)} disabled={!forms[t.typeSlug]}>
               Preencher
             </Button>
           </div>
@@ -92,7 +93,7 @@ export function MyEvaluationsPanel({ tasks, eficaciaForm }: MyEvaluationsPanelPr
           onClose={() => setActive(null)}
           onSubmitted={() => setActive(null)}
           onSubmit={(payload) =>
-            submitEfficacyEvaluation({
+            submitRoundEvaluation({
               roundId: active.task.roundId,
               self: active.task.self,
               observations: payload.observations,

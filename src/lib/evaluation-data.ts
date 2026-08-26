@@ -1,18 +1,44 @@
 import { prisma } from "@/lib/db/prisma";
 import { sweepAvailability } from "@/lib/evaluation-schedule";
+import { MULTI_RATER_SLUGS } from "@/lib/evaluation-rounds-config";
 import type {
   EvalForm,
   EvaluationTypeCard,
   PendingEvaluation,
   SubjectCycles,
-  EvaluationResultGroup,
+  EvaluationResultAnswer,
   EvaluationResultDetail,
+  EvaluationResultEntry,
+  EvaluationResultSection,
+  EvaluationResultSubject,
+  EvaluationResultTypeCard,
   EvaluationKind,
   EvaluationSubject,
+  EfficacyRoundStatus,
 } from "@/types/evaluation";
 
+/**
+ * A VPS roda em UTC. Sem fixar o fuso, o carimbo de hora exibido na aba de
+ * Resultados sairia 3 horas adiantado para quem opera no Brasil.
+ */
+const TZ = "America/Sao_Paulo";
+
 function fmtDate(date: Date): string {
-  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  return date.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: TZ,
+  });
+}
+
+/** Horário de finalização (carimbo exigido na aba de Resultados). */
+function fmtTime(date: Date): string {
+  return date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: TZ });
+}
+
+function fmtStamp(date: Date): string {
+  return `${fmtDate(date)} às ${fmtTime(date)}`;
 }
 
 /** Cards da aba Avaliações, com a contagem de submissões concluídas. */
@@ -189,92 +215,234 @@ export async function getSubjectCycles(sectors?: string[] | null): Promise<Subje
   }));
 }
 
-/** Resultados agrupados por colaborador (aba Resultados de Avaliações). */
-export async function getEvaluationResults(
+
+// ─────────────────────────────────────────────────────────────
+// Resultados de Avaliação — catálogo em 3 níveis
+// ─────────────────────────────────────────────────────────────
+//
+// Nível 1: cards dos instrumentos.
+// Nível 2: colaboradores avaliados naquele instrumento.
+// Nível 3: o resultado em si (uma submissão ou uma rodada consolidada).
+//
+// Instrumentos multidirecionais (Matriz de Decisão / Eficácia) aparecem como
+// RODADAS; os demais, como submissões avulsas. Um mesmo instrumento pode ter
+// as duas coisas (uma Matriz preenchida direto no setor, por exemplo), então
+// as entradas são uma união discriminada por `mode`.
+
+interface DatedEntry {
+  at: number;
+  entry: EvaluationResultEntry;
+}
+
+/**
+ * Catálogo completo dos resultados, já agrupado por instrumento e por
+ * colaborador. Escopo opcional por setor (Gestor vê só o próprio).
+ */
+export async function getEvaluationResultsCatalog(
   sectors?: string[] | null,
-): Promise<EvaluationResultGroup[]> {
-  const evaluations = await prisma.evaluation.findMany({
-    where: {
-      status: "CONCLUIDA",
-      ...(sectors && sectors.length > 0
-        ? { subject: { sector: { label: { in: sectors } } } }
-        : {}),
-    },
-    orderBy: { createdAt: "desc" },
-    include: {
-      type: { select: { title: true, kind: true, scaleMax: true } },
-      subject: { select: { id: true, fullName: true, sector: { select: { label: true } } } },
-      _count: { select: { answers: true } },
-    },
-  });
+): Promise<EvaluationResultTypeCard[]> {
+  const scoped = sectors && sectors.length > 0;
+  const subjectFilter = scoped ? { subject: { sector: { label: { in: sectors } } } } : {};
 
-  const groups = new Map<string, EvaluationResultGroup>();
+  const [types, evaluations, rounds] = await Promise.all([
+    prisma.evaluationType.findMany({ orderBy: { order: "asc" } }),
+    // Submissões avulsas: as que pertencem a uma rodada são lidas via rodada.
+    prisma.evaluation.findMany({
+      where: { status: "CONCLUIDA", roundId: null, ...subjectFilter },
+      orderBy: { createdAt: "desc" },
+      include: {
+        type: { select: { id: true, scaleMax: true } },
+        subject: { select: { id: true, fullName: true, sector: { select: { label: true } } } },
+        evaluator: { select: { fullName: true } },
+        _count: { select: { answers: true } },
+      },
+    }),
+    prisma.evaluationRound.findMany({
+      where: { ...subjectFilter },
+      orderBy: { createdAt: "desc" },
+      include: {
+        subject: { select: { id: true, fullName: true, sector: { select: { label: true } } } },
+        _count: { select: { evaluations: { where: { isSelfAssessment: false } } } },
+      },
+    }),
+  ]);
 
-  for (const e of evaluations as Array<{
-    id: string; cycle: number | null; total: number | null; createdAt: Date;
-    type: { title: string; kind: EvaluationKind; scaleMax: number };
-    subject: { id: string; fullName: string; sector: { label: string } | null };
-    _count: { answers: number };
-  }>) {
-    const key = e.subject.id;
-    if (!groups.has(key)) {
-      groups.set(key, {
-        subjectId: e.subject.id,
-        subjectName: e.subject.fullName,
-        sector: e.subject.sector?.label ?? "—",
-        results: [],
-      });
+  // typeId → subjectId → entradas datadas.
+  const buckets = new Map<string, Map<string, { subject: EvaluationResultSubject; dated: DatedEntry[] }>>();
+
+  function bucket(
+    typeId: string,
+    subject: { id: string; fullName: string; sector: { label: string } | null },
+  ) {
+    let bySubject = buckets.get(typeId);
+    if (!bySubject) {
+      bySubject = new Map();
+      buckets.set(typeId, bySubject);
     }
-    const maxTotal = e._count.answers * e.type.scaleMax;
-    (groups.get(key)!.results as EvaluationResultGroup["results"][number][]).push({
-      id: e.id,
-      typeTitle: e.type.title,
-      kind: e.type.kind,
-      cycle: e.cycle ?? undefined,
-      total: e.total ?? 0,
-      maxTotal,
-      createdAtLabel: fmtDate(e.createdAt),
+    let slot = bySubject.get(subject.id);
+    if (!slot) {
+      slot = {
+        subject: {
+          subjectId: subject.id,
+          subjectName: subject.fullName,
+          sector: subject.sector?.label ?? "—",
+          entries: [],
+          lastLabel: "—",
+        },
+        dated: [],
+      };
+      bySubject.set(subject.id, slot);
+    }
+    return slot;
+  }
+
+  for (const e of evaluations) {
+    const slot = bucket(e.type.id, e.subject);
+    slot.dated.push({
+      at: e.createdAt.getTime(),
+      entry: {
+        mode: "SIMPLES",
+        id: e.id,
+        cycle: e.cycle ?? undefined,
+        total: e.total ?? 0,
+        maxTotal: e._count.answers * e.type.scaleMax,
+        evaluatorName: e.evaluator?.fullName ?? undefined,
+        finishedAtLabel: fmtDate(e.createdAt),
+        finishedAtTimeLabel: fmtTime(e.createdAt),
+      },
     });
   }
 
-  return Array.from(groups.values());
+  for (const r of rounds) {
+    const slot = bucket(r.typeId, r.subject);
+    const done = r.completedAt ?? null;
+    slot.dated.push({
+      at: (done ?? r.createdAt).getTime(),
+      entry: {
+        mode: "MULTI",
+        id: r.id,
+        status: r.status as EfficacyRoundStatus,
+        raterQuota: r.raterQuota,
+        feedbackDone: r._count.evaluations,
+        selfDone: r.status === "CONCLUIDA",
+        startedAtLabel: fmtDate(r.createdAt),
+        finishedAtLabel: done ? fmtDate(done) : undefined,
+        finishedAtTimeLabel: done ? fmtTime(done) : undefined,
+      },
+    });
+  }
+
+  return types.map((t): EvaluationResultTypeCard => {
+    const bySubject = buckets.get(t.id);
+    const subjects: EvaluationResultSubject[] = [];
+    let count = 0;
+
+    if (bySubject) {
+      for (const slot of bySubject.values()) {
+        slot.dated.sort((a, b) => b.at - a.at);
+        const newest = slot.dated[0];
+        subjects.push({
+          ...slot.subject,
+          entries: slot.dated.map((d) => d.entry),
+          lastLabel: newest ? fmtStamp(new Date(newest.at)) : "—",
+        });
+        count += slot.dated.length;
+      }
+      subjects.sort((a, b) => a.subjectName.localeCompare(b.subjectName, "pt-BR"));
+    }
+
+    return {
+      typeId: t.id,
+      slug: t.slug,
+      kind: t.kind as EvaluationKind,
+      title: t.title,
+      multiRater: MULTI_RATER_SLUGS.includes(t.slug),
+      count,
+      subjects,
+    };
+  });
 }
 
-/** Detalhe de uma submissão (respostas por questão), para expandir no RH. */
+/**
+ * Detalhe de uma submissão, já agrupado por seção e com os rótulos da escala
+ * resolvidos. É o que a tela cheia de resultado consome.
+ */
 export async function getEvaluationDetail(id: string): Promise<EvaluationResultDetail | null> {
   const e = await prisma.evaluation.findUnique({
     where: { id },
     include: {
-      type: { select: { title: true, scaleMax: true, scaleLabels: true } },
-      subject: { select: { fullName: true } },
+      type: { select: { title: true, slug: true, kind: true, scaleMax: true, scaleLabels: true } },
+      subject: { select: { fullName: true, sector: { select: { label: true } } } },
       evaluator: { select: { fullName: true } },
       answers: {
-        include: { question: { select: { label: true, order: true } } },
+        include: {
+          question: {
+            select: {
+              label: true,
+              helpText: true,
+              order: true,
+              section: { select: { id: true, title: true, order: true } },
+            },
+          },
+        },
       },
     },
   });
   if (!e) return null;
 
-  const answers = e.answers
-    .map((a: { value: number; question: { label: string; order: number } }) => ({
-      label: a.question.label,
-      value: a.value,
+  const scaleLabels = e.type.scaleLabels ?? [];
+  const labelOf = (value: number): string => scaleLabels[value - 1] ?? String(value);
+
+  // Agrupa por seção preservando a ordem cadastrada no instrumento.
+  const bySection = new Map<
+    string,
+    { order: number; title: string; rows: { order: number; answer: EvaluationResultAnswer }[] }
+  >();
+
+  for (const a of e.answers) {
+    const s = a.question.section;
+    let group = bySection.get(s.id);
+    if (!group) {
+      group = { order: s.order, title: s.title, rows: [] };
+      bySection.set(s.id, group);
+    }
+    group.rows.push({
       order: a.question.order,
-    }))
-    .sort((x: { order: number }, y: { order: number }) => x.order - y.order)
-    .map(({ label, value }: { label: string; value: number }) => ({ label, value }));
+      answer: {
+        label: a.question.label,
+        helpText: a.question.helpText ?? undefined,
+        value: a.value,
+        valueLabel: labelOf(a.value),
+      },
+    });
+  }
+
+  const sections: EvaluationResultSection[] = Array.from(bySection.values())
+    .sort((x, y) => x.order - y.order)
+    .map((g) => {
+      const answers = g.rows.sort((x, y) => x.order - y.order).map((r) => r.answer);
+      const total = answers.reduce((sum, a) => sum + a.value, 0);
+      return { title: g.title, answers, total, maxTotal: answers.length * e.type.scaleMax };
+    });
+
+  const answerCount = sections.reduce((n, s) => n + s.answers.length, 0);
 
   return {
     id: e.id,
     typeTitle: e.type.title,
+    typeSlug: e.type.slug,
+    kind: e.type.kind as EvaluationKind,
     subjectName: e.subject.fullName,
+    subjectSector: e.subject.sector?.label ?? "—",
     evaluatorName: e.evaluator?.fullName ?? undefined,
     cycle: e.cycle ?? undefined,
     total: e.total ?? 0,
-    maxTotal: answers.length * e.type.scaleMax,
-    scaleLabels: e.type.scaleLabels ?? [],
+    maxTotal: answerCount * e.type.scaleMax,
+    scaleMax: e.type.scaleMax,
+    scaleLabels,
     observations: e.observations ?? undefined,
-    createdAtLabel: fmtDate(e.createdAt),
-    answers,
+    finishedAtLabel: fmtDate(e.createdAt),
+    finishedAtTimeLabel: fmtTime(e.createdAt),
+    sections,
   };
 }

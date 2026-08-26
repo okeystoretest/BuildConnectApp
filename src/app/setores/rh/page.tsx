@@ -4,8 +4,12 @@ import { can } from "@/lib/permissions";
 import { getManagedUsers } from "@/lib/users-data";
 import { getHrDocuments, getIntegrationMaps } from "@/lib/hr-content-data";
 import { getEmployeeRoster } from "@/lib/hr-history-data";
-import { getEvaluationResults, getEvaluationSubjects } from "@/lib/evaluation-data";
-import { getEfficacyRounds, getRaterRoster } from "@/lib/efficacy-rounds";
+import { getEvaluationResultsCatalog, getEvaluationSubjects } from "@/lib/evaluation-data";
+import {
+  getAssignableEvaluationTypes,
+  getEvaluationRounds,
+  getRaterRoster,
+} from "@/lib/evaluation-rounds";
 import { HrSectorView } from "@/components/hr/hr-sector-view";
 import type { Role } from "@/types";
 
@@ -33,17 +37,19 @@ export default async function HrSectorPage() {
     documents,
     maps,
     roster,
-    results,
-    efficacyRounds,
-    efficacySubjects,
-    efficacyRaters,
+    resultsCatalog,
+    rounds,
+    assignableTypes,
+    assignSubjects,
+    assignRaters,
   ] = await Promise.all([
     canHrAdmin ? getManagedUsers() : Promise.resolve([]),
     canHrAdmin ? getHrDocuments() : Promise.resolve([]),
     canHrAdmin ? getIntegrationMaps() : Promise.resolve([]),
     canHrAdmin ? getEmployeeRoster() : Promise.resolve([]),
-    getEvaluationResults(sectorScope),
-    getEfficacyRounds(sectorScope),
+    getEvaluationResultsCatalog(sectorScope),
+    getEvaluationRounds(sectorScope),
+    getAssignableEvaluationTypes(),
     getEvaluationSubjects(sectorScope),
     getRaterRoster(sectorScope),
   ]);
@@ -56,10 +62,11 @@ export default async function HrSectorPage() {
       maps={maps}
       roster={roster}
       initialHistory={null}
-      results={results}
-      efficacyRounds={efficacyRounds}
-      efficacySubjects={efficacySubjects}
-      efficacyRaters={efficacyRaters}
+      resultsCatalog={resultsCatalog}
+      assignableTypes={assignableTypes}
+      assignSubjects={assignSubjects}
+      assignRaters={assignRaters}
+      rounds={rounds}
     />
   );
 }

@@ -4,8 +4,10 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
 import { MyEvaluationsPanel } from "@/components/me/my-evaluations-panel";
 import { getSession } from "@/lib/auth/session";
-import { getMyEvaluationTasks, EFICACIA_SLUG } from "@/lib/efficacy-rounds";
+import { getMyEvaluationTasks } from "@/lib/evaluation-rounds";
+import { MULTI_RATER_SLUGS } from "@/lib/evaluation-rounds-config";
 import { getEvaluationForm } from "@/lib/evaluation-data";
+import type { EvalForm } from "@/types/evaluation";
 
 export const dynamic = "force-dynamic";
 
@@ -13,10 +15,17 @@ export default async function MyEvaluationsPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const [tasks, eficaciaForm] = await Promise.all([
+  // Cada rodada pode ser de um instrumento diferente (Matriz de Decisão,
+  // Eficácia 360°) — carrega os formulários por slug e o painel escolhe o certo.
+  const [tasks, loadedForms] = await Promise.all([
     getMyEvaluationTasks(session.userId),
-    getEvaluationForm(EFICACIA_SLUG),
+    Promise.all(MULTI_RATER_SLUGS.map((slug) => getEvaluationForm(slug))),
   ]);
+
+  const forms: Record<string, EvalForm> = {};
+  for (const form of loadedForms) {
+    if (form) forms[form.slug] = form;
+  }
 
   return (
     <AppShell eyebrow="Menu" title="Minhas Avaliações">
@@ -25,7 +34,7 @@ export default async function MyEvaluationsPage() {
         description="Avaliações designadas a você e sua autoavaliação."
       />
       <Card className="mt-6 p-5">
-        <MyEvaluationsPanel tasks={tasks} eficaciaForm={eficaciaForm} />
+        <MyEvaluationsPanel tasks={tasks} forms={forms} />
       </Card>
     </AppShell>
   );

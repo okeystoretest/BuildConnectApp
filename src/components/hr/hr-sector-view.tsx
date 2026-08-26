@@ -8,7 +8,6 @@ import { Tabs, TabPanel, type TabItem } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/ui/empty-state";
 import { EmployeeHistoryPanel } from "@/components/hr/employee-history";
 import { EvaluationResultsPanel } from "@/components/hr/evaluation-results-panel";
-import { EfficacyPanel } from "@/components/hr/efficacy-panel";
 import { TrainingResultsPanel } from "@/components/hr/training-results-panel";
 import { IntegrationMapsPanel } from "@/components/hr/integration-maps";
 import { HrDocumentsPanel } from "@/components/hr/hr-documents";
@@ -24,8 +23,9 @@ import type {
   EmployeeHistory,
 } from "@/types/hr";
 import type {
-  EvaluationResultGroup,
+  AssignableEvaluationType,
   EfficacyRoundRow,
+  EvaluationResultTypeCard,
   EvaluationSubject,
 } from "@/types/evaluation";
 
@@ -36,11 +36,13 @@ export interface HrSectorViewProps {
   maps: IntegrationMap[];
   roster: EmployeeSummary[];
   initialHistory: EmployeeHistory | null;
-  results: EvaluationResultGroup[];
-  // Eficácia 360°: rodadas + gente selecionável.
-  efficacyRounds: EfficacyRoundRow[];
-  efficacySubjects: EvaluationSubject[];
-  efficacyRaters: { id: string; name: string; sector: string }[];
+  /** Catálogo de resultados: instrumentos → avaliados → registros. */
+  resultsCatalog: EvaluationResultTypeCard[];
+  /** Card "Atribuir Avaliações": instrumentos multiavaliador + gente selecionável. */
+  assignableTypes: AssignableEvaluationType[];
+  assignSubjects: EvaluationSubject[];
+  assignRaters: { id: string; name: string; sector: string }[];
+  rounds: EfficacyRoundRow[];
 }
 
 export function HrSectorView({
@@ -50,10 +52,11 @@ export function HrSectorView({
   maps,
   roster,
   initialHistory,
-  results,
-  efficacyRounds,
-  efficacySubjects,
-  efficacyRaters,
+  resultsCatalog,
+  assignableTypes,
+  assignSubjects,
+  assignRaters,
+  rounds,
 }: HrSectorViewProps) {
   const { can } = useRole();
   const [mapModalOpen, setMapModalOpen] = useState(false);
@@ -64,11 +67,12 @@ export function HrSectorView({
   //   fica na aba Avaliações de cada setor. O DHO concentra só os Resultados.
   // - Gestor (evaluations.view, sem sector.hr): só Resultados de Avaliações
   //   (o preenchimento é feito no setor dele).
+  //
+  // A antiga aba "Eficácia (360°)" saiu da barra: a atribuição de avaliadores
+  // agora é o card "Atribuir Avaliações" dentro de Resultados de Avaliações, e
+  // a consolidação da rodada é lida como qualquer outro resultado.
   const tabs = useMemo<TabItem[]>(() => {
-    const evalTabs: TabItem[] = [
-      { id: "resultados", label: "Resultados de Avaliações" },
-      { id: "eficacia", label: "Eficácia (360°)" },
-    ];
+    const evalTabs: TabItem[] = [{ id: "resultados", label: "Resultados de Avaliações" }];
     if (!canHrAdmin) return evalTabs;
     return [
       { id: "historico", label: "Histórico do Colaborador" },
@@ -115,13 +119,13 @@ export function HrSectorView({
           <EmployeeHistoryPanel roster={roster} initial={initialHistory} />
         )}
 
-        {active === "resultados" && <EvaluationResultsPanel groups={results} />}
-
-        {active === "eficacia" && (
-          <EfficacyPanel
-            rounds={efficacyRounds}
-            subjects={efficacySubjects}
-            raters={efficacyRaters}
+        {active === "resultados" && (
+          <EvaluationResultsPanel
+            catalog={resultsCatalog}
+            assignableTypes={assignableTypes}
+            assignSubjects={assignSubjects}
+            assignRaters={assignRaters}
+            rounds={rounds}
           />
         )}
 

@@ -7,6 +7,7 @@ import {
   getEvaluationSubjects,
   getAllForms,
 } from "@/lib/evaluation-data";
+import { isMultiRaterSlug } from "@/lib/evaluation-rounds-config";
 import type { SectorEvaluations, EvalForm } from "@/types/evaluation";
 
 const PRE_EFETIVO_SLUG = "acompanhamento-pre-efetivo";
@@ -60,10 +61,16 @@ export async function getSectorEvaluations(
   ]);
 
   // Pré-Efetivo sai do dicionário de avulsas (tem fluxo próprio de ciclo).
+  // Instrumentos multiavaliador (Matriz de Decisão, Eficácia 360°) também
+  // saem: eles não são preenchidos por um gestor sozinho — o DHO atribui os
+  // avaliadores em "Resultados de Avaliações › Atribuir Avaliações" e cada
+  // avaliador responde em "Minhas Avaliações".
   const avulsas: Record<string, EvalForm> = {};
   for (const [slug, form] of Object.entries(forms)) {
-    if (slug !== PRE_EFETIVO_SLUG) avulsas[slug] = form;
+    if (slug !== PRE_EFETIVO_SLUG && !isMultiRaterSlug(slug)) avulsas[slug] = form;
   }
+
+  const selectableTypes = types.filter((t) => !isMultiRaterSlug(t.slug));
 
   return {
     sectorLabel,
@@ -73,7 +80,7 @@ export async function getSectorEvaluations(
     pending,
     subjects,
     preEfetivoForm,
-    types,
+    types: selectableTypes,
     roster,
     forms: avulsas,
   };
