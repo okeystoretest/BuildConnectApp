@@ -1,11 +1,14 @@
 import { prisma } from "@/lib/db/prisma";
-import { MULTI_RATER_SLUGS } from "@/lib/evaluation-rounds-config";
+import { MATRIZ_DECISAO_SLUG, MULTI_RATER_SLUGS } from "@/lib/evaluation-rounds-config";
+import { averageOf, classifyMatriz } from "@/lib/matriz-decisao";
 import type {
   AssignableEvaluationType,
   EfficacyRoundRow,
   EfficacyConsolidated,
   EfficacyCompetencyRow,
   EvaluationKind,
+  MatrizDecisaoResult,
+  MatrizPoint,
   MyEvaluationTask,
 } from "@/types/evaluation";
 
@@ -118,7 +121,20 @@ export async function getRoundConsolidated(
       evaluations: {
         orderBy: { createdAt: "asc" },
         include: {
-          answers: { include: { question: { select: { id: true, label: true, order: true } } } },
+          answers: {
+            include: {
+              question: {
+                select: {
+                  id: true,
+                  label: true,
+                  order: true,
+                  // A ordem da seção define o eixo na Matriz de Decisão
+                  // (0 = técnico/X, 1 = emocional/Y).
+                  section: { select: { order: true } },
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -172,6 +188,10 @@ export async function getRoundConsolidated(
 
   return {
     roundId: round.id,
+    matriz:
+      round.type.slug === MATRIZ_DECISAO_SLUG
+        ? buildMatriz(round.evaluations, round.type.scaleMax, round.raterQuota + 1)
+        : undefined,
     typeTitle: round.type.title,
     typeSlug: round.type.slug,
     scaleMax: round.type.scaleMax,
@@ -188,6 +208,67 @@ export async function getRoundConsolidated(
     competencies: rows,
     overallFeedback,
     overallSelf,
+  };
+}
+
+/**
+ * Pontos do gráfico da Matriz de Decisão.
+ *
+ * Cada submissão vira um ponto: X = média das respostas da PRIMEIRA seção
+ * (critérios técnicos), Y = média das respostas da SEGUNDA (critérios
+ * emocionais). Os avaliadores de feedback entram anônimos ("Pessoa 1…N"), na
+ * ordem de envio; a autoavaliação é identificada porque o avaliado sabe que a
+ * última posição da sequência é dele.
+ *
+ * O ponto de decisão é a média de TODAS as submissões recebidas — a
+ * autoavaliação é uma das posições da sequência, não um dado à parte.
+ */
+function buildMatriz(
+  evaluations: readonly {
+    isSelfAssessment: boolean;
+    answers: readonly { value: number; question: { section: { order: number } } }[];
+  }[],
+  scaleMax: number,
+  expected: number,
+): MatrizDecisaoResult {
+  const points: MatrizPoint[] = [];
+  let feedbackIndex = 0;
+
+  for (const ev of evaluations) {
+    const x = averageOf(
+      ev.answers.filter((a) => a.question.section.order === 0).map((a) => a.value),
+    );
+    const y = averageOf(
+      ev.answers.filter((a) => a.question.section.order === 1).map((a) => a.value),
+    );
+    if (x === null || y === null) continue;
+
+    if (ev.isSelfAssessment) {
+      points.push({ id: "auto", label: "Autoavaliação", kind: "AUTO", x, y });
+    } else {
+      feedbackIndex += 1;
+      points.push({
+        id: `pessoa-${feedbackIndex}`,
+        label: `Pessoa ${feedbackIndex}`,
+        kind: "FEEDBACK",
+        x,
+        y,
+      });
+    }
+  }
+
+  const overallX = averageOf(points.map((p) => p.x));
+  const overallY = averageOf(points.map((p) => p.y));
+  const overall = overallX !== null && overallY !== null ? { x: overallX, y: overallY } : null;
+
+  return {
+    scaleMax,
+    points,
+    overall,
+    zone: overall ? classifyMatriz(overall.x, overall.y) : null,
+    partial: points.length < expected,
+    received: points.length,
+    expected,
   };
 }
 

@@ -77,6 +77,12 @@ export function EvaluationFormModal({
   const maxTotal = totalQuestions * form.scaleMax;
 
   const hasLabels = form.scaleLabels.length === form.scaleMax;
+  // Escalas longas (Matriz de Decisão: 1–10) não cabem com o círculo de 48px.
+  // Reduz o alvo e permite rolagem horizontal da faixa no celular.
+  const dense = form.scaleMax > 6;
+  const cellClass = dense ? "w-9" : "w-12";
+  const dotClass = dense ? "h-9 w-9 text-sm" : "h-12 w-12 text-base";
+  const rowGapClass = dense ? "gap-1.5 sm:gap-2" : "gap-3 sm:gap-4";
   const scaleValues = useMemo(
     () => Array.from({ length: form.scaleMax }, (_, i) => i + 1),
     [form.scaleMax],
@@ -194,9 +200,9 @@ export function EvaluationFormModal({
                 <span className="text-sm font-bold uppercase tracking-wide text-muted">
                   Critério de avaliação
                 </span>
-                <div className="flex items-center gap-3 sm:gap-4">
+                <div className={"flex items-center " + rowGapClass}>
                   {scaleValues.map((v) => (
-                    <div key={v} className="flex w-12 flex-col items-center gap-1">
+                    <div key={v} className={"flex flex-col items-center gap-1 " + cellClass}>
                       <span className="text-base font-bold text-foreground">{badgeFor(v)}</span>
                     </div>
                   ))}
@@ -227,7 +233,7 @@ export function EvaluationFormModal({
                     </div>
 
                     <div
-                      className="flex items-center gap-3 sm:gap-4"
+                      className={"scrollbar-slim flex max-w-full items-center overflow-x-auto " + rowGapClass}
                       role="radiogroup"
                       aria-label={q.label}
                     >
@@ -243,7 +249,9 @@ export function EvaluationFormModal({
                             title={hasLabels ? labelFor(v) : undefined}
                             onClick={() => setAnswer(q.id, v)}
                             className={
-                              "focus-ring flex h-12 w-12 items-center justify-center rounded-full border-2 text-base font-bold transition-all " +
+                              "focus-ring flex shrink-0 items-center justify-center rounded-full border-2 font-bold transition-all " +
+                              dotClass +
+                              " " +
                               (active
                                 ? "border-primary bg-primary text-primary-foreground scale-105 shadow-md"
                                 : "border-border bg-surface text-muted hover:border-primary/50 hover:text-foreground")

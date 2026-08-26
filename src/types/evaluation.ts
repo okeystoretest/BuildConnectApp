@@ -283,7 +283,51 @@ export interface EfficacyConsolidated {
   competencies: EfficacyCompetencyRow[];
   overallFeedback: number | null;
   overallSelf: number | null;
+  /** Só na Matriz de Decisão: dados do gráfico de quadrantes. */
+  matriz?: MatrizDecisaoResult;
 }
+
+// ─────────────────────────────────────────────────────────────
+// Matriz de Decisão — gráfico
+// ─────────────────────────────────────────────────────────────
+
+/** Um avaliador no plano da matriz (média técnica × média emocional). */
+export interface MatrizPoint {
+  id: string;
+  /** "Pessoa 1…N" (anônimo) ou "Autoavaliação". */
+  label: string;
+  kind: "FEEDBACK" | "AUTO";
+  /** Média do bloco técnico (eixo X). */
+  x: number;
+  /** Média do bloco emocional (eixo Y). */
+  y: number;
+}
+
+/** Payload do gráfico da Matriz de Decisão. */
+export interface MatrizDecisaoResult {
+  scaleMax: number;
+  points: MatrizPoint[];
+  /** Ponto de decisão: média de todas as submissões recebidas. */
+  overall: { x: number; y: number } | null;
+  /**
+   * Zona do ponto de decisão. `null` quando ele cai no quadrante bom abaixo
+   * de 7 nos dois eixos — faixa que, por definição, não recebe rótulo.
+   */
+  zone: MatrizZone | null;
+  /** true enquanto faltar submissão da sequência. */
+  partial: boolean;
+  received: number;
+  expected: number;
+}
+
+/** Espelha `MatrizZoneId` de `@/lib/matriz-decisao` (tipos não importam lib). */
+export type MatrizZone =
+  | "DEMISSAO"
+  | "TREINAMENTO_TECNICO"
+  | "TREINAMENTO_EMOCIONAL"
+  | "RECONHECIMENTO"
+  | "INVESTIMENTO"
+  | "PROMOCAO";
 
 /** Tarefa na aba "Minhas avaliações" do usuário logado. */
 export interface MyEvaluationTask {

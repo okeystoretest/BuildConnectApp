@@ -276,6 +276,23 @@ async function seedEvaluationTypes() {
     });
 
     // Reconstrói seções/perguntas de forma idempotente (apaga e recria).
+    //
+    // PROTEÇÃO DE DADOS: EvaluationAnswer.question tem onDelete: Cascade, então
+    // apagar as seções apaga junto TODAS as respostas já enviadas daquele
+    // instrumento — o resultado continuaria listado, mas sem os critérios.
+    // Se o instrumento já tem resposta gravada, o seed NÃO mexe nas perguntas.
+    // Para trocar as perguntas de um instrumento já usado, rode antes
+    // `npx tsx scripts/reset-evaluations.ts` (apaga os dados de avaliação).
+    const existingAnswers = await prisma.evaluationAnswer.count({
+      where: { question: { section: { typeId: type.id } } },
+    });
+    if (existingAnswers > 0) {
+      console.log(
+        `  • ${t.title}: ${existingAnswers} resposta(s) gravada(s) — perguntas preservadas.`,
+      );
+      continue;
+    }
+
     await prisma.evaluationSection.deleteMany({ where: { typeId: type.id } });
     let sOrder = 0;
     for (const section of t.sections) {

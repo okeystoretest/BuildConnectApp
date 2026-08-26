@@ -3,8 +3,41 @@
 import { CalendarClock, ClipboardCheck, MessageSquareText, User2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { MatrizDecisaoChart } from "@/components/hr/matriz-decisao-chart";
 import { progressColor } from "@/lib/progress-color";
-import type { EvaluationResultDetail, EvaluationResultAnswer } from "@/types/evaluation";
+import { MATRIZ_DECISAO_SLUG } from "@/lib/evaluation-rounds-config";
+import { averageOf, classifyMatriz } from "@/lib/matriz-decisao";
+import type {
+  EvaluationResultDetail,
+  EvaluationResultAnswer,
+  MatrizDecisaoResult,
+} from "@/types/evaluation";
+
+/**
+ * Matriz de Decisão preenchida FORA de uma rodada (registro avulso ou legado):
+ * o gráfico ainda se aplica, com um ponto só. Seção 0 = eixo X (técnico),
+ * seção 1 = eixo Y (emocional) — mesmo contrato do catálogo.
+ */
+function singleMatriz(detail: EvaluationResultDetail): MatrizDecisaoResult | null {
+  if (detail.typeSlug !== MATRIZ_DECISAO_SLUG) return null;
+  const tecnica = detail.sections[0];
+  const emocional = detail.sections[1];
+  if (!tecnica || !emocional) return null;
+
+  const x = averageOf(tecnica.answers.map((a) => a.value));
+  const y = averageOf(emocional.answers.map((a) => a.value));
+  if (x === null || y === null) return null;
+
+  return {
+    scaleMax: detail.scaleMax,
+    points: [{ id: detail.id, label: "Avaliação", kind: "FEEDBACK", x, y }],
+    overall: { x, y },
+    zone: classifyMatriz(x, y),
+    partial: false,
+    received: 1,
+    expected: 1,
+  };
+}
 
 /**
  * Resultado de UMA submissão, em tela cheia.
@@ -16,6 +49,7 @@ import type { EvaluationResultDetail, EvaluationResultAnswer } from "@/types/eva
  */
 export function EvaluationResultView({ detail }: { detail: EvaluationResultDetail }) {
   const pct = detail.maxTotal > 0 ? Math.round((detail.total / detail.maxTotal) * 100) : 0;
+  const matriz = singleMatriz(detail);
 
   return (
     <div className="space-y-5">
@@ -68,6 +102,13 @@ export function EvaluationResultView({ detail }: { detail: EvaluationResultDetai
           </span>
         </div>
       </header>
+
+      {matriz && (
+        <section className="rounded-xl border border-border bg-surface p-5">
+          <h4 className="mb-4 text-sm font-semibold text-foreground">Posição na Matriz de Decisão</h4>
+          <MatrizDecisaoChart data={matriz} />
+        </section>
+      )}
 
       {/* Seções do instrumento */}
       {detail.sections.map((section) => {

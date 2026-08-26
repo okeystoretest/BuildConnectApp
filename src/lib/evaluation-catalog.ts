@@ -86,6 +86,51 @@ const EFICACIA_CRITERIA: SeedQuestion[] = [
   { label: "ET20 — Buscar inovação", helpText: "Experimenta novas maneiras de fazer as coisas; tem ideias novas sob pressão." },
 ];
 
+// ─────────────────────────────────────────────────────────────
+// Matriz de Decisão — escala 1–10, dois blocos
+// ─────────────────────────────────────────────────────────────
+//
+// A ORDEM das duas seções é significativa e NÃO pode ser trocada:
+//   seção 0 = Critérios Técnicos   → eixo X do gráfico
+//   seção 1 = Critérios Emocionais → eixo Y do gráfico
+// `src/lib/matriz-decisao.ts` lê os eixos por essa ordem.
+
+const MATRIZ_TECNICOS: SeedQuestion[] = [
+  { label: "O colaborador demonstra comprometimento com os objetivos e metas organizacionais?" },
+  { label: "O colaborador alcança de maneira consistente os resultados esperados?" },
+  { label: "Executa suas tarefas com atenção e precisão" },
+  { label: "Mantém alto padrão de desempenho em sua função" },
+  { label: "Toma decisões assertivas quando necessário" },
+  { label: "Contribui com ideias para a melhoria de seus processos" },
+  { label: "Demonstra receptividade a feedbacks para seu aprimoramento" },
+  { label: "Define prioridades de maneira adequada e tempestiva" },
+  { label: "Utiliza métodos eficientes na organização do trabalho individual" },
+  { label: "Transmite informações relevantes de forma clara e eficiente" },
+  { label: "Cumpre rigorosamente os prazos e compromissos assumidos" },
+  { label: "Informa previamente a impossibilidade de cumprir prazos" },
+  { label: "Demonstra habilidade ao oferecer e receber feedbacks de desempenho" },
+  { label: "Busca exceder as expectativas dos clientes sempre que possível" },
+  { label: "Adota postura proativa diante de oportunidades de aprendizado" },
+  { label: "Domina as tecnologias atuais e inovações de sua área" },
+  { label: "Assume a responsabilidade pelo seu próprio desenvolvimento profissional" },
+];
+
+const MATRIZ_EMOCIONAIS: SeedQuestion[] = [
+  { label: "Autoconfiança", helpText: "Demonstra segurança quanto ao próprio valor, capacidades e potencial." },
+  { label: "Autocontrole emocional", helpText: "Mantém o domínio de suas emoções e impulsos em momentos críticos." },
+  { label: "Superação", helpText: "Busca continuamente elevar o nível de excelência no próprio desempenho." },
+  { label: "Iniciativa", helpText: "Age de forma proativa na identificação e no aproveitamento de oportunidades." },
+  { label: "Transparência e Credibilidade", helpText: "Atua com integridade e honestidade, transmitindo confiança." },
+  { label: "Flexibilidade", helpText: "Adapta-se com facilidade a diferentes pessoas, cenários dinâmicos e visões divergentes." },
+  { label: "Otimismo", helpText: "Mantém uma atitude construtiva e positiva perante os desafios." },
+  { label: "Empatia", helpText: "Compreende as emoções e perspectivas alheias, demonstrando interesse legítimo pelos outros." },
+  { label: "Orientação a Serviços", helpText: "Identifica e atende às necessidades de clientes e liderados, apoiando seu desenvolvimento." },
+  { label: "Liderança Inspiradora", helpText: "Engaja e motiva a equipe em direção a metas comuns e de alto impacto." },
+  { label: "Influência", helpText: "Possui capacidade de persuadir, alinhar visões e mobilizar pessoas." },
+  { label: "Gerenciamento de Conflitos", helpText: "Medeia e soluciona divergências, promovendo o entendimento mútuo." },
+  { label: "Trabalho em Equipe", helpText: "Fomenta a colaboração e o espírito de equipe focado em altos resultados." },
+];
+
 export const EVALUATION_CATALOG: SeedEvaluationType[] = [
   {
     slug: "acompanhamento-pre-efetivo",
@@ -118,7 +163,20 @@ export const EVALUATION_CATALOG: SeedEvaluationType[] = [
       { title: "Critérios 9 a 16", questions: PRE_EFETIVO_CRITERIA.slice(8, 16) },
     ],
   },
-  { slug: "matriz-de-decisao", kind: "MATRIZ_DECISAO", title: "Matriz de Decisão", scaleMax: 5, hasCycle: false, order: 2, sections: [] },
+  {
+    slug: "matriz-de-decisao",
+    kind: "MATRIZ_DECISAO",
+    title: "Matriz de Decisão",
+    description:
+      "Avaliação com múltiplos avaliadores designados pelo DHO + autoavaliação do colaborador. Escala 1–10 em dois blocos: competências técnicas (eixo X) e competências emocionais (eixo Y). O cruzamento das duas médias posiciona o colaborador no gráfico da matriz.",
+    scaleMax: 10,
+    hasCycle: false,
+    order: 2,
+    sections: [
+      { title: "Critérios Técnicos — Habilidade e Conhecimento", questions: MATRIZ_TECNICOS },
+      { title: "Critérios Emocionais — Atitude e Caráter", questions: MATRIZ_EMOCIONAIS },
+    ],
+  },
   {
     slug: "eficacia-no-trabalho",
     kind: "EFICACIA",

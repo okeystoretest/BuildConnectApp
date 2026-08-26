@@ -2,6 +2,7 @@
 
 import { CalendarClock, ShieldCheck, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { MatrizDecisaoChart } from "@/components/hr/matriz-decisao-chart";
 import { Progress } from "@/components/ui/progress";
 import { progressColor } from "@/lib/progress-color";
 import type { EfficacyConsolidated } from "@/types/evaluation";
@@ -93,6 +94,14 @@ export function RoundConsolidatedView({ data }: { data: EfficacyConsolidated }) 
           </span>
         </div>
       </header>
+
+      {/* Matriz de Decisão: o gráfico é a leitura principal; a tabela detalha. */}
+      {data.matriz && (
+        <section className="rounded-xl border border-border bg-surface p-5">
+          <h4 className="mb-4 text-sm font-semibold text-foreground">Posição na Matriz de Decisão</h4>
+          <MatrizDecisaoChart data={data.matriz} />
+        </section>
+      )}
 
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
         <table className="w-full min-w-[720px] border-collapse text-sm">
