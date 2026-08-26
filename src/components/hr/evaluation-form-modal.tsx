@@ -233,7 +233,15 @@ export function EvaluationFormModal({
                     </div>
 
                     <div
-                      className={"scrollbar-slim flex max-w-full items-center overflow-x-auto " + rowGapClass}
+                      className={
+                        // overflow-y-hidden é obrigatório: com overflow-x-auto o
+                        // navegador computa overflow-y como auto, e o botão
+                        // ativo (scale-105) estoura a linha em 2px — aparecia
+                        // uma barra de rolagem vertical na linha respondida.
+                        // O py-1 dá a folga para o botão ampliado não ser cortado.
+                        "scrollbar-slim flex max-w-full items-center overflow-x-auto overflow-y-hidden py-1 " +
+                        rowGapClass
+                      }
                       role="radiogroup"
                       aria-label={q.label}
                     >

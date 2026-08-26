@@ -24,7 +24,8 @@ interface ActiveTask {
  * Aba "Minhas avaliações": lista as avaliações que o usuário precisa preencher.
  *  - FEEDBACK: você foi designado para avaliar outra pessoa.
  *  - AUTOAVALIACAO: as avaliações sobre você fecharam; registre a sua.
- * Sigilo: o usuário nunca vê respostas alheias — só o próprio formulário.
+ * O usuário responde só o próprio formulário; a consolidação (com o nome de
+ * cada avaliador) é vista pelo DHO na aba de Resultados.
  */
 export function MyEvaluationsPanel({ tasks, forms }: MyEvaluationsPanelProps) {
   const [active, setActive] = useState<ActiveTask | null>(null);
@@ -48,7 +49,7 @@ export function MyEvaluationsPanel({ tasks, forms }: MyEvaluationsPanelProps) {
   return (
     <div className="space-y-3">
       <p className="text-sm text-muted">
-        Avaliações pendentes para você. Suas respostas são sigilosas — ninguém mais as vê.
+        Avaliações pendentes para você. O DHO vê o resultado com o nome de cada avaliador.
       </p>
 
       {tasks.map((t) => (

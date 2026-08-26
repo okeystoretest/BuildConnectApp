@@ -21,8 +21,8 @@ import type { EfficacyConsolidated } from "@/types/evaluation";
  *  - DHO/Admin/Gestor (evaluations.view): atribui a avaliação — escolhe o
  *    instrumento, o avaliado, a quantidade TOTAL de avaliadores e quem ocupa
  *    cada posição.
- *  - Avaliadores designados (evaluations.fill): enviam seu feedback. Sigilo:
- *    ninguém vê a resposta de outro.
+ *  - Avaliadores designados (evaluations.fill): enviam seu feedback. Cada um
+ *    responde só o próprio formulário; a consolidação é do DHO.
  *  - Avaliado: ocupa SEMPRE a última posição da sequência (autoavaliação). Ela
  *    é liberada quando o feedback dos demais fecha.
  *
@@ -333,8 +333,8 @@ export async function submitRoundEvaluation(input: unknown): Promise<SubmitResul
 
 /**
  * Consolidação de uma rodada: médias por competência + coluna de
- * autoavaliação. NUNCA acessível a um avaliador comum — mistura respostas
- * sigilosas de várias pessoas.
+ * autoavaliação, com o nome de cada avaliador. Restrita a `evaluations.view`
+ * (DHO/Gestor/Admin) — junta as respostas de várias pessoas numa tela só.
  */
 export async function fetchRoundConsolidated(
   roundId: string,

@@ -182,7 +182,7 @@ export const EVALUATION_CATALOG: SeedEvaluationType[] = [
     kind: "EFICACIA",
     title: "Avaliação Multidirecional de Eficácia no Trabalho",
     description:
-      "Avaliação 360°: N avaliadores designados + autoavaliação do colaborador, em 20 competências (ET1–ET20), escala 1–5. Respostas sigilosas; o RH vê a consolidação por competência.",
+      "Avaliação 360°: N avaliadores designados + autoavaliação do colaborador, em 20 competências (ET1–ET20), escala 1–5. O DHO vê a consolidação por competência, com o nome de cada avaliador.",
     scaleMax: 5,
     hasCycle: false,
     order: 3,

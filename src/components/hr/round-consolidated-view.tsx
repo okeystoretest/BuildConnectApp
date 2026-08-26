@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarClock, ShieldCheck, Users } from "lucide-react";
+import { CalendarClock, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { MatrizDecisaoChart } from "@/components/hr/matriz-decisao-chart";
 import { Progress } from "@/components/ui/progress";
@@ -21,8 +21,8 @@ const STATUS_TONE: Record<EfficacyConsolidated["status"], "info" | "warning" | "
 
 /**
  * Consolidação de uma rodada multidirecional, em tela cheia: uma linha por
- * competência com a nota de cada avaliador (anônima), a média do feedback e a
- * autoavaliação. Exclusivo do DHO — mistura respostas sigilosas.
+ * competência com a nota de cada avaliador — identificado pelo nome —, a média
+ * do feedback e a autoavaliação.
  */
 export function RoundConsolidatedView({ data }: { data: EfficacyConsolidated }) {
   const feedbackPct =
@@ -88,10 +88,6 @@ export function RoundConsolidatedView({ data }: { data: EfficacyConsolidated }) 
               </>
             )}
           </span>
-          <span className="inline-flex items-center gap-1.5 text-muted">
-            <ShieldCheck className="h-3.5 w-3.5" />
-            Colunas por avaliador são anônimas
-          </span>
         </div>
       </header>
 
@@ -110,7 +106,7 @@ export function RoundConsolidatedView({ data }: { data: EfficacyConsolidated }) 
               <th className="px-4 py-3 font-bold text-foreground">Competências</th>
               {data.competencies[0]?.raterScores.map((_, i) => (
                 <th key={i} className="px-3 py-3 text-center font-semibold text-muted">
-                  Pessoa {i + 1}
+                  {data.raterNames[i] ?? `Avaliador ${i + 1}`}
                 </th>
               ))}
               <th className="px-3 py-3 text-center font-bold text-primary">Média Feedback</th>
@@ -155,9 +151,7 @@ export function RoundConsolidatedView({ data }: { data: EfficacyConsolidated }) 
         </table>
       </div>
 
-      <p className="text-xs text-muted">
-        Escala 1 a {data.scaleMax}. A identidade de quem avaliou não é exibida em nenhuma tela.
-      </p>
+      <p className="text-xs text-muted">Escala 1 a {data.scaleMax}.</p>
     </div>
   );
 }

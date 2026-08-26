@@ -271,6 +271,8 @@ export interface EfficacyConsolidated {
   scaleLabels: string[];
   subjectName: string;
   sector: string;
+  /** Nome de cada avaliador de feedback, na ordem de `raterScores`. */
+  raterNames: string[];
   /** Abertura da rodada. */
   startedAtLabel: string;
   /** Fechamento (só quando a autoavaliação chega). */
@@ -294,7 +296,7 @@ export interface EfficacyConsolidated {
 /** Um avaliador no plano da matriz (média técnica × média emocional). */
 export interface MatrizPoint {
   id: string;
-  /** "Pessoa 1…N" (anônimo) ou "Autoavaliação". */
+  /** Nome de quem avaliou. */
   label: string;
   kind: "FEEDBACK" | "AUTO";
   /** Média do bloco técnico (eixo X). */

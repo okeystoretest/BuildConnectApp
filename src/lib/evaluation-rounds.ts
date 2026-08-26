@@ -105,10 +105,10 @@ export async function getEvaluationRounds(
 }
 
 /**
- * Consolidação de uma rodada: uma linha por competência com a nota
- * de cada avaliador (anônima — "Pessoa 1..N", sem nome), a média de feedback e
- * a pontuação de autoavaliação. Exclusivo do RH — mistura respostas, então
- * nunca deve chegar a um avaliador.
+ * Consolidação de uma rodada: uma linha por competência com a nota de cada
+ * avaliador — IDENTIFICADO PELO NOME —, a média de feedback e a pontuação de
+ * autoavaliação. Exclusivo de quem tem `evaluations.view` (DHO/Gestor): é a
+ * visão que mistura as respostas de todo mundo.
  */
 export async function getRoundConsolidated(
   roundId: string,
@@ -121,6 +121,7 @@ export async function getRoundConsolidated(
       evaluations: {
         orderBy: { createdAt: "asc" },
         include: {
+          evaluator: { select: { fullName: true } },
           answers: {
             include: {
               question: {
@@ -156,6 +157,11 @@ export async function getRoundConsolidated(
 
   const feedbackEvals = round.evaluations.filter((e) => !e.isSelfAssessment);
   const selfEval = round.evaluations.find((e) => e.isSelfAssessment) ?? null;
+
+  // Nomes das colunas de feedback, na mesma ordem de `raterScores`.
+  const raterNames = feedbackEvals.map(
+    (e) => e.evaluator?.fullName ?? "Avaliador não identificado",
+  );
 
   const rows: EfficacyCompetencyRow[] = competencies.map((c: { id: string; label: string; order: number }) => {
     const feedbackScores = feedbackEvals.map((ev): number | null => {
@@ -198,6 +204,7 @@ export async function getRoundConsolidated(
     scaleLabels: round.type.scaleLabels ?? [],
     subjectName: round.subject.fullName,
     sector: round.subject.sector?.label ?? "—",
+    raterNames,
     startedAtLabel: fmtDate(round.createdAt),
     finishedAtLabel: round.completedAt ? fmtDate(round.completedAt) : undefined,
     finishedAtTimeLabel: round.completedAt ? fmtTime(round.completedAt) : undefined,
@@ -216,9 +223,8 @@ export async function getRoundConsolidated(
  *
  * Cada submissão vira um ponto: X = média das respostas da PRIMEIRA seção
  * (critérios técnicos), Y = média das respostas da SEGUNDA (critérios
- * emocionais). Os avaliadores de feedback entram anônimos ("Pessoa 1…N"), na
- * ordem de envio; a autoavaliação é identificada porque o avaliado sabe que a
- * última posição da sequência é dele.
+ * emocionais). Cada ponto leva o NOME de quem avaliou; a autoavaliação é
+ * marcada como tal.
  *
  * O ponto de decisão é a média de TODAS as submissões recebidas — a
  * autoavaliação é uma das posições da sequência, não um dado à parte.
@@ -226,13 +232,14 @@ export async function getRoundConsolidated(
 function buildMatriz(
   evaluations: readonly {
     isSelfAssessment: boolean;
+    evaluator: { fullName: string } | null;
     answers: readonly { value: number; question: { section: { order: number } } }[];
   }[],
   scaleMax: number,
   expected: number,
 ): MatrizDecisaoResult {
   const points: MatrizPoint[] = [];
-  let feedbackIndex = 0;
+  let index = 0;
 
   for (const ev of evaluations) {
     const x = averageOf(
@@ -243,18 +250,15 @@ function buildMatriz(
     );
     if (x === null || y === null) continue;
 
-    if (ev.isSelfAssessment) {
-      points.push({ id: "auto", label: "Autoavaliação", kind: "AUTO", x, y });
-    } else {
-      feedbackIndex += 1;
-      points.push({
-        id: `pessoa-${feedbackIndex}`,
-        label: `Pessoa ${feedbackIndex}`,
-        kind: "FEEDBACK",
-        x,
-        y,
-      });
-    }
+    index += 1;
+    const name = ev.evaluator?.fullName ?? "Avaliador não identificado";
+    points.push({
+      id: `ponto-${index}`,
+      label: name,
+      kind: ev.isSelfAssessment ? "AUTO" : "FEEDBACK",
+      x,
+      y,
+    });
   }
 
   const overallX = averageOf(points.map((p) => p.x));

@@ -20,10 +20,10 @@ import type { MatrizDecisaoResult, MatrizPoint } from "@/types/evaluation";
  * superior direito tem as três faixas escalonadas (7 → Reconhecimento,
  * 8 → Investimento, 9 → Promoção).
  *
- * São plotados: um ponto por avaliador (anônimo), a autoavaliação com forma
- * própria e o PONTO DE DECISÃO — a média de todas as submissões — em destaque,
- * único a receber rótulo numérico. Identidade nunca depende só da cor: cada
- * série tem forma diferente e legenda.
+ * São plotados: um ponto por avaliador (identificado na legenda abaixo do
+ * gráfico), a autoavaliação com forma própria e o PONTO DE DECISÃO — a média
+ * de todas as submissões — em destaque, único a receber rótulo numérico.
+ * Identidade nunca depende só da cor: cada série tem forma diferente.
  *
  * Todas as cores saem dos tokens do tema (`--bc-*`), então o gráfico acompanha
  * claro/escuro sem tratamento extra.
@@ -66,10 +66,6 @@ export function MatrizDecisaoChart({ data }: { data: MatrizDecisaoResult }) {
               </Badge>
               <p className="mt-1 text-[11px] text-muted">{zone.hint}</p>
             </>
-          ) : data.overall ? (
-            <p className="text-[11px] text-muted">
-              Acima do corte nos dois eixos — sem ação sugerida abaixo de 7,0.
-            </p>
           ) : null}
         </div>
       </div>
@@ -264,7 +260,7 @@ export function MatrizDecisaoChart({ data }: { data: MatrizDecisaoResult }) {
             {MATRIZ_AXIS_Y}
           </text>
 
-          {/* Pontos individuais (anônimos) */}
+          {/* Um ponto por avaliador */}
           <g clipPath={`url(#${uid}-plot)`}>
             {data.points.map((point) => (
               <PointMark key={point.id} point={point} cx={px(point.x)} cy={py(point.y)} />
@@ -313,47 +309,42 @@ export function MatrizDecisaoChart({ data }: { data: MatrizDecisaoResult }) {
         </svg>
       </div>
 
-      {/* Legenda: identidade por forma + cor, nunca só cor */}
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted">
-        <span className="inline-flex items-center gap-2">
-          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
-            <circle
-              cx="7"
-              cy="7"
-              r="4.5"
-              fill="hsl(var(--bc-muted) / 0.35)"
-              stroke="hsl(var(--bc-muted))"
-              strokeWidth="1.5"
-            />
-          </svg>
-          Avaliador (anônimo)
-        </span>
-        <span className="inline-flex items-center gap-2">
-          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
-            <rect
-              x="7"
-              y="1.5"
-              width="7.8"
-              height="7.8"
-              transform="rotate(45 7 1.5)"
-              fill="hsl(var(--bc-accent) / 0.35)"
-              stroke="hsl(var(--bc-accent))"
-              strokeWidth="1.5"
-            />
-          </svg>
-          Autoavaliação
-        </span>
-        <span className="inline-flex items-center gap-2">
-          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
-            <circle cx="7" cy="7" r="5" fill={decisionColor} />
-          </svg>
-          Média geral (ponto de decisão)
-        </span>
+      {/* Legenda: quem é cada ponto. Forma + cor, nunca só cor. */}
+      <div className="space-y-1.5">
+        {data.points.map((point) => (
+          <div
+            key={point.id}
+            className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs"
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <PointGlyph kind={point.kind} />
+              <span className="truncate font-medium text-foreground">{point.label}</span>
+              {point.kind === "AUTO" && <span className="shrink-0 text-muted">· autoavaliação</span>}
+            </span>
+            <span className="shrink-0 font-mono text-muted">
+              {fmtScore(point.x)} · {fmtScore(point.y)}
+            </span>
+          </div>
+        ))}
+
+        {data.overall && (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs">
+            <span className="flex items-center gap-2">
+              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
+                <circle cx="7" cy="7" r="5" fill={decisionColor} />
+              </svg>
+              <span className="font-semibold text-foreground">Média geral</span>
+              <span className="text-muted">· ponto de decisão</span>
+            </span>
+            <span className="font-mono font-semibold text-foreground">
+              {fmtScore(data.overall.x)} · {fmtScore(data.overall.y)}
+            </span>
+          </div>
+        )}
       </div>
 
       <p className="text-[11px] text-muted">
-        Cada ponto é a média de um avaliador nos dois blocos. A identidade de quem avaliou não é
-        exibida — a ordem dos pontos não corresponde à ordem das posições.
+        Cada ponto é a média de um avaliador nos dois blocos: técnica (X) · emocional (Y).
       </p>
     </div>
   );
@@ -410,6 +401,38 @@ function DecisionChip({
         {text}
       </text>
     </g>
+  );
+}
+
+/** Marcador da legenda, igual ao do gráfico. */
+function PointGlyph({ kind }: { kind: MatrizPoint["kind"] }) {
+  if (kind === "AUTO") {
+    return (
+      <svg width="14" height="14" viewBox="0 0 14 14" className="shrink-0" aria-hidden>
+        <rect
+          x="7"
+          y="1.5"
+          width="7.8"
+          height="7.8"
+          transform="rotate(45 7 1.5)"
+          fill="hsl(var(--bc-accent) / 0.35)"
+          stroke="hsl(var(--bc-accent))"
+          strokeWidth="1.5"
+        />
+      </svg>
+    );
+  }
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" className="shrink-0" aria-hidden>
+      <circle
+        cx="7"
+        cy="7"
+        r="4.5"
+        fill="hsl(var(--bc-muted) / 0.35)"
+        stroke="hsl(var(--bc-muted))"
+        strokeWidth="1.5"
+      />
+    </svg>
   );
 }
 
