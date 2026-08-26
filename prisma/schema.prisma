@@ -43,6 +43,8 @@ model User {
 
   // Subsetores do colaborador (many-to-many via tabela de junção).
   subsectors UserSubsector[]
+  // Vídeos de boas-vindas de setor já assistidos por este usuário.
+  welcomeViews SubsectorWelcomeView[]
 
   // Caminho do avatar já tratado (.webp). Nunca o binário.
   avatarPath String?
@@ -113,6 +115,15 @@ model Subsector {
   // Habilita a ferramenta Cronograma no escopo deste subsetor.
   scheduleEnabled Boolean @default(false)
 
+  // Vídeo de boas-vindas do setor, exibido na PRIMEIRA visita de cada usuário.
+  // Como todo arquivo do sistema, o banco guarda só o caminho público
+  // (/uploads/conteudo/ano/mes/arquivo.mp4) — nunca o binário.
+  welcomeVideoPath  String?
+  welcomeVideoTitle String?
+  // Quando o vídeo atual foi publicado. Trocar o vídeo zera as visualizações:
+  // quem já tinha visto o anterior assiste ao novo.
+  welcomeVideoAt    DateTime?
+
   // Conteúdo do subsetor.
   photos    Photo[]
   videos    Video[]
@@ -120,13 +131,33 @@ model Subsector {
   links     ExternalLink[]
   posts     ContentPost[]
 
-  members UserSubsector[]
+  members      UserSubsector[]
+  welcomeViews SubsectorWelcomeView[]
 
   @@index([sectorId, order])
   @@index([appsSourceId])
 }
 
 // Junção colaborador ↔ subsetor.
+// Registro de que UM usuário já assistiu ao vídeo de boas-vindas de UM
+// subsetor. A ausência da linha é o que dispara o vídeo obrigatório — por isso
+// apagar as linhas de um subsetor (ao trocar o vídeo) reexibe para todos.
+model SubsectorWelcomeView {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  subsectorId String
+  subsector   Subsector @relation(fields: [subsectorId], references: [id], onDelete: Cascade)
+
+  watchedAt DateTime @default(now())
+
+  @@unique([userId, subsectorId])
+  @@index([subsectorId])
+  @@index([userId])
+}
+
 model UserSubsector {
   userId      String
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)

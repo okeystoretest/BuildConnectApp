@@ -9,6 +9,7 @@ import {
 } from "@/lib/driver-data-db";
 import { DriverSectorView } from "@/components/it/driver-sector-view";
 import { getSectorEvaluations } from "@/lib/sector-evaluations-data";
+import { getSectorWelcomeVideo } from "@/lib/welcome-video-data";
 import type { Role } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -45,6 +46,7 @@ export default async function DriversSectorPage() {
   // Avaliações do setor (Gestor/Admin preenchem aqui). Motoristas é subsetor
   // de Logística; o escopo resolve o setor-pai no helper.
   const evaluations = await getSectorEvaluations("motoristas", (session.role as Role) === "ADMIN");
+  const welcome = await getSectorWelcomeVideo("motoristas", session.userId);
 
   return (
     <DriverSectorView
@@ -53,6 +55,7 @@ export default async function DriversSectorPage() {
       dashboard={dashboard}
       logistics={logistics}
       evaluations={evaluations}
+      welcome={welcome}
     />
   );
 }

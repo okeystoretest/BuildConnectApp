@@ -15,6 +15,8 @@ import { LinksPanel } from "@/components/sector/links-panel";
 import { UploadAction } from "@/components/sector/upload-action";
 import { FileUploadModal } from "@/components/sector/file-upload-modal";
 import { LinkModal } from "@/components/sector/link-modal";
+import { SectorWelcomeVideo } from "@/components/sector/welcome-video";
+import type { SectorWelcomeVideo as SectorWelcomeVideoData } from "@/lib/welcome-video-data";
 import { KanbanBoard } from "@/components/it/kanban-board";
 import { ItDashboard } from "@/components/it/it-dashboard";
 import { useRole } from "@/providers/role-provider";
@@ -35,9 +37,17 @@ export interface ItSectorViewProps {
   tickets: ItTicket[];
   dashboard: ItDashboardData;
   evaluations?: SectorEvaluations | null;
+  /** Vídeo de boas-vindas do setor (modal + card de gestão). */
+  welcome?: SectorWelcomeVideoData | null;
 }
 
-export function ItSectorView({ content, tickets, dashboard, evaluations }: ItSectorViewProps) {
+export function ItSectorView({
+  content,
+  tickets,
+  dashboard,
+  evaluations,
+  welcome,
+}: ItSectorViewProps) {
   const { can } = useRole();
   const [active, setActive] = useState("chamados");
   const [query, setQuery] = useState("");
@@ -85,6 +95,8 @@ export function ItSectorView({ content, tickets, dashboard, evaluations }: ItSec
         title="Retaguarda"
         description="Gestão de chamados e conteúdos do setor de Retaguarda."
       />
+
+      <SectorWelcomeVideo data={welcome ?? null} />
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <Tabs

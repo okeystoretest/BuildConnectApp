@@ -14,6 +14,8 @@ import { HrDocumentsPanel } from "@/components/hr/hr-documents";
 import { UserManagementPanel } from "@/components/hr/user-management";
 import { MapUploadModal } from "@/components/hr/map-upload-modal";
 import { FileUploadModal } from "@/components/sector/file-upload-modal";
+import { SectorWelcomeVideo } from "@/components/sector/welcome-video";
+import type { SectorWelcomeVideo as SectorWelcomeVideoData } from "@/lib/welcome-video-data";
 import { useRole } from "@/providers/role-provider";
 import type {
   ManagedUser,
@@ -43,6 +45,8 @@ export interface HrSectorViewProps {
   assignSubjects: EvaluationSubject[];
   assignRaters: { id: string; name: string; sector: string }[];
   rounds: EfficacyRoundRow[];
+  /** Vídeo de boas-vindas do setor (modal + card de gestão). */
+  welcome?: SectorWelcomeVideoData | null;
 }
 
 export function HrSectorView({
@@ -57,6 +61,7 @@ export function HrSectorView({
   assignSubjects,
   assignRaters,
   rounds,
+  welcome,
 }: HrSectorViewProps) {
   const { can } = useRole();
   const [mapModalOpen, setMapModalOpen] = useState(false);
@@ -109,6 +114,8 @@ export function HrSectorView({
             : "Avaliações e resultados da sua equipe."
         }
       />
+
+      <SectorWelcomeVideo data={welcome ?? null} />
 
       <div className="mt-6">
         <Tabs items={tabs} value={active} onValueChange={setActive} />

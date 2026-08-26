@@ -13,6 +13,8 @@ import { LinksPanel } from "@/components/sector/links-panel";
 import { UploadAction } from "@/components/sector/upload-action";
 import { FileUploadModal } from "@/components/sector/file-upload-modal";
 import { LinkModal } from "@/components/sector/link-modal";
+import { SectorWelcomeVideo } from "@/components/sector/welcome-video";
+import type { SectorWelcomeVideo as SectorWelcomeVideoData } from "@/lib/welcome-video-data";
 import { DriverKanbanBoard } from "@/components/it/driver-kanban-board";
 import { ItDashboard } from "@/components/it/it-dashboard";
 import type { LinkItem, SectorContent } from "@/types/sector";
@@ -33,9 +35,11 @@ export interface DriverSectorViewProps {
   dashboard: ItDashboardData;
   logistics: DriverLogistics;
   evaluations?: SectorEvaluations | null;
+  /** Vídeo de boas-vindas do setor (modal + card de gestão). */
+  welcome?: SectorWelcomeVideoData | null;
 }
 
-export function DriverSectorView({ content, tickets, dashboard, logistics, evaluations }: DriverSectorViewProps) {
+export function DriverSectorView({ content, tickets, dashboard, logistics, evaluations, welcome }: DriverSectorViewProps) {
   const [active, setActive] = useState("chamados");
   const [query, setQuery] = useState("");
   const [view, setView] = useState<ViewMode>("grid");
@@ -55,6 +59,8 @@ export function DriverSectorView({ content, tickets, dashboard, logistics, evalu
         description="Central de chamados e conteúdos da equipe de rota."
         progress={{ label: "Concluído", value: content.completion }}
       />
+
+      <SectorWelcomeVideo data={welcome ?? null} />
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <Tabs

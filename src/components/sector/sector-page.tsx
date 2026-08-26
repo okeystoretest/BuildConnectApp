@@ -17,6 +17,8 @@ import { UploadAction } from "./upload-action";
 import { PhotoUploadModal } from "./photo-upload-modal";
 import { FileUploadModal } from "./file-upload-modal";
 import { LinkModal } from "./link-modal";
+import { SectorWelcomeVideo } from "./welcome-video";
+import type { SectorWelcomeVideo as SectorWelcomeVideoData } from "@/lib/welcome-video-data";
 import { EvaluationsPanel } from "@/components/hr/evaluations-panel";
 import { CronogramaPanel } from "@/components/cronograma/cronograma-panel";
 import type { SectorEvaluations } from "@/types/evaluation";
@@ -55,11 +57,14 @@ export function SectorPage({
   evaluations,
   cronograma,
   initialTab,
+  welcome,
 }: {
   sector: SectorContent;
   evaluations?: SectorEvaluations | null;
   cronograma?: CronogramaData | null;
   initialTab?: string;
+  /** Vídeo de boas-vindas do setor (modal + card de gestão). */
+  welcome?: SectorWelcomeVideoData | null;
 }) {
   const { can } = useRole();
 
@@ -155,6 +160,8 @@ export function SectorPage({
         description={sector.description}
         progress={{ label: "Concluído", value: sector.completion }}
       />
+
+      <SectorWelcomeVideo data={welcome ?? null} />
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <Tabs

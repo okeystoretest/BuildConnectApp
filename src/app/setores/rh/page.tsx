@@ -10,6 +10,7 @@ import {
   getEvaluationRounds,
   getRaterRoster,
 } from "@/lib/evaluation-rounds";
+import { getSectorWelcomeVideo } from "@/lib/welcome-video-data";
 import { HrSectorView } from "@/components/hr/hr-sector-view";
 import type { Role } from "@/types";
 
@@ -54,6 +55,8 @@ export default async function HrSectorPage() {
     getRaterRoster(sectorScope),
   ]);
 
+  const welcome = await getSectorWelcomeVideo("rh", session.userId);
+
   return (
     <HrSectorView
       canHrAdmin={canHrAdmin}
@@ -67,6 +70,7 @@ export default async function HrSectorPage() {
       assignSubjects={assignSubjects}
       assignRaters={assignRaters}
       rounds={rounds}
+      welcome={welcome}
     />
   );
 }

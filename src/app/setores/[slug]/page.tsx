@@ -4,6 +4,7 @@ import { SectorPage } from "@/components/sector/sector-page";
 import { getSectorContent } from "@/lib/sector-data";
 import { getSectorEvaluations } from "@/lib/sector-evaluations-data";
 import { getCronogramaData } from "@/lib/cronograma-data";
+import { getSectorWelcomeVideo } from "@/lib/welcome-video-data";
 import { getSession } from "@/lib/auth/session";
 import { resolveAccessibleSlugs, canAccessSlug } from "@/lib/auth/access";
 import { can } from "@/lib/permissions";
@@ -72,9 +73,12 @@ export default async function Page({ params, searchParams }: PageProps) {
     role,
   );
 
+  const welcome = await getSectorWelcomeVideo(params.slug, session.userId);
+
   return (
     <SectorPage
       sector={sector}
+      welcome={welcome}
       evaluations={evaluations}
       cronograma={cronograma}
       initialTab={searchParams?.aba}
