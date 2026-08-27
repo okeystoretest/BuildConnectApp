@@ -219,6 +219,8 @@ export type EfficacyRoundStatus = "COLETANDO_FEEDBACK" | "AGUARDANDO_AUTO" | "CO
 
 /** Um avaliador designado numa rodada (nome + se já enviou). Visão do RH. */
 export interface EfficacyRaterState {
+  /** Id do avaliador — usado ao reabrir a atribuição para edição. */
+  id: string;
   name: string;
   done: boolean;
 }

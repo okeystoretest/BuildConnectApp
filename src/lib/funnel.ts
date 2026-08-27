@@ -1,4 +1,10 @@
-import type { ContentBrand, ContentFormat, ContentStatus, FunnelStage } from "@/types/cronograma";
+import type {
+  ContentBrand,
+  ContentFormat,
+  ContentPlatform,
+  ContentStatus,
+  FunnelStage,
+} from "@/types/cronograma";
 
 /**
  * Vocabulário único do Cronograma: rótulos, cores e ordem das etapas.
@@ -91,6 +97,32 @@ export function resolveBrand(value: unknown): ContentBrand | null {
   if (key === "OKEY") return "OKEY";
   if (key === "LOV_CLUB" || key === "LOVCLUB") return "LOV_CLUB";
   return null;
+}
+
+export const PLATFORM_ORDER: readonly ContentPlatform[] = ["INSTAGRAM", "TIKTOK", "YOUTUBE"];
+
+interface PlatformMeta {
+  label: string;
+  /** Cor da marca. Fixa em hex para valer nos dois temas. */
+  color: string;
+}
+
+/**
+ * Redes sociais em que uma publicação do cronograma pode ir ao ar.
+ * O ícone de cada uma vive em `src/components/cronograma/platform-icon.tsx` —
+ * aqui ficam só rótulo e cor, que os badges e o formulário consomem.
+ */
+export const PLATFORM: Record<ContentPlatform, PlatformMeta> = {
+  INSTAGRAM: { label: "Instagram", color: "#e1306c" },
+  TIKTOK: { label: "TikTok", color: "#ee1d52" },
+  YOUTUBE: { label: "YouTube", color: "#ff0000" },
+};
+
+/** Normaliza o valor vindo do banco/props para a chave de `PLATFORM`. */
+export function resolvePlatform(value: unknown): ContentPlatform | null {
+  if (typeof value !== "string") return null;
+  const key = value.trim().toUpperCase();
+  return key === "INSTAGRAM" || key === "TIKTOK" || key === "YOUTUBE" ? key : null;
 }
 
 export const FORMAT_ORDER: readonly ContentFormat[] = [

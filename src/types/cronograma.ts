@@ -10,6 +10,12 @@ export type ContentStatus = "IDEIA" | "EM_PRODUCAO" | "AGENDADO" | "PUBLICADO";
 export type ContentBrand = "OKEY" | "LOV_CLUB";
 
 /**
+ * Rede social em que a publicação vai ao ar. Opcional: nem toda atividade do
+ * cronograma é um post (gravação, reunião de pauta…).
+ */
+export type ContentPlatform = "INSTAGRAM" | "TIKTOK" | "YOUTUBE";
+
+/**
  * Alcance do post na base compartilhada.
  * - SHARED: criado no Marketing. Todo mundo vê; só o autor edita.
  * - PRIVATE: criado fora do Marketing. Só o autor vê e edita.
@@ -33,6 +39,8 @@ export interface ContentPostItem {
   format: ContentFormat;
   status: ContentStatus;
   brand?: ContentBrand;
+  /** Rede social do post. Ausente = atividade sem plataforma definida. */
+  platform?: ContentPlatform;
   owner: PostOwner | null;
   notes?: string;
   /** Autor do registro. */

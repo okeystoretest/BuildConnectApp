@@ -2,13 +2,27 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, ChevronDown, Loader2, Lock, Plus, UserPlus, X } from "lucide-react";
+import {
+  CheckCircle2,
+  ChevronDown,
+  Loader2,
+  Lock,
+  Pencil,
+  Plus,
+  Trash2,
+  UserPlus,
+  X,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/providers/toast-provider";
-import { assignEvaluation } from "@/lib/evaluation-rounds-actions";
+import {
+  assignEvaluation,
+  deleteEvaluationRound,
+  updateEvaluationAssignment,
+} from "@/lib/evaluation-rounds-actions";
 import { MAX_TOTAL_RATERS, MIN_TOTAL_RATERS } from "@/lib/evaluation-rounds-config";
 import type {
   AssignableEvaluationType,
@@ -42,12 +56,15 @@ const STATUS_TONE: Record<EfficacyRoundRow["status"], "info" | "warning" | "prim
 /**
  * Card "Atribuir Avaliações".
  *
- * Instrumentos multiavaliador (Matriz de Decisão, Eficácia 360°) não são
- * preenchidos por uma pessoa só: o DHO define a quantidade TOTAL de
- * avaliadores, escolhe quem ocupa cada posição e indica o avaliado. A última
- * posição é sempre preenchida automaticamente pelo próprio avaliado
+ * Instrumentos multiavaliador (Matriz de Decisão, Eficácia 360°, Inteligência
+ * Emocional) não são preenchidos por uma pessoa só: o DHO define a quantidade
+ * TOTAL de avaliadores, escolhe quem ocupa cada posição e indica o avaliado. A
+ * última posição é sempre preenchida automaticamente pelo próprio avaliado
  * (autoavaliação) — ex.: 3 avaliadores ⇒ posições 1 e 2 escolhidas pelo DHO,
  * posição 3 = o colaborador selecionado.
+ *
+ * Cada atribuição da lista pode ser EDITADA (trocar avaliadores pendentes,
+ * mudar a quantidade) ou EXCLUÍDA em definitivo.
  */
 export function EvaluationAssignmentPanel({
   types,
@@ -56,6 +73,8 @@ export function EvaluationAssignmentPanel({
   rounds,
 }: EvaluationAssignmentPanelProps) {
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<EfficacyRoundRow | null>(null);
+  const [removing, setRemoving] = useState<EfficacyRoundRow | null>(null);
   const usable = types.filter((t) => t.questionCount > 0);
 
   return (
@@ -98,7 +117,12 @@ export function EvaluationAssignmentPanel({
       ) : (
         <div className="space-y-2">
           {rounds.map((round) => (
-            <RoundRow key={round.id} round={round} />
+            <RoundRow
+              key={round.id}
+              round={round}
+              onEdit={() => setEditing(round)}
+              onDelete={() => setRemoving(round)}
+            />
           ))}
         </div>
       )}
@@ -111,13 +135,35 @@ export function EvaluationAssignmentPanel({
           onClose={() => setCreating(false)}
         />
       )}
+
+      {editing && (
+        <AssignModal
+          types={types}
+          subjects={subjects}
+          raters={raters}
+          round={editing}
+          onClose={() => setEditing(null)}
+        />
+      )}
+
+      {removing && <DeleteRoundModal round={removing} onClose={() => setRemoving(null)} />}
     </div>
   );
 }
 
-function RoundRow({ round }: { round: EfficacyRoundRow }) {
+function RoundRow({
+  round,
+  onEdit,
+  onDelete,
+}: {
+  round: EfficacyRoundRow;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
   const total = round.raterQuota + 1;
   const done = round.feedbackDone + (round.selfDone ? 1 : 0);
+  // Rodada concluída não se edita: as respostas já estão todas gravadas.
+  const editable = round.status !== "CONCLUIDA";
 
   return (
     <div className="rounded-xl border border-border bg-surface p-4">
@@ -134,13 +180,38 @@ function RoundRow({ round }: { round: EfficacyRoundRow }) {
             {done}/{total}
           </span>
           <Badge tone={STATUS_TONE[round.status]}>{STATUS_LABEL[round.status]}</Badge>
+          <span className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={onEdit}
+              disabled={!editable}
+              title={
+                editable
+                  ? "Editar atribuição"
+                  : "Avaliação concluída — não há mais o que editar"
+              }
+              aria-label={`Editar atribuição de ${round.subjectName}`}
+              className="focus-ring flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface-2 text-muted transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              title="Excluir atribuição"
+              aria-label={`Excluir atribuição de ${round.subjectName}`}
+              className="focus-ring flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface-2 text-muted transition-colors hover:border-danger/40 hover:text-danger"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </span>
         </div>
       </div>
 
       <ul className="mt-3 flex flex-wrap gap-2">
         {round.raters.map((rater, index) => (
           <li
-            key={`${round.id}-${rater.name}-${index}`}
+            key={`${round.id}-${rater.id}-${index}`}
             className={
               "inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] " +
               (rater.done
@@ -170,28 +241,119 @@ function RoundRow({ round }: { round: EfficacyRoundRow }) {
   );
 }
 
+/**
+ * Exclusão definitiva de uma atribuição.
+ *
+ * Fala o tamanho do estrago antes de perguntar: some a rodada, os avaliadores
+ * designados e TODAS as respostas já enviadas. Não é recuperável — por isso a
+ * confirmação é uma tela própria, não um `confirm()` do navegador.
+ */
+function DeleteRoundModal({ round, onClose }: { round: EfficacyRoundRow; onClose: () => void }) {
+  const router = useRouter();
+  const { success, error } = useToast();
+  const [saving, startSave] = useTransition();
+
+  const answered = round.feedbackDone + (round.selfDone ? 1 : 0);
+
+  function remove() {
+    startSave(async () => {
+      const res = await deleteEvaluationRound({ roundId: round.id });
+      if (res.ok) {
+        success("Atribuição excluída definitivamente.");
+        onClose();
+        router.refresh();
+      } else {
+        error(res.error ?? "Não foi possível excluir a atribuição.");
+      }
+    });
+  }
+
+  return (
+    <Modal open onClose={() => !saving && onClose()} className="max-w-lg" dismissible={!saving}>
+      <div className="p-6">
+        <p className="text-xs font-semibold uppercase tracking-widest text-muted">DHO</p>
+        <h2 className="mt-1 text-xl font-bold text-foreground">Excluir atribuição</h2>
+
+        <div className="mt-4 rounded-xl border border-danger/30 bg-danger/10 p-4">
+          <p className="text-sm text-foreground">
+            <span className="font-semibold">{round.typeTitle}</span> de{" "}
+            <span className="font-semibold">{round.subjectName}</span> será apagada do banco de
+            dados em definitivo.
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-muted">
+            <li>a rodada e os {round.raters.length} avaliador(es) designados;</li>
+            <li>
+              {answered === 0
+                ? "nenhuma resposta enviada até agora"
+                : `${answered} avaliação(ões) já enviada(s), com todas as respostas`}
+              ;
+            </li>
+            <li>não há como desfazer nem recuperar depois.</li>
+          </ul>
+        </div>
+
+        <div className="mt-6 flex items-center justify-end gap-3">
+          <Button variant="ghost" onClick={onClose} disabled={saving}>
+            Manter
+          </Button>
+          <Button variant="danger" onClick={remove} disabled={saving}>
+            {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+            {saving ? "Excluindo" : "Excluir definitivamente"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Formulário de atribuição. Sem `round`, cria; com `round`, edita.
+ *
+ * Na edição, instrumento e avaliado ficam travados: trocá-los faria as
+ * respostas já enviadas pertencerem a outra avaliação. Avaliador que já
+ * respondeu também trava — o servidor recusa removê-lo, e a UI mostra o
+ * porquê em vez de deixar tentar.
+ */
 function AssignModal({
   types,
   subjects,
   raters,
+  round = null,
   onClose,
 }: {
   types: readonly AssignableEvaluationType[];
   subjects: readonly EvaluationSubject[];
   raters: readonly { id: string; name: string; sector: string }[];
+  round?: EfficacyRoundRow | null;
   onClose: () => void;
 }) {
   const router = useRouter();
   const { success, error } = useToast();
-  const [typeSlug, setTypeSlug] = useState(types[0]?.slug ?? "");
-  const [subjectId, setSubjectId] = useState("");
-  const [total, setTotal] = useState(3);
+  const editing = round !== null;
+
+  const [typeSlug, setTypeSlug] = useState(round?.typeSlug ?? types[0]?.slug ?? "");
+  const [subjectId, setSubjectId] = useState(round?.subjectId ?? "");
+  const [total, setTotal] = useState(round ? round.raterQuota + 1 : 3);
   // Uma posição por avaliador de feedback (a última é a autoavaliação).
-  const [slots, setSlots] = useState<string[]>(["", ""]);
+  const [slots, setSlots] = useState<string[]>(
+    round ? round.raters.map((r) => r.id) : ["", ""],
+  );
   const [saving, startSave] = useTransition();
 
   const subject = subjects.find((s) => s.id === subjectId) ?? null;
+  const subjectLabel = subject
+    ? `${subject.name} · ${subject.sector}`
+    : round
+      ? `${round.subjectName} · ${round.sector}`
+      : "";
   const feedbackSlots = total - 1;
+
+  /** Avaliadores que já enviaram: posição travada, na ordem original. */
+  const lockedIds = useMemo(
+    () => new Set((round?.raters ?? []).filter((r) => r.done).map((r) => r.id)),
+    [round],
+  );
+  const minTotal = Math.max(MIN_TOTAL_RATERS, lockedIds.size + 1);
 
   // Avaliadores disponíveis = todos, menos o avaliado (ele é a última posição).
   const available = useMemo(
@@ -203,7 +365,10 @@ function AssignModal({
     setTotal(next);
     setSlots((prev) => {
       const wanted = next - 1;
-      const copy = prev.slice(0, wanted);
+      // Encolher nunca descarta quem já respondeu: as posições travadas ficam.
+      const keep = prev.filter((id) => lockedIds.has(id));
+      const rest = prev.filter((id) => !lockedIds.has(id));
+      const copy = [...keep, ...rest].slice(0, wanted);
       while (copy.length < wanted) copy.push("");
       return copy;
     });
@@ -225,18 +390,32 @@ function AssignModal({
   function save() {
     if (!ready) return;
     startSave(async () => {
-      const res = await assignEvaluation({
-        typeSlug,
-        subjectId,
-        totalRaters: total,
-        raterIds: slots,
-      });
+      const res = editing
+        ? await updateEvaluationAssignment({
+            roundId: round.id,
+            totalRaters: total,
+            raterIds: slots,
+          })
+        : await assignEvaluation({
+            typeSlug,
+            subjectId,
+            totalRaters: total,
+            raterIds: slots,
+          });
+
       if (res.ok) {
-        success("Avaliação atribuída. Avaliadores notificados.");
+        success(
+          editing ? "Atribuição atualizada." : "Avaliação atribuída. Avaliadores notificados.",
+        );
         onClose();
         router.refresh();
       } else {
-        error(res.error ?? "Não foi possível atribuir a avaliação.");
+        error(
+          res.error ??
+            (editing
+              ? "Não foi possível editar a atribuição."
+              : "Não foi possível atribuir a avaliação."),
+        );
       }
     });
   }
@@ -247,7 +426,9 @@ function AssignModal({
         <header className="flex items-start justify-between gap-4 border-b border-border p-6">
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-muted">DHO</p>
-            <h2 className="mt-1 text-xl font-bold text-foreground">Atribuir avaliação</h2>
+            <h2 className="mt-1 text-xl font-bold text-foreground">
+              {editing ? "Editar atribuição" : "Atribuir avaliação"}
+            </h2>
           </div>
           <button
             type="button"
@@ -260,25 +441,42 @@ function AssignModal({
         </header>
 
         <div className="scrollbar-slim flex-1 space-y-5 overflow-y-auto p-6">
-          <Field label="Instrumento" htmlFor="assign-type">
-            <NativeSelect
-              id="assign-type"
-              placeholder="Selecione o instrumento"
-              value={typeSlug}
-              onChange={setTypeSlug}
-              options={types.map((t) => ({ value: t.slug, label: t.title }))}
-            />
-          </Field>
+          {editing ? (
+            <>
+              <Locked label="Instrumento" value={round.typeTitle} />
+              <Locked label="Colaborador avaliado" value={subjectLabel} />
+              <p className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-xs text-muted">
+                Instrumento e colaborador não mudam depois de atribuídos — as respostas já
+                enviadas pertencem a esta combinação. Para trocá-los, exclua a atribuição e crie
+                outra.
+              </p>
+            </>
+          ) : (
+            <>
+              <Field label="Instrumento" htmlFor="assign-type">
+                <NativeSelect
+                  id="assign-type"
+                  placeholder="Selecione o instrumento"
+                  value={typeSlug}
+                  onChange={setTypeSlug}
+                  options={types.map((t) => ({ value: t.slug, label: t.title }))}
+                />
+              </Field>
 
-          <Field label="Colaborador avaliado" htmlFor="assign-subject">
-            <NativeSelect
-              id="assign-subject"
-              placeholder="Selecione o colaborador"
-              value={subjectId}
-              onChange={changeSubject}
-              options={subjects.map((s) => ({ value: s.id, label: `${s.name} · ${s.sector}` }))}
-            />
-          </Field>
+              <Field label="Colaborador avaliado" htmlFor="assign-subject">
+                <NativeSelect
+                  id="assign-subject"
+                  placeholder="Selecione o colaborador"
+                  value={subjectId}
+                  onChange={changeSubject}
+                  options={subjects.map((s) => ({
+                    value: s.id,
+                    label: `${s.name} · ${s.sector}`,
+                  }))}
+                />
+              </Field>
+            </>
+          )}
 
           <div>
             <label className="mb-1.5 block text-sm font-medium text-foreground">
@@ -292,9 +490,15 @@ function AssignModal({
                 <button
                   key={n}
                   type="button"
+                  disabled={n < minTotal}
+                  title={
+                    n < minTotal
+                      ? `${lockedIds.size} avaliador(es) já responderam — o total não pode ser menor que ${minTotal}.`
+                      : undefined
+                  }
                   onClick={() => changeTotal(n)}
                   className={
-                    "focus-ring h-10 w-10 rounded-lg border-2 text-sm font-bold transition-all " +
+                    "focus-ring h-10 w-10 rounded-lg border-2 text-sm font-bold transition-all disabled:cursor-not-allowed disabled:opacity-40 " +
                     (total === n
                       ? "border-primary bg-primary text-primary-foreground"
                       : "border-border bg-surface text-muted hover:border-primary/50")
@@ -321,22 +525,39 @@ function AssignModal({
             <div className="space-y-2">
               {slots.map((value, index) => {
                 const taken = new Set(slots.filter((s, i) => s !== "" && i !== index));
+                const locked = value !== "" && lockedIds.has(value);
+                const lockedName = locked
+                  ? (round?.raters.find((r) => r.id === value)?.name ?? "")
+                  : "";
                 return (
                   <div key={index} className="flex items-center gap-3">
                     <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface-2 font-mono text-xs font-bold text-muted">
                       {index + 1}
                     </span>
                     <div className="min-w-0 flex-1">
-                      <NativeSelect
-                        id={`assign-slot-${index}`}
-                        placeholder={subjectId ? "Selecione o avaliador" : "Escolha antes o avaliado"}
-                        value={value}
-                        onChange={(next) => changeSlot(index, next)}
-                        disabled={!subjectId}
-                        options={available
-                          .filter((r) => !taken.has(r.id))
-                          .map((r) => ({ value: r.id, label: `${r.name} · ${r.sector}` }))}
-                      />
+                      {locked ? (
+                        <div className="flex min-w-0 items-center justify-between gap-3 rounded-xl border border-primary/25 bg-primary/10 px-3 py-2">
+                          <span className="min-w-0 truncate text-sm text-foreground">
+                            {lockedName}
+                          </span>
+                          <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-semibold text-primary">
+                            <CheckCircle2 className="h-3 w-3" /> Já respondeu
+                          </span>
+                        </div>
+                      ) : (
+                        <NativeSelect
+                          id={`assign-slot-${index}`}
+                          placeholder={
+                            subjectId ? "Selecione o avaliador" : "Escolha antes o avaliado"
+                          }
+                          value={value}
+                          onChange={(next) => changeSlot(index, next)}
+                          disabled={!subjectId}
+                          options={available
+                            .filter((r) => !taken.has(r.id))
+                            .map((r) => ({ value: r.id, label: `${r.name} · ${r.sector}` }))}
+                        />
+                      )}
                     </div>
                   </div>
                 );
@@ -349,7 +570,7 @@ function AssignModal({
                 </span>
                 <div className="flex min-w-0 flex-1 items-center justify-between gap-3 rounded-xl border border-dashed border-accent/40 bg-accent/5 px-3 py-2">
                   <span className="min-w-0 truncate text-sm text-foreground">
-                    {subject ? `${subject.name} · ${subject.sector}` : "O colaborador avaliado"}
+                    {subjectLabel || "O colaborador avaliado"}
                   </span>
                   <span className="inline-flex shrink-0 items-center gap-1.5 text-[11px] font-semibold text-accent">
                     <Lock className="h-3 w-3" /> Autoavaliação
@@ -359,8 +580,9 @@ function AssignModal({
             </div>
 
             <p className="mt-2 text-xs text-muted">
-              A autoavaliação é liberada ao colaborador assim que todos os avaliadores anteriores
-              enviarem suas respostas.
+              {editing
+                ? "Trocar um avaliador ainda pendente notifica o novo designado. Quem já respondeu permanece na sequência."
+                : "A autoavaliação é liberada ao colaborador assim que todos os avaliadores anteriores enviarem suas respostas."}
             </p>
           </div>
         </div>
@@ -371,7 +593,13 @@ function AssignModal({
           </Button>
           <Button onClick={save} disabled={saving || !ready}>
             {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-            {saving ? "Atribuindo" : "Atribuir avaliação"}
+            {saving
+              ? editing
+                ? "Salvando"
+                : "Atribuindo"
+              : editing
+                ? "Salvar alterações"
+                : "Atribuir avaliação"}
           </Button>
         </footer>
       </div>
@@ -394,6 +622,19 @@ function Field({
         {label}
       </label>
       {children}
+    </div>
+  );
+}
+
+/** Campo que não se edita nesta tela — mostrado como texto, não como select. */
+function Locked({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <span className="mb-1.5 block text-sm font-medium text-foreground">{label}</span>
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface-2 px-3 py-2.5">
+        <span className="min-w-0 truncate text-sm text-foreground">{value}</span>
+        <Lock className="h-3.5 w-3.5 shrink-0 text-muted" />
+      </div>
     </div>
   );
 }

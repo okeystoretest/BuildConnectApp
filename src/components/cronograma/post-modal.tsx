@@ -16,13 +16,17 @@ import {
   FORMAT_ORDER,
   FUNNEL,
   FUNNEL_ORDER,
+  PLATFORM,
+  PLATFORM_ORDER,
   STATUS_LABEL,
   STATUS_ORDER,
 } from "@/lib/funnel";
+import { PlatformIcon } from "@/components/cronograma/platform-icon";
 import { createContentPost, updateContentPost } from "@/lib/cronograma-actions";
 import type {
   ContentBrand,
   ContentFormat,
+  ContentPlatform,
   ContentPostItem,
   ContentStatus,
   FunnelStage,
@@ -71,6 +75,7 @@ export function PostModal({
   const [format, setFormat] = useState<ContentFormat>("REEL");
   const [status, setStatus] = useState<ContentStatus>("IDEIA");
   const [brand, setBrand] = useState<ContentBrand | null>(null);
+  const [platform, setPlatform] = useState<ContentPlatform | null>(null);
   const [ownerId, setOwnerId] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -85,6 +90,7 @@ export function PostModal({
     setFormat(post?.format ?? "REEL");
     setStatus(post?.status ?? "IDEIA");
     setBrand(post?.brand ?? null);
+    setPlatform(post?.platform ?? null);
     setOwnerId(post?.owner?.id ?? "");
     setNotes(post?.notes ?? "");
     setError(null);
@@ -107,6 +113,7 @@ export function PostModal({
         format,
         status,
         brand: brand ?? undefined,
+        platform: platform ?? undefined,
         ownerId: ownerId || undefined,
         notes: notes.trim() || undefined,
       };
@@ -231,6 +238,50 @@ export function PostModal({
                 ))}
               </select>
             </div>
+          </div>
+
+          <div>
+            <Label>Rede social (opcional)</Label>
+            <div className="grid grid-cols-3 gap-2">
+              {PLATFORM_ORDER.map((option) => {
+                const active = platform === option;
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    disabled={readOnly}
+                    aria-pressed={active}
+                    // Clicar de novo limpa: nem toda atividade vira publicação.
+                    onClick={() => setPlatform(active ? null : option)}
+                    style={
+                      active
+                        ? {
+                            borderColor: `${PLATFORM[option].color}59`,
+                            backgroundColor: `${PLATFORM[option].color}1f`,
+                            color: PLATFORM[option].color,
+                          }
+                        : undefined
+                    }
+                    className={cn(
+                      "focus-ring flex items-center justify-center gap-2 rounded-lg border px-2 py-2.5 text-xs font-semibold transition-colors disabled:opacity-60",
+                      !active && "border-border bg-surface-2 text-muted hover:text-foreground",
+                    )}
+                  >
+                    <PlatformIcon platform={option} className="h-4 w-4 shrink-0" />
+                    {PLATFORM[option].label}
+                  </button>
+                );
+              })}
+            </div>
+            {platform && !readOnly && (
+              <button
+                type="button"
+                onClick={() => setPlatform(null)}
+                className="focus-ring mt-1.5 text-[11px] text-muted underline-offset-2 hover:underline"
+              >
+                Remover rede social
+              </button>
+            )}
           </div>
 
           <div>

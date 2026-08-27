@@ -21,10 +21,13 @@ import {
   BRAND,
   FORMAT_LABEL,
   FUNNEL,
+  PLATFORM,
   STATUS_LABEL,
   STATUS_TONE,
   resolveBrand,
+  resolvePlatform,
 } from "@/lib/funnel";
+import { PlatformIcon } from "@/components/cronograma/platform-icon";
 import { VISIBILITY_HINT, VISIBILITY_LABEL } from "@/lib/cronograma-visibility";
 import { deleteContentPost } from "@/lib/cronograma-actions";
 import type { ContentPostItem } from "@/types/cronograma";
@@ -87,6 +90,7 @@ export function PostDetailsModal({ slug, open, post, onClose, onEdit }: PostDeta
 
   const brandKey = resolveBrand(post.brand);
   const brand = brandKey ? BRAND[brandKey] : null;
+  const platformKey = resolvePlatform(post.platform);
 
   function handleClose() {
     if (pending) return;
@@ -135,6 +139,19 @@ export function PostDetailsModal({ slug, open, post, onClose, onEdit }: PostDeta
           <span className="rounded border border-border bg-surface-2 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
             {FORMAT_LABEL[post.format]}
           </span>
+          {platformKey && (
+            <span
+              className="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+              style={{
+                borderColor: `${PLATFORM[platformKey].color}59`,
+                backgroundColor: `${PLATFORM[platformKey].color}1f`,
+                color: PLATFORM[platformKey].color,
+              }}
+            >
+              <PlatformIcon platform={platformKey} className="h-3 w-3" />
+              {PLATFORM[platformKey].label}
+            </span>
+          )}
           {brand && (
             <span
               className="rounded border px-2 py-0.5 text-[10px] font-semibold"

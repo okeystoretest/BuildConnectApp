@@ -348,3 +348,271 @@ export async function fetchRoundConsolidated(
   if (!data) return { ok: false, error: "Rodada não encontrada." };
   return { ok: true, data };
 }
+
+// ── Edição e exclusão de uma atribuição ───────────────────────
+
+async function loadRoundForManagement(roundId: string) {
+  return prisma.evaluationRound.findUnique({
+    where: { id: roundId },
+    include: {
+      type: { select: { id: true, title: true } },
+      subject: { select: { id: true, fullName: true, sector: { select: { label: true } } } },
+      assignments: { select: { id: true, raterId: true, status: true } },
+    },
+  });
+}
+
+type ManagedRound = NonNullable<Awaited<ReturnType<typeof loadRoundForManagement>>>;
+
+/**
+ * Carrega a rodada e confere o escopo do ator sobre o avaliado.
+ *
+ * DHO/Admin (`sector.hr`) alcançam todo mundo; o Gestor, só o próprio setor —
+ * a mesma regra da atribuição. Editar e excluir passam por aqui para que a
+ * permissão não fique escrita em três lugares diferentes.
+ */
+async function requireRoundScope(
+  roundId: string,
+  actor: { id: string; role: string },
+): Promise<{ round: ManagedRound | null; error: string | null }> {
+  if (!can(actor.role as Role, "evaluations.view")) {
+    return { round: null, error: "Você não tem permissão para gerenciar avaliações atribuídas." };
+  }
+
+  const round = await loadRoundForManagement(roundId);
+  if (!round) return { round: null, error: "Atribuição não encontrada." };
+
+  if (!can(actor.role as Role, "sector.hr")) {
+    const actorSector = await prisma.user.findUnique({
+      where: { id: actor.id },
+      select: { sector: { select: { label: true } } },
+    });
+    const subjectSector = round.subject.sector?.label ?? null;
+    if (!actorSector?.sector || actorSector.sector.label !== subjectSector) {
+      return {
+        round: null,
+        error: "Gestor só gerencia avaliações de colaboradores do próprio setor.",
+      };
+    }
+  }
+
+  return { round, error: null };
+}
+
+const updateAssignmentSchema = z.object({
+  roundId: z.string().min(1),
+  /** Quantidade TOTAL de avaliadores, incluindo a autoavaliação. */
+  totalRaters: z.number().int().min(MIN_TOTAL_RATERS).max(MAX_TOTAL_RATERS),
+  raterIds: z.array(z.string().min(1)).min(1).max(MAX_TOTAL_RATERS - 1),
+});
+
+/**
+ * Edita uma atribuição em andamento: troca avaliadores ainda pendentes e
+ * ajusta a quantidade.
+ *
+ * O que NÃO se edita, por integridade do dado:
+ *  - instrumento e avaliado — trocá-los faria as respostas já enviadas
+ *    pertencerem a outra avaliação. Para isso, exclua e atribua de novo;
+ *  - avaliadores que já responderam — a submissão deles existe. Eles
+ *    permanecem, e a nova quantidade nunca cai abaixo desse total.
+ *
+ * O estágio da rodada é recalculado ao final: se a nova quota já está coberta
+ * pelo feedback recebido, a autoavaliação é liberada (e o colaborador
+ * notificado); se a quota subiu, a rodada volta a coletar feedback.
+ */
+export async function updateEvaluationAssignment(input: unknown): Promise<RoundResult> {
+  const actor = await getCurrentUser();
+  if (!actor) return { ok: false, error: "Sessão expirada. Faça login novamente." };
+
+  const parsed = updateAssignmentSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  }
+  const { roundId, totalRaters, raterIds } = parsed.data;
+
+  const { round, error: scopeError } = await requireRoundScope(roundId, actor);
+  if (!round) return { ok: false, error: scopeError ?? undefined };
+
+  if (round.status === "CONCLUIDA") {
+    return { ok: false, error: "Esta avaliação já foi concluída — não há mais o que editar." };
+  }
+
+  const feedbackQuota = totalRaters - 1;
+  const uniqueRaters = Array.from(new Set(raterIds));
+  if (uniqueRaters.length !== feedbackQuota) {
+    return {
+      ok: false,
+      error: `Designe ${feedbackQuota} avaliador(es). A última posição é a autoavaliação de quem está sendo avaliado.`,
+    };
+  }
+  if (uniqueRaters.includes(round.subject.id)) {
+    return {
+      ok: false,
+      error: "O avaliado já ocupa a última posição (autoavaliação) — não o repita nas demais.",
+    };
+  }
+
+  // Quem já respondeu continua na rodada: a submissão dele existe.
+  const completed = round.assignments.filter(
+    (a: { status: string }) => a.status === "CONCLUIDA",
+  );
+  const dropped = completed.filter(
+    (a: { raterId: string }) => !uniqueRaters.includes(a.raterId),
+  );
+  if (dropped.length > 0) {
+    return {
+      ok: false,
+      error:
+        "Avaliadores que já responderam não podem ser removidos. Para recomeçar do zero, exclua a atribuição.",
+    };
+  }
+  if (feedbackQuota < completed.length) {
+    return {
+      ok: false,
+      error: `${completed.length} avaliador(es) já responderam — o total não pode ser menor que ${completed.length + 1}.`,
+    };
+  }
+
+  const current = new Set(round.assignments.map((a: { raterId: string }) => a.raterId));
+  const added = uniqueRaters.filter((id) => !current.has(id));
+  const removed = round.assignments.filter(
+    (a: { raterId: string }) => !uniqueRaters.includes(a.raterId),
+  );
+
+  if (added.length > 0) {
+    const valid = await prisma.user.count({ where: { id: { in: added }, active: true } });
+    if (valid !== added.length) {
+      return { ok: false, error: "Avaliador inválido ou inativo." };
+    }
+  }
+
+  try {
+    const now = new Date();
+    await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      if (removed.length > 0) {
+        await tx.evaluationAssignment.deleteMany({
+          where: { id: { in: removed.map((a: { id: string }) => a.id) } },
+        });
+      }
+      if (added.length > 0) {
+        await tx.evaluationAssignment.createMany({
+          data: added.map((raterId) => ({
+            roundId: round.id,
+            raterId,
+            status: "PENDENTE" as const,
+            notifiedAt: now,
+          })),
+        });
+        await tx.notification.createMany({
+          data: added.map((raterId) => ({
+            kind: "AVALIACAO" as const,
+            title: "Você foi designado para uma avaliação",
+            body: `Avalie ${round.subject.fullName} — ${round.type.title}.`,
+            href: "/minhas-avaliacoes",
+            audience: [],
+            targetUserId: raterId,
+          })),
+        });
+      }
+
+      await tx.evaluationRound.update({
+        where: { id: round.id },
+        data: { raterQuota: feedbackQuota },
+      });
+
+      // Recalcula o estágio da rodada com a nova quota.
+      const feedbackCount = await tx.evaluation.count({
+        where: { roundId: round.id, isSelfAssessment: false },
+      });
+
+      if (feedbackCount >= feedbackQuota && round.status === "COLETANDO_FEEDBACK") {
+        await tx.evaluationRound.update({
+          where: { id: round.id },
+          data: { status: "AGUARDANDO_AUTO", selfNotifiedAt: now },
+        });
+        await tx.notification.create({
+          data: {
+            kind: "AVALIACAO",
+            title: "Faça sua autoavaliação",
+            body: "As avaliações sobre você foram concluídas. Registre sua autoavaliação.",
+            href: "/minhas-avaliacoes",
+            audience: [],
+            targetUserId: round.subject.id,
+          },
+        });
+      } else if (feedbackCount < feedbackQuota && round.status === "AGUARDANDO_AUTO") {
+        // A quota subiu: falta feedback outra vez, a autoavaliação volta a esperar.
+        await tx.evaluationRound.update({
+          where: { id: round.id },
+          data: { status: "COLETANDO_FEEDBACK", selfNotifiedAt: null },
+        });
+      }
+    });
+
+    revalidatePath("/setores/rh");
+    revalidatePath("/minhas-avaliacoes");
+    return { ok: true, roundId: round.id };
+  } catch (e) {
+    console.error("[updateEvaluationAssignment] falha:", e);
+    return { ok: false, error: "Falha ao editar a atribuição. Tente novamente." };
+  }
+}
+
+const deleteRoundSchema = z.object({ roundId: z.string().min(1) });
+
+export interface DeleteRoundResult {
+  ok: boolean;
+  error?: string;
+  /** O que saiu do banco — a UI usa para confirmar o tamanho do estrago. */
+  removed?: { evaluations: number; answers: number };
+}
+
+/**
+ * Exclui uma atribuição — remoção DEFINITIVA (hard delete).
+ *
+ * Some do banco a rodada e tudo que pende dela: os avaliadores designados
+ * (`EvaluationAssignment`), as submissões já enviadas (`Evaluation`) e as
+ * respostas item a item (`EvaluationAnswer`). Não sobra registro nem marcação
+ * de inativo, e nada disso é recuperável — quem chama confirma antes.
+ *
+ * As três tabelas têm `onDelete: Cascade` até a rodada, então apagar a rodada
+ * já apagaria a árvore inteira; os `deleteMany` explícitos existem para CONTAR
+ * o que saiu e devolver esse número à UI.
+ */
+export async function deleteEvaluationRound(input: unknown): Promise<DeleteRoundResult> {
+  const actor = await getCurrentUser();
+  if (!actor) return { ok: false, error: "Sessão expirada. Faça login novamente." };
+
+  const parsed = deleteRoundSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Atribuição não informada." };
+
+  const { round, error: scopeError } = await requireRoundScope(parsed.data.roundId, actor);
+  if (!round) return { ok: false, error: scopeError ?? undefined };
+
+  try {
+    const removed = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const rows = await tx.evaluation.findMany({
+        where: { roundId: round.id },
+        select: { id: true },
+      });
+      const ids = rows.map((e: { id: string }) => e.id);
+
+      const answers =
+        ids.length > 0
+          ? await tx.evaluationAnswer.deleteMany({ where: { evaluationId: { in: ids } } })
+          : { count: 0 };
+      const evaluations = await tx.evaluation.deleteMany({ where: { roundId: round.id } });
+      await tx.evaluationAssignment.deleteMany({ where: { roundId: round.id } });
+      await tx.evaluationRound.delete({ where: { id: round.id } });
+
+      return { evaluations: evaluations.count, answers: answers.count };
+    });
+
+    revalidatePath("/setores/rh");
+    revalidatePath("/minhas-avaliacoes");
+    return { ok: true, removed };
+  } catch (e) {
+    console.error("[deleteEvaluationRound] falha:", e);
+    return { ok: false, error: "Falha ao excluir a atribuição. Tente novamente." };
+  }
+}

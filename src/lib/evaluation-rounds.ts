@@ -75,7 +75,7 @@ export async function getEvaluationRounds(
       type: { select: { slug: true, title: true } },
       subject: { select: { id: true, fullName: true, sector: { select: { label: true } } } },
       assignments: {
-        include: { rater: { select: { fullName: true } } },
+        include: { rater: { select: { id: true, fullName: true } } },
         orderBy: { createdAt: "asc" },
       },
       _count: {
@@ -98,6 +98,7 @@ export async function getEvaluationRounds(
     createdAtLabel: fmtDate(r.createdAt),
     createdAtTimeLabel: fmtTime(r.createdAt),
     raters: r.assignments.map((a) => ({
+      id: a.rater.id,
       name: a.rater.fullName,
       done: a.status === "CONCLUIDA",
     })),

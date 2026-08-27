@@ -7,10 +7,13 @@ import {
   BRAND,
   FORMAT_LABEL,
   FUNNEL,
+  PLATFORM,
   STATUS_LABEL,
   WEEKDAY_LONG,
   resolveBrand,
+  resolvePlatform,
 } from "@/lib/funnel";
+import { PlatformIcon } from "@/components/cronograma/platform-icon";
 import type { ContentPostItem } from "@/types/cronograma";
 
 export type CalendarView = "month" | "week" | "day";
@@ -77,6 +80,7 @@ function PostChip({
   onExpand: (post: ContentPostItem) => void;
 }) {
   const brand = brandStyle(post);
+  const platformKey = resolvePlatform(post.platform);
   const summary = notesSummary(post.notes);
 
   return (
@@ -113,6 +117,13 @@ function PostChip({
           className="mt-1 h-2 w-2 shrink-0 rounded-full"
           style={{ backgroundColor: FUNNEL[post.funnel].color }}
         />
+        {platformKey && (
+          <PlatformIcon
+            platform={platformKey}
+            className="mt-0.5 h-3 w-3 shrink-0"
+            style={{ color: brand ? brand.foreground : PLATFORM[platformKey].color }}
+          />
+        )}
         <span
           className={cn(
             "line-clamp-2 text-[11px] font-medium leading-tight",
@@ -253,6 +264,7 @@ function ExpandedPostCard({
   onCollapse: () => void;
 }) {
   const brand = brandStyle(post);
+  const platformKey = resolvePlatform(post.platform);
   const notes = post.notes?.replace(/\s+\n/g, "\n").trim();
 
   /** Selo compacto: herda o contraste da marca quando há uma. */
@@ -374,6 +386,14 @@ function ExpandedPostCard({
       <div className="mt-1 flex shrink-0 flex-wrap items-center gap-1">
         <Tag solid={FUNNEL[post.funnel].color}>{FUNNEL[post.funnel].short}</Tag>
         <Tag>{FORMAT_LABEL[post.format]}</Tag>
+        {platformKey && (
+          <Tag>
+            <span className="inline-flex items-center gap-1">
+              <PlatformIcon platform={platformKey} className="h-2.5 w-2.5" />
+              {PLATFORM[platformKey].label}
+            </span>
+          </Tag>
+        )}
         {/* Status e marca saem primeiro quando o espaço aperta: o funil e o
             formato identificam o post; os outros dois são complemento. */}
         {!dense && <Tag>{STATUS_LABEL[post.status]}</Tag>}

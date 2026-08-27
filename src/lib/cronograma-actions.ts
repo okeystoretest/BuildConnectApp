@@ -39,6 +39,7 @@ const postSchema = z.object({
   format: z.enum(["REEL", "STORY", "FEED", "REEL_FEED", "CARROSSEL", "LIVE"]),
   status: z.enum(["IDEIA", "EM_PRODUCAO", "AGENDADO", "PUBLICADO"]),
   brand: z.enum(["OKEY", "LOV_CLUB"]).optional(),
+  platform: z.enum(["INSTAGRAM", "TIKTOK", "YOUTUBE"]).optional(),
   ownerId: z.string().optional(),
   notes: z.string().trim().max(500, "Observação muito longa.").optional(),
 });
@@ -128,6 +129,7 @@ export async function createContentPost(input: ContentPostInput): Promise<Action
         format: data.format,
         status: data.status,
         brand: data.brand ?? null,
+        platform: data.platform ?? null,
         notes: data.notes || null,
         ownerId: data.ownerId || null,
         createdById: user.id,
@@ -178,6 +180,7 @@ export async function updateContentPost(
         format: data.format,
         status: data.status,
         brand: data.brand ?? null,
+        platform: data.platform ?? null,
         notes: data.notes || null,
         ownerId: data.ownerId || null,
       },

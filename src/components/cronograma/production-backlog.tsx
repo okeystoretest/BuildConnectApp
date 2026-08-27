@@ -10,11 +10,14 @@ import {
   BRAND,
   FORMAT_LABEL,
   FUNNEL,
+  PLATFORM,
   STATUS_LABEL,
   STATUS_ORDER,
   STATUS_TONE,
   resolveBrand,
+  resolvePlatform,
 } from "@/lib/funnel";
+import { PlatformIcon } from "@/components/cronograma/platform-icon";
 import { setContentPostStatus } from "@/lib/cronograma-actions";
 import type { ContentPostItem, ContentStatus } from "@/types/cronograma";
 
@@ -102,7 +105,21 @@ export function ProductionBacklog({ slug, items, onSelect }: ProductionBacklogPr
                 className="cursor-pointer border-b border-border transition-colors last:border-b-0 hover:bg-surface-2"
               >
                 <td className="py-3 pr-3">
-                  <span className="block font-medium text-foreground">{post.title}</span>
+                  <span className="flex items-center gap-1.5 font-medium text-foreground">
+                    {(() => {
+                      const key = resolvePlatform(post.platform);
+                      if (!key) return null;
+                      return (
+                        <PlatformIcon
+                          platform={key}
+                          className="h-3.5 w-3.5 shrink-0"
+                          style={{ color: PLATFORM[key].color }}
+                          aria-label={PLATFORM[key].label}
+                        />
+                      );
+                    })()}
+                    {post.title}
+                  </span>
                   {/* Resumo da observação — o texto completo abre no modal. */}
                   {post.notes && (
                     <span

@@ -18,6 +18,7 @@ import {
   BRAND,
   BRAND_ORDER,
   FORMAT_LABEL,
+  PLATFORM,
   FUNNEL,
   FUNNEL_ORDER,
   MONTH_LABEL,
@@ -206,13 +207,24 @@ export function CronogramaPanel({ slug, data }: CronogramaPanelProps) {
 
   /** Exportação local em CSV — sem rota extra e sem carregar o servidor. */
   function exportCsv() {
-    const header = ["Título", "Data", "Hora", "Funil", "Formato", "Marca", "Status", "Responsável"];
+    const header = [
+      "Título",
+      "Data",
+      "Hora",
+      "Funil",
+      "Formato",
+      "Rede social",
+      "Marca",
+      "Status",
+      "Responsável",
+    ];
     const rows = filteredPosts.map((post) => [
       post.title,
       post.date,
       post.time,
       post.funnel,
       FORMAT_LABEL[post.format],
+      post.platform ? PLATFORM[post.platform].label : "",
       (() => {
         const key = resolveBrand(post.brand);
         return key ? BRAND[key].label : "";

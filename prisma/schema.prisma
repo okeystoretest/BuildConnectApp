@@ -307,6 +307,14 @@ enum ContentStatus {
   PUBLICADO
 }
 
+// Rede social em que a publicação vai ao ar. Opcional: nem toda atividade do
+// cronograma é um post (gravação, reunião de pauta…).
+enum ContentPlatform {
+  INSTAGRAM
+  TIKTOK
+  YOUTUBE
+}
+
 // Marca do conteúdo. Opcional — define a cor de fundo do card no calendário.
 enum ContentBrand {
   OKEY
@@ -332,6 +340,8 @@ model ContentPost {
   format      ContentFormat
   status      ContentStatus @default(IDEIA)
   brand       ContentBrand?
+  // Rede social do post. Nulo = atividade sem plataforma definida.
+  platform    ContentPlatform?
   notes       String?
 
   // Quem enxerga o post. Definido na criação a partir da aba de origem.
