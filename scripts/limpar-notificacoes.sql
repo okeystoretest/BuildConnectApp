@@ -1,22 +1,29 @@
--- Build.Connect — apaga TODAS as notificações do banco.
+-- ============================================================
+-- Build.Connect — apaga TODAS as notificações
+-- ============================================================
+-- Remoção definitiva (hard delete). NÃO toca em usuários, setores,
+-- cronograma, chamados, avaliações ou viagens.
 --
--- Remoção definitiva (hard delete). Não mexe em mais nada: usuários, setores,
--- cronograma, chamados, avaliações e viagens ficam intactos.
---
--- A ordem importa: NotificationRead aponta para Notification.
--- Tudo numa transação — ou sai tudo, ou nada.
---
--- Como rodar, na VPS, dentro do container do app:
+-- Como rodar (uma das opções), na raiz do app, dentro do container:
+--   npx prisma db execute --file scripts/limpar-notificacoes.sql --schema prisma/schema.prisma
 --   psql "$DATABASE_URL" -f scripts/limpar-notificacoes.sql
+--
+-- A ordem respeita a chave estrangeira: NotificationRead aponta para
+-- Notification. Envolvido em transação: ou apaga tudo, ou nada.
+-- ============================================================
 
 BEGIN;
 
+-- Marcações de "li esta notificação" (folha).
 DELETE FROM "NotificationRead";
+
+-- As notificações em si.
 DELETE FROM "Notification";
 
 COMMIT;
 
--- Conferência (deve devolver 0 e 0):
-SELECT
-  (SELECT COUNT(*) FROM "Notification")     AS notificacoes,
-  (SELECT COUNT(*) FROM "NotificationRead") AS leituras;
+-- Conferência (só aparece pelo psql; o `prisma db execute` não devolve
+-- resultado). Deve voltar 0 e 0:
+--   SELECT
+--     (SELECT COUNT(*) FROM "Notification")     AS notificacoes,
+--     (SELECT COUNT(*) FROM "NotificationRead") AS leituras;
