@@ -131,6 +131,38 @@ const MATRIZ_EMOCIONAIS: SeedQuestion[] = [
   { label: "Trabalho em Equipe", helpText: "Fomenta a colaboração e o espírito de equipe focado em altos resultados." },
 ];
 
+// ─────────────────────────────────────────────────────────────
+// Avaliação Multidirecional de Inteligência Emocional (Quociente
+// Emocional) — escala 1–5, dois blocos de 9 competências.
+// ─────────────────────────────────────────────────────────────
+//
+// Sem gráfico dedicado: a UI padrão lista por seção com subtotal
+// (os dois TOTAIS do formulário) e o total geral.
+
+const IE_PESSOAIS: SeedQuestion[] = [
+  { label: "Autoconsciência Emocional", helpText: "Percebe facilmente os próprios sentimentos e como eles afetam as suas decisões?" },
+  { label: "Autoavaliação Precisa", helpText: "Conhece com clareza os seus próprios limites e as suas capacidades?" },
+  { label: "Autoconfiança", helpText: "Demonstra segurança em seu próprio valor e naquilo que sabe fazer?" },
+  { label: "Autocontrole Emocional", helpText: "Consegue manter a calma em momentos de raiva, tensão ou nervosismo?" },
+  { label: "Superação", helpText: "Procura sempre fazer o seu melhor e superar os seus próprios limites?" },
+  { label: "Iniciativa", helpText: "Costuma tomar a frente das situações e aproveitar novas oportunidades?" },
+  { label: "Transparência", helpText: "Age de forma honesta, fazendo com que as pessoas confiem em suas atitudes?" },
+  { label: "Adaptabilidade", helpText: "Adapta-se com facilidade a mudanças e a pessoas com opiniões diferentes?" },
+  { label: "Otimismo", helpText: "Costuma enxergar o lado positivo das situações no dia a dia?" },
+];
+
+const IE_SOCIAIS: SeedQuestion[] = [
+  { label: "Empatia", helpText: "Compreende os sentimentos dos outros e importa-se genuinamente com eles?" },
+  { label: "Consciência Organizacional", helpText: "Entende adequadamente as regras de convivência e o clima dos grupos dos quais participa?" },
+  { label: "Serviço", helpText: "Dedica-se a auxiliar as pessoas na resolução de problemas e no atendimento de suas necessidades?" },
+  { label: "Liderança Inspiradora", helpText: "Consegue animar, motivar e dar bons exemplos aos que estão ao seu redor?" },
+  { label: "Influência", helpText: "Possui facilidade para dialogar e convencer as pessoas sobre as suas ideias?" },
+  { label: "Desenvolvimento dos Demais", helpText: "Apresenta paciência e disposição para ajudar os outros a aprenderem e a melhorarem?" },
+  { label: "Catalisação de Mudanças", helpText: "Costuma sugerir transformações positivas e auxiliar os outros a aceitá-las?" },
+  { label: "Gerenciamento de Conflitos", helpText: "Atua para acalmar desentendimentos e promover a conciliação entre as pessoas?" },
+  { label: "Trabalho em Equipe", helpText: "Trabalha adequadamente em grupo e sabe colaborar de forma pacífica com os demais?" },
+];
+
 export const EVALUATION_CATALOG: SeedEvaluationType[] = [
   {
     slug: "acompanhamento-pre-efetivo",
@@ -191,5 +223,18 @@ export const EVALUATION_CATALOG: SeedEvaluationType[] = [
       { title: "Competências ET11 a ET20", questions: EFICACIA_CRITERIA.slice(10, 20) },
     ],
   },
-  { slug: "inteligencia-emocional", kind: "INTELIGENCIA_EMOCIONAL", title: "Avaliação Multidirecional de Inteligência Emocional", scaleMax: 5, hasCycle: false, order: 4, sections: [] },
+  {
+    slug: "inteligencia-emocional",
+    kind: "INTELIGENCIA_EMOCIONAL",
+    title: "Avaliação Multidirecional de Inteligência Emocional",
+    description:
+      "Quociente Emocional: N avaliadores designados pelo DHO + autoavaliação do colaborador, em 18 competências, escala 1–5. Dois blocos — Competências Emocionais Pessoais e Sociais —, cada um com seu total, mais o total geral.",
+    scaleMax: 5,
+    hasCycle: false,
+    order: 4,
+    sections: [
+      { title: "Competências Emocionais Pessoais", questions: IE_PESSOAIS },
+      { title: "Competências Emocionais Sociais", questions: IE_SOCIAIS },
+    ],
+  },
 ];

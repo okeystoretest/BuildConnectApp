@@ -12,10 +12,12 @@
 
 export const EFICACIA_SLUG = "eficacia-no-trabalho";
 export const MATRIZ_DECISAO_SLUG = "matriz-de-decisao";
+export const INTELIGENCIA_EMOCIONAL_SLUG = "inteligencia-emocional";
 
 export const MULTI_RATER_SLUGS: readonly string[] = [
   MATRIZ_DECISAO_SLUG,
   EFICACIA_SLUG,
+  INTELIGENCIA_EMOCIONAL_SLUG,
 ] as const;
 
 /** Total mínimo/máximo de avaliadores por rodada, JÁ incluindo a autoavaliação. */
