@@ -597,7 +597,7 @@ export function ContentCalendar({
                   "hover:bg-surface-2/70",
                 )}
               >
-                <div className="relative z-30 mb-1.5 flex items-center justify-between">
+                <div className="mb-1.5 flex items-center justify-between">
                   <span
                     className={cn(
                       "flex h-6 min-w-6 items-center justify-center rounded-md px-1 text-xs font-semibold",
@@ -610,25 +610,20 @@ export function ContentCalendar({
                   >
                     {dayNumber(iso)}
                   </span>
-                  <span className="opacity-0 transition-opacity group-hover:opacity-100">
-                    <Plus className="h-3.5 w-3.5 text-muted" />
-                  </span>
                 </div>
 
                 <div
                   className={cn(
                     "space-y-1.5",
-                    // Em tela cheia os cards ladrilham a célula de borda a
-                    // borda, abaixo da faixa do número do dia (`top-9`).
-                    // Essa faixa é deliberadamente preservada: é por ela que
-                    // se clica numa data já ocupada para abrir o cadastro de
-                    // nova atividade — cobrindo a célula inteira, um dia cheio
-                    // ficaria sem nenhum ponto clicável para criar.
-                    // `overflow-hidden`, nunca `auto`: o calendário preenche
-                    // o espaço, não rola.
+                    // Em tela cheia os cards cobrem a célula INTEIRA — a
+                    // mesma geometria do card expandido na visão normal
+                    // (`inset-0`, sobre o número do dia, que o cabeçalho do
+                    // próprio card já repete). Vários posts dividem essa área
+                    // em partes iguais. `overflow-hidden`, nunca `auto`: o
+                    // calendário preenche o espaço, não rola.
                     fill &&
                       dayPosts.length > 0 &&
-                      "absolute inset-x-0 bottom-0 top-9 z-20 flex flex-col gap-0 space-y-0 overflow-hidden",
+                      "absolute inset-0 z-20 flex flex-col gap-0 space-y-0 overflow-hidden",
                   )}
                 >
                   {dayPosts.map((post) =>
@@ -668,6 +663,24 @@ export function ContentCalendar({
                     onCollapse={() => collapse(overlay)}
                   />
                 )}
+
+                {/* Criar numa data já ocupada. O card expandido cobre a célula
+                    inteira, então o clique na célula não chega mais ao
+                    `onCreate` — este botão flutua acima dele (`z-30`) e passa
+                    a ser o ponto de criação. Só aparece no hover/foco, para
+                    não roubar área do card. */}
+                <button
+                  type="button"
+                  aria-label={`Nova atividade em ${dayNumber(iso)}/${iso.slice(5, 7)}`}
+                  title="Nova atividade"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCreate(iso);
+                  }}
+                  className="focus-ring absolute right-1.5 top-1.5 z-30 flex h-5 w-5 items-center justify-center rounded border border-border bg-surface/90 text-muted opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+                >
+                  <Plus className="h-3 w-3" />
+                </button>
               </div>
             );
           })}
