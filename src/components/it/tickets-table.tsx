@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { IT_STATUS_LABEL, IT_STATUS_TONE } from "@/lib/it-data";
+import { itCategoryTone, IT_STATUS_LABEL, IT_STATUS_TONE } from "@/lib/it-data";
 import type { ItTicket } from "@/types/it";
 
 const HEADERS = [
@@ -49,8 +49,10 @@ export function TicketsTable({ tickets }: { tickets: readonly ItTicket[] }) {
                 key={ticket.id}
                 className="border-b border-border/60 last:border-0 hover:bg-surface-2/50"
               >
+                {/* O código (RET-/MOT-) é o identificador que a operação usa;
+                    o id interno não diz nada a quem lê a tabela. */}
                 <td className="whitespace-nowrap px-3 py-3 font-mono text-xs text-accent">
-                  {ticket.id}
+                  {ticket.code}
                 </td>
                 <td className="px-3 py-3">
                   <Badge tone={IT_STATUS_TONE[ticket.status]} className="whitespace-nowrap">
@@ -66,7 +68,11 @@ export function TicketsTable({ tickets }: { tickets: readonly ItTicket[] }) {
                 <td className="whitespace-nowrap px-3 py-3 text-xs text-muted">
                   {ticket.requesterUnit}
                 </td>
-                <td className="whitespace-nowrap px-3 py-3 text-xs text-muted">{ticket.category}</td>
+                <td className="whitespace-nowrap px-3 py-3">
+                  <Badge tone={itCategoryTone(ticket.category)} className="whitespace-nowrap">
+                    {ticket.category}
+                  </Badge>
+                </td>
                 <td className="whitespace-nowrap px-3 py-3 text-xs text-muted">
                   {ticket.assignee ?? "—"}
                 </td>
@@ -86,7 +92,7 @@ export function TicketsTable({ tickets }: { tickets: readonly ItTicket[] }) {
         {tickets.map((ticket) => (
           <article key={ticket.id} className="rounded-xl border border-border bg-surface-2/40 p-3.5">
             <div className="flex items-center justify-between gap-2">
-              <span className="font-mono text-xs text-accent">{ticket.id}</span>
+              <span className="font-mono text-xs text-accent">{ticket.code}</span>
               <Badge tone={IT_STATUS_TONE[ticket.status]}>{IT_STATUS_LABEL[ticket.status]}</Badge>
             </div>
 
@@ -98,7 +104,9 @@ export function TicketsTable({ tickets }: { tickets: readonly ItTicket[] }) {
             <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-border pt-3 text-xs">
               <div>
                 <dt className="text-[10px] uppercase tracking-wide text-muted">Tipo</dt>
-                <dd className="text-foreground">{ticket.category}</dd>
+                <dd>
+                  <Badge tone={itCategoryTone(ticket.category)}>{ticket.category}</Badge>
+                </dd>
               </div>
               <div>
                 <dt className="text-[10px] uppercase tracking-wide text-muted">Responsável</dt>

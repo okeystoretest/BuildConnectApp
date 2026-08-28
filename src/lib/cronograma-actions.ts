@@ -36,13 +36,34 @@ const postSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida."),
   time: z.string().regex(/^\d{2}:\d{2}$/, "Horário inválido."),
   funnel: z.enum(["TOFU", "MOFU", "BOFU"]),
-  format: z.enum(["REEL", "STORY", "FEED", "REEL_FEED", "CARROSSEL", "LIVE"]),
+  format: z.enum(["REEL", "STORY", "FEED", "CARROSSEL", "LIVE", "OUTRO"]),
+  // Texto livre do formato "Outro". Ignorado (e limpo) nos demais formatos.
+  formatOther: z.string().trim().max(60, "Descrição do formato muito longa.").optional(),
   status: z.enum(["IDEIA", "EM_PRODUCAO", "AGENDADO", "PUBLICADO"]),
   brand: z.enum(["OKEY", "LOV_CLUB"]).optional(),
-  platform: z.enum(["INSTAGRAM", "TIKTOK", "YOUTUBE"]).optional(),
+  // Seleção múltipla: o post pode ir ao ar em mais de uma rede.
+  platforms: z.array(z.enum(["INSTAGRAM", "TIKTOK", "YOUTUBE"])).max(3).optional(),
   ownerId: z.string().optional(),
   notes: z.string().trim().max(500, "Observação muito longa.").optional(),
+}).superRefine((data, ctx) => {
+  // "Outro" sem descrição é um formato sem nome — o card sairia ilegível.
+  if (data.format === "OUTRO" && !data.formatOther) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["formatOther"],
+      message: "Descreva o formato do conteúdo.",
+    });
+  }
 });
+
+/** Redes e texto do formato normalizados para o banco. */
+function contentFields(data: ContentPostInput) {
+  return {
+    // Sem duplicatas: a lista é um conjunto, não uma sequência.
+    platforms: Array.from(new Set(data.platforms ?? [])),
+    formatOther: data.format === "OUTRO" ? (data.formatOther ?? null) : null,
+  };
+}
 
 export type ContentPostInput = z.infer<typeof postSchema>;
 
@@ -129,7 +150,7 @@ export async function createContentPost(input: ContentPostInput): Promise<Action
         format: data.format,
         status: data.status,
         brand: data.brand ?? null,
-        platform: data.platform ?? null,
+        ...contentFields(data),
         notes: data.notes || null,
         ownerId: data.ownerId || null,
         createdById: user.id,
@@ -180,7 +201,7 @@ export async function updateContentPost(
         format: data.format,
         status: data.status,
         brand: data.brand ?? null,
-        platform: data.platform ?? null,
+        ...contentFields(data),
         notes: data.notes || null,
         ownerId: data.ownerId || null,
       },

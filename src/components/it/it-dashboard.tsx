@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   CalendarDays,
   CheckCircle2,
@@ -16,7 +17,6 @@ import {
   UserRound,
   Users,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import {
   IT_ASSIGNEES,
   IT_DASHBOARD,
@@ -66,19 +66,59 @@ export function ItDashboard({
   extras = [],
 }: ItDashboardProps) {
   const [fullscreen, setFullscreen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const overlayRef = useRef<HTMLDivElement | null>(null);
   const [assignee, setAssignee] = useState<string>(IT_ASSIGNEES[0]);
   const [month, setMonth] = useState<string>(IT_MONTHS[0]);
   const [statusFilter, setStatusFilter] = useState<string>("Todos");
   const clock = useClock();
 
+  // O overlay é renderizado por portal — só depois da hidratação.
+  useEffect(() => setMounted(true), []);
+
+  /**
+   * Tela cheia do dashboard.
+   *
+   * O overlay VAI POR PORTAL para o document.body. Sem isso, `position: fixed`
+   * seria resolvido contra o ancestral TRANSFORMADO: `animate-page-in` e
+   * `animate-tab-in` usam `animation-fill-mode: both`, então o
+   * `transform: translateY(0)` do último quadro PERMANECE no elemento e o
+   * torna bloco contentor. Era esse o motivo de a "tela cheia" antiga abrir
+   * presa à área de conteúdo, com as grades espremidas e a página de trás
+   * rolando por baixo.
+   *
+   * Sobre o overlay soma-se a Fullscreen API do navegador (some também com as
+   * abas e a barra de endereço). Se ela for negada, o overlay sozinho já
+   * entrega a visualização ampliada.
+   */
   useEffect(() => {
     if (!fullscreen) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setFullscreen(false);
+
+    const node = overlayRef.current;
+    if (node && !document.fullscreenElement) {
+      void node.requestFullscreen?.().catch(() => {
+        /* sem permissão ou sem suporte: o overlay basta */
+      });
+    }
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFullscreen(false);
+    };
+    // ESC nativo sai do fullscreen do navegador; o overlay tem de acompanhar.
+    const onFullscreenChange = () => {
+      if (!document.fullscreenElement) setFullscreen(false);
+    };
+
     document.addEventListener("keydown", onKey);
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+
     return () => {
       document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+      document.body.style.overflow = previous;
+      if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => {});
     };
   }, [fullscreen]);
 
@@ -90,12 +130,15 @@ export function ItDashboard({
     [statusFilter, tickets],
   );
 
-  return (
-    <div
-      className={cn(
-        fullscreen && "fixed inset-0 z-50 overflow-y-auto bg-background p-6",
-      )}
-    >
+  /**
+   * Corpo do dashboard. O MESMO bloco serve para a versão embutida na página e
+   * para a tela cheia: nenhuma grade muda de definição entre os dois estados,
+   * então a responsividade dos KPIs, das distribuições e da tabela é a mesma
+   * nos dois — só o espaço disponível muda.
+   */
+  function dashboardBlock(inFullscreen: boolean) {
+    return (
+      <>
       <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-lg font-bold tracking-tight text-foreground">{title}</p>
@@ -141,10 +184,15 @@ export function ItDashboard({
           <button
             type="button"
             onClick={() => setFullscreen((v) => !v)}
+            aria-pressed={inFullscreen}
             className="focus-ring flex h-8 items-center gap-1.5 rounded-lg border border-border bg-surface px-3 text-xs text-foreground transition-colors hover:bg-surface-2"
           >
-            {fullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
-            {fullscreen ? "Sair da tela cheia" : "Tela cheia"}
+            {inFullscreen ? (
+              <Minimize2 className="h-3.5 w-3.5" />
+            ) : (
+              <Maximize2 className="h-3.5 w-3.5" />
+            )}
+            {inFullscreen ? "Sair da tela cheia" : "Tela cheia"}
           </button>
         </div>
       </header>
@@ -244,6 +292,27 @@ export function ItDashboard({
 
         <TicketsTable tickets={rows} />
       </section>
-    </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      {!fullscreen && dashboardBlock(false)}
+
+      {fullscreen &&
+        mounted &&
+        createPortal(
+          <div
+            ref={overlayRef}
+            // A rolagem é do overlay: o dashboard é denso e a tela cheia não
+            // pode cortar a tabela do rodapé.
+            className="scrollbar-slim fixed inset-0 z-50 overflow-y-auto bg-background p-4 sm:p-6"
+          >
+            {dashboardBlock(true)}
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }

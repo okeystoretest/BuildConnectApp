@@ -5,13 +5,14 @@ import { Clock, Lock, Minus, Plus, User as UserIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   BRAND,
-  FORMAT_LABEL,
+  FORMAT,
   FUNNEL,
   PLATFORM,
   STATUS_LABEL,
   WEEKDAY_LONG,
+  formatLabel,
   resolveBrand,
-  resolvePlatform,
+  resolvePlatforms,
 } from "@/lib/funnel";
 import { PlatformIcon } from "@/components/cronograma/platform-icon";
 import type { ContentPostItem } from "@/types/cronograma";
@@ -80,7 +81,7 @@ function PostChip({
   onExpand: (post: ContentPostItem) => void;
 }) {
   const brand = brandStyle(post);
-  const platformKey = resolvePlatform(post.platform);
+  const platformKeys = resolvePlatforms(post.platforms);
   const summary = notesSummary(post.notes);
 
   return (
@@ -117,13 +118,16 @@ function PostChip({
           className="mt-1 h-2 w-2 shrink-0 rounded-full"
           style={{ backgroundColor: FUNNEL[post.funnel].color }}
         />
-        {platformKey && (
+        {/* Uma marca por rede: o post pode ir ao ar em mais de uma. */}
+        {platformKeys.map((key) => (
           <PlatformIcon
-            platform={platformKey}
+            key={key}
+            platform={key}
+            aria-label={PLATFORM[key].label}
             className="mt-0.5 h-3 w-3 shrink-0"
-            style={{ color: brand ? brand.foreground : PLATFORM[platformKey].color }}
+            style={{ color: brand ? brand.foreground : PLATFORM[key].color }}
           />
-        )}
+        ))}
         <span
           className={cn(
             "line-clamp-2 text-[11px] font-medium leading-tight",
@@ -177,13 +181,10 @@ function PostChip({
         {brand ? (
           <>
             <span
-              className="rounded px-1 py-px text-[9px] font-semibold uppercase tracking-wide"
-              style={{
-                backgroundColor: "rgba(255,255,255,0.55)",
-                color: brand.foreground,
-              }}
+              className="rounded px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-white"
+              style={{ backgroundColor: FORMAT[post.format].color }}
             >
-              {FORMAT_LABEL[post.format]}
+              {formatLabel(post.format, post.formatOther)}
             </span>
             <span
               className="rounded px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-white"
@@ -203,8 +204,11 @@ function PostChip({
           </>
         ) : (
           <>
-            <span className="rounded border border-border bg-surface px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-muted">
-              {FORMAT_LABEL[post.format]}
+            <span
+              className="rounded px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-white"
+              style={{ backgroundColor: FORMAT[post.format].color }}
+            >
+              {formatLabel(post.format, post.formatOther)}
             </span>
             <span
               className={cn(
@@ -264,7 +268,7 @@ function ExpandedPostCard({
   onCollapse: () => void;
 }) {
   const brand = brandStyle(post);
-  const platformKey = resolvePlatform(post.platform);
+  const platformKeys = resolvePlatforms(post.platforms);
   const notes = post.notes?.replace(/\s+\n/g, "\n").trim();
 
   /** Selo compacto: herda o contraste da marca quando há uma. */
@@ -385,15 +389,17 @@ function ExpandedPostCard({
 
       <div className="mt-1 flex shrink-0 flex-wrap items-center gap-1">
         <Tag solid={FUNNEL[post.funnel].color}>{FUNNEL[post.funnel].short}</Tag>
-        <Tag>{FORMAT_LABEL[post.format]}</Tag>
-        {platformKey && (
-          <Tag>
+        <Tag solid={FORMAT[post.format].color}>
+          {formatLabel(post.format, post.formatOther)}
+        </Tag>
+        {platformKeys.map((key) => (
+          <Tag key={key}>
             <span className="inline-flex items-center gap-1">
-              <PlatformIcon platform={platformKey} className="h-2.5 w-2.5" />
-              {PLATFORM[platformKey].label}
+              <PlatformIcon platform={key} className="h-2.5 w-2.5" />
+              {PLATFORM[key].label}
             </span>
           </Tag>
-        )}
+        ))}
         {/* Status e marca saem primeiro quando o espaço aperta: o funil e o
             formato identificam o post; os outros dois são complemento. */}
         {!dense && <Tag>{STATUS_LABEL[post.status]}</Tag>}
@@ -575,7 +581,15 @@ export function ContentCalendar({
             return (
               <div
                 key={iso}
+                role="button"
+                tabIndex={0}
+                aria-label={`Nova atividade em ${dayNumber(iso)}/${iso.slice(5, 7)}`}
                 onClick={() => onCreate(iso)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" && e.key !== " ") return;
+                  e.preventDefault();
+                  onCreate(iso);
+                }}
                 className={cn(
                   "group relative flex cursor-pointer flex-col border-b border-r border-border p-2 transition-colors last:border-r-0",
                   fill ? "min-h-0" : minHeight,
@@ -583,7 +597,7 @@ export function ContentCalendar({
                   "hover:bg-surface-2/70",
                 )}
               >
-                <div className="mb-1.5 flex items-center justify-between">
+                <div className="relative z-30 mb-1.5 flex items-center justify-between">
                   <span
                     className={cn(
                       "flex h-6 min-w-6 items-center justify-center rounded-md px-1 text-xs font-semibold",
@@ -604,15 +618,17 @@ export function ContentCalendar({
                 <div
                   className={cn(
                     "space-y-1.5",
-                    // Em tela cheia os cards cobrem a célula INTEIRA — a
-                    // mesma geometria do card expandido na visão normal
-                    // (`inset-0`, sobre o número do dia, que o cabeçalho do
-                    // próprio card já mostra). Vários posts dividem essa
-                    // área em partes iguais. `overflow-hidden`, nunca
-                    // `auto`: o calendário preenche o espaço, não rola.
+                    // Em tela cheia os cards ladrilham a célula de borda a
+                    // borda, abaixo da faixa do número do dia (`top-9`).
+                    // Essa faixa é deliberadamente preservada: é por ela que
+                    // se clica numa data já ocupada para abrir o cadastro de
+                    // nova atividade — cobrindo a célula inteira, um dia cheio
+                    // ficaria sem nenhum ponto clicável para criar.
+                    // `overflow-hidden`, nunca `auto`: o calendário preenche
+                    // o espaço, não rola.
                     fill &&
                       dayPosts.length > 0 &&
-                      "absolute inset-0 z-20 flex flex-col gap-0 space-y-0 overflow-hidden",
+                      "absolute inset-x-0 bottom-0 top-9 z-20 flex flex-col gap-0 space-y-0 overflow-hidden",
                   )}
                 >
                   {dayPosts.map((post) =>

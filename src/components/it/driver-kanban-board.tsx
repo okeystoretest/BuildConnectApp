@@ -2,24 +2,22 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { History } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useRole } from "@/providers/role-provider";
 import type { ItTicket, ItTicketStatus } from "@/types/it";
 import { IT_STATUS_ORDER, IT_STATUS_LABEL, IT_STATUS_DOT } from "@/lib/it-data";
 import { cn } from "@/lib/utils";
-import { completeTicketWithProof, hardDeleteTicket, cancelTicket } from "@/lib/ticket-actions";
+import { completeTicketWithProof, hardDeleteTicket } from "@/lib/ticket-actions";
 import { useTicketsPoll } from "@/lib/use-tickets-poll";
-import {
-  assignTicket,
-  unassignTicket,
-  listAssignableDrivers,
-} from "@/lib/tickets/assign-actions";
+import { assignTicket, unassignTicket, listAssignableUsers } from "@/lib/tickets/assign-actions";
 import { DriverTicketCard } from "./driver-ticket-card";
 import { TicketDetailModal } from "./ticket-detail-modal";
 import { CompleteTicketModal } from "./complete-ticket-modal";
 import type { CompletionData } from "./complete-ticket-modal";
-import { AssignDriverModal } from "./assign-driver-modal";
+import { AssignTicketModal } from "./assign-ticket-modal";
 import { DeleteTicketModal } from "./delete-ticket-modal";
-import { CancelTicketModal } from "./cancel-ticket-modal";
+import { TicketHistoryModal } from "./ticket-history-modal";
 
 export interface DriverKanbanBoardProps {
   tickets: readonly ItTicket[];
@@ -33,6 +31,9 @@ export interface DriverKanbanBoardProps {
  * concluir. A gestão (tickets.manage) tem os mesmos botões mais "Atribuir
  * para…" e a exclusão definitiva. Sincroniza "quase em tempo real" via
  * polling (~15s). O board de TI (KanbanBoard) segue com drag.
+ *
+ * Concluído permanece 30 minutos no quadro e depois passa ao Histórico, aberto
+ * pelo botão do cabeçalho.
  */
 export function DriverKanbanBoard({ tickets: source }: DriverKanbanBoardProps) {
   const { user, can } = useRole();
@@ -47,8 +48,8 @@ export function DriverKanbanBoard({ tickets: source }: DriverKanbanBoardProps) {
   const [completing, setCompleting] = useState<ItTicket | null>(null);
   const [assigning, setAssigning] = useState<ItTicket | null>(null);
   const [deleting, setDeleting] = useState<ItTicket | null>(null);
-  const [cancelling, setCancelling] = useState<ItTicket | null>(null);
   const [drivers, setDrivers] = useState<{ id: string; name: string }[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [, startTransition] = useTransition();
 
   const byStatus = useMemo(() => {
@@ -85,7 +86,7 @@ export function DriverKanbanBoard({ tickets: source }: DriverKanbanBoardProps) {
   async function handleOpenAssignOther(ticket: ItTicket) {
     setAssigning(ticket);
     if (drivers.length === 0) {
-      const list = await listAssignableDrivers();
+      const list = await listAssignableUsers();
       setDrivers(list);
     }
   }
@@ -146,27 +147,18 @@ export function DriverKanbanBoard({ tickets: source }: DriverKanbanBoardProps) {
     });
   }
 
-  function confirmCancel(reason: string) {
-    if (!cancelling) return;
-    const id = cancelling.id;
-    setCancelling(null);
-    // Cancelado sai das colunas ativas; a corrida associada é encerrada no servidor.
-    setLocal((prev) => prev.filter((t) => t.id !== id));
-    startTransition(async () => {
-      const res = await cancelTicket({ ticketId: id, reason });
-      if (!res.ok) {
-        refresh();
-        router.refresh();
-      }
-    });
-  }
-
   return (
     <>
-      <p className="mb-4 text-sm text-muted">
-        Assuma um chamado, inicie a corrida para transmitir sua localização e conclua com o
-        comprovante de entrega. O quadro sincroniza automaticamente.
-      </p>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-muted">
+          Assuma um chamado, inicie a corrida para transmitir sua localização e conclua com o
+          comprovante de entrega. O quadro sincroniza automaticamente.
+        </p>
+        <Button variant="secondary" size="sm" onClick={() => setHistoryOpen(true)}>
+          <History className="h-4 w-4" />
+          Histórico
+        </Button>
+      </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {IT_STATUS_ORDER.map((status) => (
@@ -202,7 +194,6 @@ export function DriverKanbanBoard({ tickets: source }: DriverKanbanBoardProps) {
                   onStarted={handleStarted}
                   onComplete={setCompleting}
                   onDelete={setDeleting}
-                  onCancel={setCancelling}
                 />
               ))}
 
@@ -224,9 +215,12 @@ export function DriverKanbanBoard({ tickets: source }: DriverKanbanBoardProps) {
         onConfirm={confirmCompletion}
       />
 
-      <AssignDriverModal
+      <AssignTicketModal
         open={assigning !== null}
-        drivers={drivers}
+        people={drivers}
+        description={
+          assigning ? `${assigning.code} · escolha quem assume a corrida.` : undefined
+        }
         onClose={() => setAssigning(null)}
         onSelect={handleAssignOther}
       />
@@ -237,10 +231,14 @@ export function DriverKanbanBoard({ tickets: source }: DriverKanbanBoardProps) {
         onConfirm={confirmDelete}
       />
 
-      <CancelTicketModal
-        ticket={cancelling}
-        onClose={() => setCancelling(null)}
-        onConfirm={confirmCancel}
+      <TicketHistoryModal
+        open={historyOpen}
+        destination="MOTORISTAS"
+        onClose={() => setHistoryOpen(false)}
+        onSelect={(ticket) => {
+          setHistoryOpen(false);
+          setSelected(ticket);
+        }}
       />
     </>
   );

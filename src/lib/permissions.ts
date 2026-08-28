@@ -25,11 +25,13 @@ const MATRIX: Record<Role, readonly Permission[]> = {
   ADMIN: [
     "content.view",
     "content.upload",
+    "welcomeVideo.manage",
     "links.manage",
     "evaluations.view",
     "evaluations.fill",
     "sector.it",
     "sector.hr",
+    "reports.manage",
     "users.manage",
     "tickets.create",
     "tickets.viewOwn",

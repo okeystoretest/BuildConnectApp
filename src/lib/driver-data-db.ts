@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import type { ItTicket, ItTicketStatus, ItDashboardData, DistributionEntry } from "@/types/it";
 import { mapAttachments } from "@/lib/it-data-db";
+import { archiveCutoff } from "@/lib/archive-window";
 
 /**
  * Dados reais do setor de Motoristas: chamados (kanban), dashboard e
@@ -70,6 +71,7 @@ function mapTicket(row: DbRow): ItTicket {
     assigneeId: row.assignee?.id,
     durationLabel: durationLabel(row.startedAt, row.finishedAt),
     startedAt: row.startedAt?.toISOString(),
+    finishedAt: row.finishedAt?.toISOString(),
     proofName: row.proofPath ? row.proofPath.split("/").pop() : undefined,
     proofUrl: row.proofPath ?? undefined,
     distanceKm: row.distanceKm ?? undefined,
@@ -91,10 +93,37 @@ const DASHBOARD_INCLUDE = {
   unit: { select: { label: true } },
 } as const;
 
+/**
+ * Chamados do QUADRO de Motoristas. Mesma regra do quadro de TI: o concluído
+ * fica visível por 30 minutos e depois passa ao Histórico.
+ */
 export async function getDriverTickets(): Promise<ItTicket[]> {
   const rows = await prisma.ticket.findMany({
-    where: { destination: "MOTORISTAS", status: { not: "CANCELADO" } },
+    where: {
+      destination: "MOTORISTAS",
+      status: { not: "CANCELADO" },
+      OR: [
+        { status: { not: "CONCLUIDO" } },
+        { status: "CONCLUIDO", finishedAt: { gte: archiveCutoff() } },
+        // Dado legado sem carimbo de conclusão: permanece no quadro.
+        { status: "CONCLUIDO", finishedAt: null },
+      ],
+    },
     orderBy: { createdAt: "desc" },
+    include: INCLUDE,
+  });
+  return (rows as unknown as DbRow[]).map(mapTicket);
+}
+
+/** Chamados de Motoristas já arquivados — a lista do botão "Histórico". */
+export async function getDriverTicketsHistory(): Promise<ItTicket[]> {
+  const rows = await prisma.ticket.findMany({
+    where: {
+      destination: "MOTORISTAS",
+      status: "CONCLUIDO",
+      finishedAt: { lt: archiveCutoff() },
+    },
+    orderBy: { finishedAt: "desc" },
     include: INCLUDE,
   });
   return (rows as unknown as DbRow[]).map(mapTicket);

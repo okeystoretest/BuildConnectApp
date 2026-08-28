@@ -18,12 +18,9 @@ export interface KanbanColumnProps {
   onOpen: (ticket: ItTicket) => void;
   onAdvance?: (ticket: ItTicket) => void;
   onUnassign?: (ticket: ItTicket) => void;
-  /** Exclusão definitiva (Admin). */
+  /** Exclusão definitiva (Admin) — única forma de encerrar fora do fluxo. */
   canDelete?: boolean;
   onDelete?: (ticket: ItTicket) => void;
-  /** Cancelamento (gestão). */
-  canManageCancel?: boolean;
-  onCancel?: (ticket: ItTicket) => void;
 }
 
 export function KanbanColumn({
@@ -40,8 +37,6 @@ export function KanbanColumn({
   onUnassign,
   canDelete = false,
   onDelete,
-  canManageCancel = false,
-  onCancel,
 }: KanbanColumnProps) {
   const [over, setOver] = useState(false);
 
@@ -87,8 +82,6 @@ export function KanbanColumn({
             onUnassign={onUnassign}
             canDelete={canDelete}
             onDelete={onDelete}
-            canManageCancel={canManageCancel}
-            onCancel={onCancel}
           />
         ))}
 

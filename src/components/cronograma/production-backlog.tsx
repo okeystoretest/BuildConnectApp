@@ -8,14 +8,15 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   BRAND,
-  FORMAT_LABEL,
   FUNNEL,
   PLATFORM,
   STATUS_LABEL,
   STATUS_ORDER,
   STATUS_TONE,
+  formatLabel,
+  formatStyle,
   resolveBrand,
-  resolvePlatform,
+  resolvePlatforms,
 } from "@/lib/funnel";
 import { PlatformIcon } from "@/components/cronograma/platform-icon";
 import { setContentPostStatus } from "@/lib/cronograma-actions";
@@ -106,18 +107,15 @@ export function ProductionBacklog({ slug, items, onSelect }: ProductionBacklogPr
               >
                 <td className="py-3 pr-3">
                   <span className="flex items-center gap-1.5 font-medium text-foreground">
-                    {(() => {
-                      const key = resolvePlatform(post.platform);
-                      if (!key) return null;
-                      return (
-                        <PlatformIcon
-                          platform={key}
-                          className="h-3.5 w-3.5 shrink-0"
-                          style={{ color: PLATFORM[key].color }}
-                          aria-label={PLATFORM[key].label}
-                        />
-                      );
-                    })()}
+                    {resolvePlatforms(post.platforms).map((key) => (
+                      <PlatformIcon
+                        key={key}
+                        platform={key}
+                        className="h-3.5 w-3.5 shrink-0"
+                        style={{ color: PLATFORM[key].color }}
+                        aria-label={PLATFORM[key].label}
+                      />
+                    ))}
                     {post.title}
                   </span>
                   {/* Resumo da observação — o texto completo abre no modal. */}
@@ -133,7 +131,14 @@ export function ProductionBacklog({ slug, items, onSelect }: ProductionBacklogPr
                 <td className="py-3 pr-3 text-muted">
                   {post.date.slice(8, 10)}/{post.date.slice(5, 7)} · {post.time}
                 </td>
-                <td className="py-3 pr-3 text-muted">{FORMAT_LABEL[post.format]}</td>
+                <td className="py-3 pr-3">
+                  <span
+                    className="rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase"
+                    style={formatStyle(post.format)}
+                  >
+                    {formatLabel(post.format, post.formatOther)}
+                  </span>
+                </td>
                 <td className="py-3 pr-3">
                   <span
                     className={cn(

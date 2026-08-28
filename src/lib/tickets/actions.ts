@@ -56,11 +56,38 @@ export interface CreateTicketResult {
   fieldErrors?: Record<string, string>;
 }
 
-/** Próximo código sequencial (#2050, #2051, ...). */
-async function nextTicketCode(): Promise<string> {
-  const BASE = 2050;
-  const count = await prisma.ticket.count();
-  return `#${BASE + count}`;
+/**
+ * Prefixo do código por setor de destino. É o identificador que a operação lê
+ * em voz alta ("o RET-014 já foi?"), então ele precisa dizer para onde o
+ * chamado foi: Retaguarda (TI) ou Motoristas.
+ */
+const CODE_PREFIX: Record<"TI" | "MOTORISTAS", string> = {
+  TI: "RET-",
+  MOTORISTAS: "MOT-",
+};
+
+/**
+ * Próximo código do setor (RET-001, MOT-001, ...).
+ *
+ * A numeração é POR PREFIXO — as duas sequências correm independentes — e sai
+ * do maior número já usado, não da contagem de linhas: excluir um chamado não
+ * pode fazer o próximo repetir um código já emitido. Códigos antigos, no
+ * formato "#2050", não casam com prefixo nenhum e ficam de fora da conta.
+ */
+async function nextTicketCode(destination: "TI" | "MOTORISTAS"): Promise<string> {
+  const prefix = CODE_PREFIX[destination];
+  const rows = await prisma.ticket.findMany({
+    where: { code: { startsWith: prefix } },
+    select: { code: true },
+  });
+
+  let highest = 0;
+  for (const row of rows as Array<{ code: string }>) {
+    const value = Number.parseInt(row.code.slice(prefix.length), 10);
+    if (Number.isFinite(value) && value > highest) highest = value;
+  }
+
+  return `${prefix}${String(highest + 1).padStart(3, "0")}`;
 }
 
 export async function createDriverTicket(
@@ -140,7 +167,7 @@ export async function createDriverTicket(
 
   // 4. Transação: ticket + imagens + notificação, atômico.
   try {
-    const code = await nextTicketCode();
+    const code = await nextTicketCode("MOTORISTAS");
     const title = `${data.serviceType} — ${data.street}`;
 
     const ticket = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -187,6 +214,8 @@ export async function createDriverTicket(
       return created;
     });
 
+    revalidatePath("/setores/motoristas");
+    revalidatePath("/chamados");
     return { ok: true, code: ticket.code };
   } catch (error) {
     // Rollback físico: a transação do banco falhou, remove os arquivos.
@@ -251,7 +280,7 @@ export async function createItTicket(formData: FormData): Promise<CreateTicketRe
   }
 
   try {
-    const code = await nextTicketCode();
+    const code = await nextTicketCode("TI");
     // Título: categoria + início da descrição.
     const snippet = data.description.length > 48
       ? `${data.description.slice(0, 48)}…`

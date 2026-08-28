@@ -1,8 +1,10 @@
 "use client";
 
-import { ArrowRight, Ban, CalendarDays, Eye, Paperclip, Trash2, UserMinus } from "lucide-react";
+import { ArrowRight, Archive, CalendarDays, Eye, Paperclip, Trash2, UserMinus } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { itCategoryTone } from "@/lib/it-data";
+import { useArchiveCountdown } from "@/lib/use-archive-countdown";
 import type { ItTicket } from "@/types/it";
 
 export interface TicketCardProps {
@@ -16,12 +18,11 @@ export interface TicketCardProps {
   onUnassign?: (ticket: ItTicket) => void;
   nextStatusLabel?: string | null;
   readOnly?: boolean;
-  /** Exclusão definitiva — exclusiva do Admin. */
+  /** Exclusão definitiva — exclusiva do Admin. É a ÚNICA forma de encerrar
+   *  um chamado fora do fluxo; o antigo "Cancelar" foi removido por ser
+   *  redundante com ela, tanto na interface quanto no código. */
   canDelete?: boolean;
   onDelete?: (ticket: ItTicket) => void;
-  /** Cancelamento (gestão). Disponível enquanto o chamado não é terminal. */
-  canManageCancel?: boolean;
-  onCancel?: (ticket: ItTicket) => void;
 }
 
 export function TicketCard({
@@ -36,11 +37,12 @@ export function TicketCard({
   readOnly = false,
   canDelete = false,
   onDelete,
-  canManageCancel = false,
-  onCancel,
 }: TicketCardProps) {
   const attachmentCount = ticket.attachments?.length ?? 0;
-  const canCancel = canManageCancel && onCancel && ticket.status !== "CONCLUIDO";
+  // Concluído: quanto falta para o card sair do quadro e ir para o histórico.
+  const countdown = useArchiveCountdown(
+    ticket.status === "CONCLUIDO" ? ticket.finishedAt : undefined,
+  );
 
   return (
     <article
@@ -59,19 +61,9 @@ export function TicketCard({
       <div className="flex items-start justify-between gap-2">
         <span className="font-mono text-[11px] text-muted">{ticket.code}</span>
         <div className="flex shrink-0 items-center gap-1.5">
-          <Badge tone="neutral" className="text-[10px]">
+          <Badge tone={itCategoryTone(ticket.category)} className="text-[10px]">
             {ticket.category}
           </Badge>
-          {canCancel && (
-            <button
-              type="button"
-              onClick={() => onCancel!(ticket)}
-              aria-label={`Cancelar chamado ${ticket.code}`}
-              className="focus-ring flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-warning/10 hover:text-warning"
-            >
-              <Ban className="h-3.5 w-3.5" />
-            </button>
-          )}
           {canDelete && onDelete && (
             <button
               type="button"
@@ -99,6 +91,12 @@ export function TicketCard({
         </div>
       </div>
 
+      {ticket.assignee && (
+        <p className="mt-2 truncate text-[11px] text-muted">
+          Responsável: <span className="text-foreground">{ticket.assignee}</span>
+        </p>
+      )}
+
       <div className="mt-3 flex items-center justify-between gap-2 border-t border-border pt-2.5">
         <span className="flex items-center gap-1.5 text-[10px] text-muted">
           <CalendarDays className="h-3 w-3" />
@@ -119,6 +117,14 @@ export function TicketCard({
           Detalhes
         </button>
       </div>
+
+      {/* Janela de 30 minutos do concluído: o card avisa que vai sair. */}
+      {countdown && (
+        <p className="mt-2 flex items-center gap-1.5 rounded-lg bg-surface-2 px-2 py-1.5 text-[10px] text-muted">
+          <Archive className="h-3 w-3 shrink-0" />
+          {countdown} · depois fica no Histórico
+        </p>
+      )}
 
       {/* Ações rápidas — exclusivas de telas pequenas, onde arrastar é impraticável. */}
       {!readOnly && (onAdvance || onUnassign) && (

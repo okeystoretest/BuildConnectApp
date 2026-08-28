@@ -9,6 +9,7 @@ import { ItTicketFields } from "./it-ticket-fields";
 import { DriverTicketFields } from "./driver-ticket-fields";
 import { OTHER_OPTION, UNITS } from "@/lib/units";
 import { createDriverTicket, createItTicket } from "@/lib/tickets/actions";
+import { useToast } from "@/providers/toast-provider";
 import {
   DRIVER_OPTIONS,
   SERVICE_TYPES,
@@ -44,6 +45,7 @@ export interface NewTicketModalProps {
 }
 
 export function NewTicketModal({ open, onClose }: NewTicketModalProps) {
+  const { success } = useToast();
   const [destination, setDestination] = useState<TicketDestination>("TI");
   const [itForm, setItForm] = useState<ItTicketForm>(EMPTY_IT);
   const [driverForm, setDriverForm] = useState<DriverTicketForm>(EMPTY_DRIVER);
@@ -88,6 +90,22 @@ export function NewTicketModal({ open, onClose }: NewTicketModalProps) {
     return Object.keys(next).length === 0;
   }
 
+  /**
+   * Confirmação de envio, igual para os dois destinos.
+   *
+   * O modal fecha assim que a Server Action confirma, e o chamado costuma
+   * aparecer num quadro que não está na tela — sem o toast, a única pista de
+   * que deu certo era o formulário sumir. O código gerado (RET-/MOT-) vai na
+   * mensagem: é por ele que o chamado é procurado depois.
+   */
+  function confirmSent(code: string | undefined, sector: string) {
+    success(
+      code
+        ? `Chamado ${code} enviado para ${sector}.`
+        : `Chamado enviado para ${sector}.`,
+    );
+  }
+
   async function handleSubmit() {
     if (!validate()) return;
     setSubmitting(true);
@@ -111,6 +129,7 @@ export function NewTicketModal({ open, onClose }: NewTicketModalProps) {
         return;
       }
 
+      confirmSent(itResult.code, "a Retaguarda");
       reset();
       onClose();
       return;
@@ -141,6 +160,7 @@ export function NewTicketModal({ open, onClose }: NewTicketModalProps) {
       return;
     }
 
+    confirmSent(result.code, "os Motoristas");
     reset();
     onClose();
   }

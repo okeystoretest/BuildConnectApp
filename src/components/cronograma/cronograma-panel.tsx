@@ -17,13 +17,14 @@ import { Button } from "@/components/ui/button";
 import {
   BRAND,
   BRAND_ORDER,
-  FORMAT_LABEL,
   PLATFORM,
   FUNNEL,
   FUNNEL_ORDER,
   MONTH_LABEL,
   STATUS_LABEL,
+  formatLabel,
   resolveBrand,
+  resolvePlatforms,
 } from "@/lib/funnel";
 import { FunnelAreaChart } from "./funnel-area-chart";
 import { FunnelDonut } from "./funnel-donut";
@@ -213,7 +214,7 @@ export function CronogramaPanel({ slug, data }: CronogramaPanelProps) {
       "Hora",
       "Funil",
       "Formato",
-      "Rede social",
+      "Redes sociais",
       "Marca",
       "Status",
       "Responsável",
@@ -223,8 +224,10 @@ export function CronogramaPanel({ slug, data }: CronogramaPanelProps) {
       post.date,
       post.time,
       post.funnel,
-      FORMAT_LABEL[post.format],
-      post.platform ? PLATFORM[post.platform].label : "",
+      formatLabel(post.format, post.formatOther),
+      resolvePlatforms(post.platforms)
+        .map((key) => PLATFORM[key].label)
+        .join(", "),
       (() => {
         const key = resolveBrand(post.brand);
         return key ? BRAND[key].label : "";

@@ -242,7 +242,7 @@ async function seedDemoSchedule(subsectorId: string) {
       { subsectorId, ownerId: owner?.id ?? null, title: "Time to Okey Girls", scheduledAt: at(2, "10:00"), funnel: "MOFU" as const, format: "STORY" as const, status: "EM_PRODUCAO" as const },
       { subsectorId, ownerId: owner?.id ?? null, title: "Lançamento LOVCLUB", scheduledAt: at(3, "09:00"), funnel: "TOFU" as const, format: "REEL" as const, status: "AGENDADO" as const },
       { subsectorId, ownerId: owner?.id ?? null, title: "Spoiler + Prova Social", scheduledAt: at(4, "18:00"), funnel: "MOFU" as const, format: "STORY" as const, status: "IDEIA" as const },
-      { subsectorId, ownerId: owner?.id ?? null, title: "Lançamento Okey + Oferta", scheduledAt: at(5, "11:00"), funnel: "BOFU" as const, format: "REEL_FEED" as const, status: "AGENDADO" as const },
+      { subsectorId, ownerId: owner?.id ?? null, title: "Lançamento Okey + Oferta", scheduledAt: at(5, "11:00"), funnel: "BOFU" as const, format: "FEED" as const, status: "AGENDADO" as const },
       { subsectorId, ownerId: owner?.id ?? null, title: "Live de Lançamento", scheduledAt: at(6, "20:00"), funnel: "BOFU" as const, format: "LIVE" as const, status: "IDEIA" as const },
       { subsectorId, ownerId: owner?.id ?? null, title: "Bastidores da Coleção", scheduledAt: at(9, "15:00"), funnel: "TOFU" as const, format: "CARROSSEL" as const, status: "IDEIA" as const },
     ],

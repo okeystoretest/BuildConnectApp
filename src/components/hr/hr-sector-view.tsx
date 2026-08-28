@@ -13,6 +13,7 @@ import { IntegrationMapsPanel } from "@/components/hr/integration-maps";
 import { HrDocumentsPanel } from "@/components/hr/hr-documents";
 import { UserManagementPanel } from "@/components/hr/user-management";
 import { MapUploadModal } from "@/components/hr/map-upload-modal";
+import { ReportBoard } from "@/components/reports/report-board";
 import { FileUploadModal } from "@/components/sector/file-upload-modal";
 import { SectorWelcomeVideo } from "@/components/sector/welcome-video";
 import type { SectorWelcomeVideo as SectorWelcomeVideoData } from "@/lib/welcome-video-data";
@@ -30,6 +31,7 @@ import type {
   EvaluationResultTypeCard,
   EvaluationSubject,
 } from "@/types/evaluation";
+import type { ReportItem } from "@/types/report";
 
 export interface HrSectorViewProps {
   canHrAdmin: boolean;
@@ -45,6 +47,10 @@ export interface HrSectorViewProps {
   assignSubjects: EvaluationSubject[];
   assignRaters: { id: string; name: string; sector: string }[];
   rounds: EfficacyRoundRow[];
+  /** Pode ler e tratar a Central de Denúncias (`reports.manage`). */
+  canReports: boolean;
+  /** Denúncias em tratativa (as encerradas há mais de 30 min ficam no histórico). */
+  reports: ReportItem[];
   /** Vídeo de boas-vindas do setor (modal + card de gestão). */
   welcome?: SectorWelcomeVideoData | null;
 }
@@ -61,6 +67,8 @@ export function HrSectorView({
   assignSubjects,
   assignRaters,
   rounds,
+  canReports,
+  reports,
   welcome,
 }: HrSectorViewProps) {
   const { can } = useRole();
@@ -85,9 +93,11 @@ export function HrSectorView({
       { id: "treinamento", label: "Resultados de Treinamento" },
       { id: "mapas", label: "Mapas de Integração" },
       { id: "documentos", label: "Documentos" },
+      // A Central de Denúncias é do DHO e só aparece para quem pode tratá-la.
+      ...(canReports ? [{ id: "denuncias", label: "Central de Denúncias" }] : []),
       { id: "usuarios", label: "Gestão de Usuários" },
     ];
-  }, [canHrAdmin]);
+  }, [canHrAdmin, canReports]);
 
   const [active, setActive] = useState(() => (canHrAdmin ? "historico" : "resultados"));
 
@@ -144,6 +154,8 @@ export function HrSectorView({
         {active === "documentos" && canHrAdmin && (
           <HrDocumentsPanel documents={documents} onUpload={() => setDocModalOpen(true)} />
         )}
+        {active === "denuncias" && canReports && <ReportBoard reports={reports} />}
+
         {active === "usuarios" && canHrAdmin && <UserManagementPanel users={users} />}
       </TabPanel>
 

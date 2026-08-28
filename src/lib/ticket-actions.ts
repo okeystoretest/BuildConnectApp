@@ -57,6 +57,13 @@ export async function updateTicketStatus(input: {
       return { ok: false, error: "Você não tem permissão para alterar este chamado." };
     }
 
+    // "Atribuído" sem responsável é um estado que contradiz o próprio nome:
+    // o card ficaria na coluna sem dono e ninguém saberia de quem cobrar. A
+    // interface pede o responsável ao arrastar; aqui a regra é reforçada.
+    if (status === "ATRIBUIDO" && !current.assigneeId) {
+      return { ok: false, error: "Defina o responsável para mover o chamado para Atribuído." };
+    }
+
     // Conclusão de chamado de TI exige a descrição técnica da solução.
     const isItCompletion = status === "CONCLUIDO" && current.destination === "TI";
     if (isItCompletion && (!resolutionNote || resolutionNote.length === 0)) {
@@ -175,8 +182,13 @@ function toAbsolute(publicPath: string): string | null {
 /**
  * Exclusão DEFINITIVA de um chamado. Exclusivo do Admin (tickets.manage) —
  * independe do setor ou do status. Remove o registro (o cascade do schema
- * apaga TicketImage e Trip/TripPosition) e limpa os arquivos físicos
- * associados (anexos de abertura + comprovante) do disco da VPS.
+ * apaga TicketImage e Trip/TripPosition, encerrando também qualquer corrida
+ * em aberto) e limpa os arquivos físicos associados (anexos de abertura +
+ * comprovante) do disco da VPS.
+ *
+ * É a ÚNICA forma de tirar um chamado do fluxo: o antigo "Cancelar chamado"
+ * fazia o mesmo trabalho por outro caminho — dois botões, duas telas e duas
+ * Server Actions para a mesma decisão — e foi removido.
  *
  * Ação irreversível: use com o modal de confirmação do board.
  */
@@ -218,75 +230,3 @@ export async function hardDeleteTicket(ticketId: string): Promise<ActionResult> 
   }
 }
 
-const cancelSchema = z.object({
-  ticketId: z.string().min(1),
-  reason: z.string().trim().min(3, "Descreva o motivo do cancelamento."),
-});
-
-/**
- * Cancelamento de chamado (exclusivo da gestão — tickets.manage).
- *
- * Diferente da exclusão, o cancelamento PRESERVA o registro: marca o
- * Ticket como CANCELADO, grava finishedAt e o motivo (reaproveitando o
- * campo resolutionNote), e — o ponto crítico — fecha na MESMA transação
- * qualquer Trip associado que esteja aberto (AGUARDANDO ou EM_ROTA),
- * levando-o a CANCELADA. Sem isso, uma corrida em andamento ficaria órfã:
- * o GPS do motorista seguiria transmitindo e o mapa nunca encerraria.
- *
- * O transmissor de GPS no cliente desliga sozinho ao ver o Trip CANCELADA
- * (ver use-trip-tracking / driver-trip-controller).
- */
-export async function cancelTicket(input: {
-  ticketId: string;
-  reason: string;
-}): Promise<ActionResult> {
-  const user = await getCurrentUser();
-  if (!user) return { ok: false, error: "Sessão expirada. Faça login novamente." };
-  if (!can(user.role as Role, "tickets.manage")) {
-    return { ok: false, error: "Apenas a administração pode cancelar chamados." };
-  }
-
-  const parsed = cancelSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
-  }
-  const { ticketId, reason } = parsed.data;
-
-  try {
-    const ticket = await prisma.ticket.findUnique({
-      where: { id: ticketId },
-      select: { status: true },
-    });
-    if (!ticket) return { ok: false, error: "Chamado não encontrado." };
-    if (ticket.status === "CANCELADO") {
-      return { ok: false, error: "Este chamado já está cancelado." };
-    }
-    if (ticket.status === "CONCLUIDO") {
-      return { ok: false, error: "Não é possível cancelar um chamado já concluído." };
-    }
-
-    await prisma.$transaction(async (tx) => {
-      await tx.ticket.update({
-        where: { id: ticketId },
-        data: {
-          status: "CANCELADO",
-          finishedAt: new Date(),
-          resolutionNote: reason,
-        },
-      });
-      // Fecha a corrida junto, se houver Trip ainda aberto. updateMany não
-      // falha quando não existe Trip (chamado sem tracking).
-      await tx.trip.updateMany({
-        where: { ticketId, status: { in: ["AGUARDANDO", "EM_ROTA"] } },
-        data: { status: "CANCELADA", finishedAt: new Date() },
-      });
-    });
-
-    revalidatePath("/setores/ti");
-    revalidatePath("/setores/motoristas");
-    return { ok: true };
-  } catch (e) {
-    console.error("[cancelTicket] db:", e);
-    return { ok: false, error: "Falha ao cancelar o chamado." };
-  }
-}

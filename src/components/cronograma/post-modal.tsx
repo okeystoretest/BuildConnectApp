@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import {
   BRAND,
   BRAND_ORDER,
+  FORMAT,
   FORMAT_LABEL,
   FORMAT_ORDER,
   FUNNEL,
@@ -20,6 +21,8 @@ import {
   PLATFORM_ORDER,
   STATUS_LABEL,
   STATUS_ORDER,
+  formatStyle,
+  platformStyle,
 } from "@/lib/funnel";
 import { PlatformIcon } from "@/components/cronograma/platform-icon";
 import { createContentPost, updateContentPost } from "@/lib/cronograma-actions";
@@ -75,7 +78,8 @@ export function PostModal({
   const [format, setFormat] = useState<ContentFormat>("REEL");
   const [status, setStatus] = useState<ContentStatus>("IDEIA");
   const [brand, setBrand] = useState<ContentBrand | null>(null);
-  const [platform, setPlatform] = useState<ContentPlatform | null>(null);
+  const [platforms, setPlatforms] = useState<readonly ContentPlatform[]>([]);
+  const [formatOther, setFormatOther] = useState("");
   const [ownerId, setOwnerId] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +94,8 @@ export function PostModal({
     setFormat(post?.format ?? "REEL");
     setStatus(post?.status ?? "IDEIA");
     setBrand(post?.brand ?? null);
-    setPlatform(post?.platform ?? null);
+    setPlatforms(post?.platforms ?? []);
+    setFormatOther(post?.formatOther ?? "");
     setOwnerId(post?.owner?.id ?? "");
     setNotes(post?.notes ?? "");
     setError(null);
@@ -113,7 +118,9 @@ export function PostModal({
         format,
         status,
         brand: brand ?? undefined,
-        platform: platform ?? undefined,
+        // Ordem canonica das redes; o formulario so define quais.
+        platforms: PLATFORM_ORDER.filter((option) => platforms.includes(option)),
+        formatOther: format === "OUTRO" ? formatOther.trim() : undefined,
         ownerId: ownerId || undefined,
         notes: notes.trim() || undefined,
       };
@@ -205,23 +212,53 @@ export function PostModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label htmlFor="post-format">Formato</Label>
-              <select
-                id="post-format"
-                value={format}
-                disabled={readOnly}
-                onChange={(e) => setFormat(e.target.value as ContentFormat)}
-                className="focus-ring h-11 w-full rounded-xl border border-border bg-surface-2 px-3 text-sm text-foreground"
-              >
-                {FORMAT_ORDER.map((option) => (
-                  <option key={option} value={option}>
+          <div>
+            <Label>Formato</Label>
+            {/* Cada formato tem cor propria — a mesma que identifica a tag no
+                calendario, no backlog e nos detalhes. */}
+            <div className="flex flex-wrap gap-2">
+              {FORMAT_ORDER.map((option) => {
+                const active = format === option;
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    disabled={readOnly}
+                    aria-pressed={active}
+                    onClick={() => setFormat(option)}
+                    style={active ? formatStyle(option) : undefined}
+                    className={cn(
+                      "focus-ring inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors disabled:opacity-60",
+                      !active && "border-border bg-surface-2 text-muted hover:text-foreground",
+                    )}
+                  >
+                    <span
+                      className="h-2 w-2 rounded-full"
+                      style={{ backgroundColor: FORMAT[option].color }}
+                    />
                     {FORMAT_LABEL[option]}
-                  </option>
-                ))}
-              </select>
+                  </button>
+                );
+              })}
             </div>
+
+            {/* "Outro" so existe com o nome que a pessoa der. */}
+            {format === "OUTRO" && (
+              <div className="mt-2">
+                <Label htmlFor="post-format-other">Qual formato?</Label>
+                <Input
+                  id="post-format-other"
+                  value={formatOther}
+                  disabled={readOnly}
+                  onChange={(e) => setFormatOther(e.target.value)}
+                  placeholder="Ex.: Newsletter, Podcast, Evento presencial…"
+                  maxLength={60}
+                />
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <Label htmlFor="post-status">Status</Label>
               <select
@@ -238,30 +275,47 @@ export function PostModal({
                 ))}
               </select>
             </div>
+            <div>
+              <Label htmlFor="post-owner">Responsável</Label>
+              <select
+                id="post-owner"
+                value={ownerId}
+                disabled={readOnly}
+                onChange={(e) => setOwnerId(e.target.value)}
+                className="focus-ring h-11 w-full rounded-xl border border-border bg-surface-2 px-3 text-sm text-foreground"
+              >
+                <option value="">Sem responsável</option>
+                {people.map((person) => (
+                  <option key={person.id} value={person.id}>
+                    {person.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div>
-            <Label>Rede social (opcional)</Label>
+            <Label>Redes sociais (opcional)</Label>
+            {/* Selecao MULTIPLA: a mesma peca costuma ir ao ar em mais de uma
+                rede. Cada botao veste a cor institucional da plataforma. */}
             <div className="grid grid-cols-3 gap-2">
               {PLATFORM_ORDER.map((option) => {
-                const active = platform === option;
+                const active = platforms.includes(option);
                 return (
                   <button
                     key={option}
                     type="button"
+                    role="checkbox"
                     disabled={readOnly}
-                    aria-pressed={active}
-                    // Clicar de novo limpa: nem toda atividade vira publicação.
-                    onClick={() => setPlatform(active ? null : option)}
-                    style={
-                      active
-                        ? {
-                            borderColor: `${PLATFORM[option].color}59`,
-                            backgroundColor: `${PLATFORM[option].color}1f`,
-                            color: PLATFORM[option].color,
-                          }
-                        : undefined
+                    aria-checked={active}
+                    onClick={() =>
+                      setPlatforms((prev) =>
+                        prev.includes(option)
+                          ? prev.filter((value) => value !== option)
+                          : [...prev, option],
+                      )
                     }
+                    style={active ? platformStyle(option) : undefined}
                     className={cn(
                       "focus-ring flex items-center justify-center gap-2 rounded-lg border px-2 py-2.5 text-xs font-semibold transition-colors disabled:opacity-60",
                       !active && "border-border bg-surface-2 text-muted hover:text-foreground",
@@ -273,13 +327,13 @@ export function PostModal({
                 );
               })}
             </div>
-            {platform && !readOnly && (
+            {platforms.length > 0 && !readOnly && (
               <button
                 type="button"
-                onClick={() => setPlatform(null)}
+                onClick={() => setPlatforms([])}
                 className="focus-ring mt-1.5 text-[11px] text-muted underline-offset-2 hover:underline"
               >
-                Remover rede social
+                Limpar redes sociais
               </button>
             )}
           </div>
@@ -327,24 +381,6 @@ export function PostModal({
                 Remover marca
               </button>
             )}
-          </div>
-
-          <div>
-            <Label htmlFor="post-owner">Responsável</Label>
-            <select
-              id="post-owner"
-              value={ownerId}
-              disabled={readOnly}
-              onChange={(e) => setOwnerId(e.target.value)}
-              className="focus-ring h-11 w-full rounded-xl border border-border bg-surface-2 px-3 text-sm text-foreground"
-            >
-              <option value="">Sem responsável</option>
-              {people.map((person) => (
-                <option key={person.id} value={person.id}>
-                  {person.name}
-                </option>
-              ))}
-            </select>
           </div>
 
           <div>

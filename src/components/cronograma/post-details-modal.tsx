@@ -19,13 +19,15 @@ import { Badge } from "@/components/ui/badge";
 import { cn, initials } from "@/lib/utils";
 import {
   BRAND,
-  FORMAT_LABEL,
   FUNNEL,
   PLATFORM,
   STATUS_LABEL,
   STATUS_TONE,
+  formatLabel,
+  formatStyle,
+  platformStyle,
   resolveBrand,
-  resolvePlatform,
+  resolvePlatforms,
 } from "@/lib/funnel";
 import { PlatformIcon } from "@/components/cronograma/platform-icon";
 import { VISIBILITY_HINT, VISIBILITY_LABEL } from "@/lib/cronograma-visibility";
@@ -90,7 +92,7 @@ export function PostDetailsModal({ slug, open, post, onClose, onEdit }: PostDeta
 
   const brandKey = resolveBrand(post.brand);
   const brand = brandKey ? BRAND[brandKey] : null;
-  const platformKey = resolvePlatform(post.platform);
+  const platformKeys = resolvePlatforms(post.platforms);
 
   function handleClose() {
     if (pending) return;
@@ -136,22 +138,22 @@ export function PostDetailsModal({ slug, open, post, onClose, onEdit }: PostDeta
           >
             {FUNNEL[post.funnel].label}
           </span>
-          <span className="rounded border border-border bg-surface-2 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
-            {FORMAT_LABEL[post.format]}
+          <span
+            className="rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+            style={formatStyle(post.format)}
+          >
+            {formatLabel(post.format, post.formatOther)}
           </span>
-          {platformKey && (
+          {platformKeys.map((key) => (
             <span
+              key={key}
               className="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-              style={{
-                borderColor: `${PLATFORM[platformKey].color}59`,
-                backgroundColor: `${PLATFORM[platformKey].color}1f`,
-                color: PLATFORM[platformKey].color,
-              }}
+              style={platformStyle(key)}
             >
-              <PlatformIcon platform={platformKey} className="h-3 w-3" />
-              {PLATFORM[platformKey].label}
+              <PlatformIcon platform={key} className="h-3 w-3" />
+              {PLATFORM[key].label}
             </span>
-          )}
+          ))}
           {brand && (
             <span
               className="rounded border px-2 py-0.5 text-[10px] font-semibold"

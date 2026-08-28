@@ -5,7 +5,7 @@ import { Download, Maximize2, Paperclip, Wrench } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { IT_STATUS_LABEL, IT_STATUS_TONE } from "@/lib/it-data";
+import { itCategoryTone, IT_STATUS_LABEL, IT_STATUS_TONE } from "@/lib/it-data";
 import { ImageLightbox } from "@/components/ui/image-lightbox";
 import type { ItTicket, TicketAttachment } from "@/types/it";
 
@@ -48,7 +48,7 @@ export function TicketDetailModal({ ticket, onClose }: TicketDetailModalProps) {
       <div className="space-y-5 p-6">
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone={IT_STATUS_TONE[ticket.status]}>{IT_STATUS_LABEL[ticket.status]}</Badge>
-          <Badge tone="neutral">{ticket.category}</Badge>
+          <Badge tone={itCategoryTone(ticket.category)}>{ticket.category}</Badge>
         </div>
 
         {/* Descrição integral — sem truncamento, ocupa a largura toda. */}

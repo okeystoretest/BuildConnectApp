@@ -66,6 +66,8 @@ model User {
   evaluationRounds       EvaluationRound[]      @relation("EvaluationRoundSubject")
   evaluationAssignments  EvaluationAssignment[] @relation("EvaluationAssignmentRater")
   integrationMaps    IntegrationMap[]
+  // Denúncias recebidas (o denunciante é sempre anônimo — não há relação).
+  reportsReceived    Report[]           @relation("ReportTarget")
   notifications      NotificationRead[]
   // Notificações direcionadas a este usuário (alvo individual).
   directNotifications Notification[]    @relation("NotificationTarget")
@@ -295,9 +297,10 @@ enum ContentFormat {
   REEL
   STORY
   FEED
-  REEL_FEED
   CARROSSEL
   LIVE
+  // Formato fora da lista. O texto digitado vai em ContentPost.formatOther.
+  OUTRO
 }
 
 enum ContentStatus {
@@ -307,8 +310,9 @@ enum ContentStatus {
   PUBLICADO
 }
 
-// Rede social em que a publicação vai ao ar. Opcional: nem toda atividade do
-// cronograma é um post (gravação, reunião de pauta…).
+// Rede social em que a publicação vai ao ar. Um post pode ir ao ar em VÁRIAS
+// (ver ContentPost.platforms) — a lista vazia é a atividade sem plataforma
+// definida (gravação, reunião de pauta…).
 enum ContentPlatform {
   INSTAGRAM
   TIKTOK
@@ -340,8 +344,11 @@ model ContentPost {
   format      ContentFormat
   status      ContentStatus @default(IDEIA)
   brand       ContentBrand?
-  // Rede social do post. Nulo = atividade sem plataforma definida.
-  platform    ContentPlatform?
+  // Redes sociais do post (seleção múltipla). Lista vazia = atividade sem
+  // plataforma definida.
+  platforms   ContentPlatform[] @default([])
+  // Descrição livre do formato quando `format` = OUTRO. Nulo nos demais.
+  formatOther String?
   notes       String?
 
   // Quem enxerga o post. Definido na criação a partir da aba de origem.
@@ -798,6 +805,72 @@ model IntegrationMap {
   createdAt DateTime @default(now())
 
   @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Central de Denúncias
+// ─────────────────────────────────────────────────────────────
+//
+// Canal anônimo aberto na TELA DE LOGIN — antes de qualquer autenticação, de
+// propósito: exigir login para denunciar já identificaria quem denuncia.
+//
+// Por isso o modelo NÃO tem autor, nem IP, nem sessão. Não é omissão: é o
+// requisito. O que se guarda é a quem a denúncia se destina, o relato e as
+// evidências.
+//
+// Registro imutável: denúncia NÃO se exclui, em hipótese alguma. Não existe
+// Server Action de exclusão, e o status ENCERRADA é o fim da linha do fluxo
+// (Aberta → Em análise → Encerrada). Encerrada, ela ainda fica 30 minutos no
+// quadro (mesma janela dos chamados, ver lib/archive-window) e depois passa ao
+// histórico do módulo.
+
+enum ReportStatus {
+  ABERTA
+  EM_ANALISE
+  ENCERRADA
+}
+
+model Report {
+  id     String       @id @default(cuid())
+  // Código sequencial exibido (DEN-001). Gerado pela aplicação.
+  code   String       @unique
+  status ReportStatus @default(ABERTA)
+
+  // Colaborador a quem a denúncia se destina. SetNull para que desligar
+  // alguém do sistema NUNCA apague uma denúncia — o nome fica em targetName.
+  targetUserId String?
+  targetUser   User?   @relation("ReportTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+  // Nome escolhido na busca, congelado no momento do registro.
+  targetName   String
+
+  description String @db.Text
+
+  // Tratativa do DHO. Não substitui nem apaga o relato original.
+  handlingNote String?
+  // Encerramento: inicia a janela de 30 min antes do arquivamento.
+  closedAt     DateTime?
+
+  attachments ReportAttachment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([targetUserId])
+}
+
+// Evidências anexadas à denúncia. Como todo arquivo do sistema, o banco guarda
+// só o caminho da imagem já tratada (.webp) — nunca o binário.
+model ReportAttachment {
+  id       String @id @default(cuid())
+  reportId String
+  report   Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  filePath String
+  order    Int    @default(0)
+
+  createdAt DateTime @default(now())
+
+  @@index([reportId, order])
 }
 
 // ─────────────────────────────────────────────────────────────

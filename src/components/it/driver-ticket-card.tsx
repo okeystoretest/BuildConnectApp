@@ -1,9 +1,11 @@
 "use client";
 
-import { Ban, CalendarDays, Eye, Paperclip, Trash2, UserMinus, UserPlus, UserCog } from "lucide-react";
+import { Archive, CalendarDays, Eye, Paperclip, Trash2, UserMinus, UserPlus, UserCog } from "lucide-react";
 import { initials } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { itCategoryTone } from "@/lib/it-data";
+import { useArchiveCountdown } from "@/lib/use-archive-countdown";
 import { DriverTripController } from "@/components/tracking/driver-trip-controller";
 import type { ItTicket } from "@/types/it";
 
@@ -15,7 +17,11 @@ export interface DriverTicketCardProps {
   canManage: boolean;
   /** Pode assumir para si (tickets.claim). */
   canClaim: boolean;
-  /** Exclusão definitiva — exclusiva do Admin (tickets.manage). */
+  /**
+   * Exclusão definitiva — exclusiva do Admin (tickets.manage). É a única via
+   * de encerramento fora do fluxo: o antigo "Cancelar chamado" foi removido
+   * por duplicar esta ação.
+   */
   canDelete: boolean;
   onOpen: (ticket: ItTicket) => void;
   onClaim: (ticket: ItTicket) => void;
@@ -24,7 +30,6 @@ export interface DriverTicketCardProps {
   onStarted: (ticket: ItTicket) => void;
   onComplete: (ticket: ItTicket) => void;
   onDelete: (ticket: ItTicket) => void;
-  onCancel: (ticket: ItTicket) => void;
 }
 
 /**
@@ -53,32 +58,21 @@ export function DriverTicketCard({
   onStarted,
   onComplete,
   onDelete,
-  onCancel,
 }: DriverTicketCardProps) {
   const isMine = ticket.assigneeId === currentUserId;
   const status = ticket.status;
   const attachmentCount = ticket.attachments?.length ?? 0;
-  // Cancelar: gestão (mesmo gate do excluir), enquanto não concluído.
-  const canCancel = canManage && status !== "CONCLUIDO";
+  // Concluído: quanto falta para o card sair do quadro e ir para o histórico.
+  const countdown = useArchiveCountdown(status === "CONCLUIDO" ? ticket.finishedAt : undefined);
 
   return (
     <article className="rounded-xl border border-border bg-surface p-3.5">
       <div className="flex items-start justify-between gap-2">
         <span className="font-mono text-[11px] text-muted">{ticket.code}</span>
         <div className="flex shrink-0 items-center gap-1.5">
-          <Badge tone="neutral" className="text-[10px]">
+          <Badge tone={itCategoryTone(ticket.category)} className="text-[10px]">
             {ticket.category}
           </Badge>
-          {canCancel && (
-            <button
-              type="button"
-              onClick={() => onCancel(ticket)}
-              aria-label={`Cancelar chamado ${ticket.code}`}
-              className="focus-ring flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-warning/10 hover:text-warning"
-            >
-              <Ban className="h-3.5 w-3.5" />
-            </button>
-          )}
           {canDelete && (
             <button
               type="button"
@@ -198,9 +192,18 @@ export function DriverTicketCard({
         )}
 
         {status === "CONCLUIDO" && (
-          <p className="text-center text-[11px] text-muted">
-            Concluído{ticket.distanceKm ? ` · ${ticket.distanceKm} km` : ""}
-          </p>
+          <>
+            <p className="text-center text-[11px] text-muted">
+              Concluído{ticket.distanceKm ? ` · ${ticket.distanceKm} km` : ""}
+            </p>
+            {/* Janela de 30 minutos: o card avisa que vai sair do quadro. */}
+            {countdown && (
+              <p className="flex items-center justify-center gap-1.5 rounded-lg bg-surface-2 px-2 py-1.5 text-[10px] text-muted">
+                <Archive className="h-3 w-3 shrink-0" />
+                {countdown} · depois fica no Histórico
+              </p>
+            )}
+          </>
         )}
       </div>
     </article>

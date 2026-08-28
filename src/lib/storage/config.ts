@@ -28,6 +28,9 @@ export const UPLOAD_CATEGORIES = {
   chamados: "chamados",
   avatares: "avatares",
   conteudo: "conteudo",
+  // Evidências da Central de Denúncias. Pasta própria: o material é sensível
+  // e precisa ser tratado à parte em backup e retenção.
+  denuncias: "denuncias",
 } as const;
 
 export type UploadCategory = keyof typeof UPLOAD_CATEGORIES;

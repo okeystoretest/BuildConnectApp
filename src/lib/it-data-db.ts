@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { archiveCutoff } from "@/lib/archive-window";
 import type {
   ItTicket,
   ItTicketStatus,
@@ -89,6 +90,7 @@ function mapTicket(row: DbTicketRow): ItTicket {
     assigneeId: row.assignee?.id,
     durationLabel: durationLabel(row.startedAt, row.finishedAt),
     startedAt: row.startedAt?.toISOString(),
+    finishedAt: row.finishedAt?.toISOString(),
     proofName: row.proofPath ? row.proofPath.split("/").pop() : undefined,
     proofUrl: row.proofPath ?? undefined,
     distanceKm: row.distanceKm ?? undefined,
@@ -111,10 +113,37 @@ const DASHBOARD_INCLUDE = {
   unit: { select: { label: true } },
 } as const;
 
+/**
+ * Chamados do QUADRO de TI.
+ *
+ * Concluído continua no quadro por 30 minutos (ver `lib/tickets/archive`);
+ * passado o prazo ele sai daqui e só aparece no Histórico. O corte é feito na
+ * consulta — o que está arquivado nem chega ao cliente.
+ */
 export async function getItTickets(): Promise<ItTicket[]> {
   const rows = await prisma.ticket.findMany({
-    where: { destination: "TI", status: { not: "CANCELADO" } },
+    where: {
+      destination: "TI",
+      status: { not: "CANCELADO" },
+      OR: [
+        { status: { not: "CONCLUIDO" } },
+        { status: "CONCLUIDO", finishedAt: { gte: archiveCutoff() } },
+        // Concluído sem carimbo de conclusão (dado legado): mantém no quadro
+        // em vez de sumir sem nunca ter passado pela janela de 30 min.
+        { status: "CONCLUIDO", finishedAt: null },
+      ],
+    },
     orderBy: { createdAt: "desc" },
+    include: TICKET_INCLUDE,
+  });
+  return (rows as unknown as DbTicketRow[]).map(mapTicket);
+}
+
+/** Chamados de TI já arquivados — a lista do botão "Histórico". */
+export async function getItTicketsHistory(): Promise<ItTicket[]> {
+  const rows = await prisma.ticket.findMany({
+    where: { destination: "TI", status: "CONCLUIDO", finishedAt: { lt: archiveCutoff() } },
+    orderBy: { finishedAt: "desc" },
     include: TICKET_INCLUDE,
   });
   return (rows as unknown as DbTicketRow[]).map(mapTicket);

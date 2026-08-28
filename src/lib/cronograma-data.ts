@@ -4,6 +4,7 @@ import { FUNNEL_ORDER, MONTH_LABEL, WEEKDAY_SHORT } from "@/lib/funnel";
 import { visibilityForSlug } from "@/lib/cronograma-visibility";
 import type { Role } from "@/types";
 import type {
+  ContentPlatform,
   ContentPostItem,
   ContentVisibility,
   CronogramaData,
@@ -70,7 +71,8 @@ interface PostRow {
   format: ContentPostItem["format"];
   status: ContentPostItem["status"];
   brand: ContentPostItem["brand"] | null;
-  platform: ContentPostItem["platform"] | null;
+  platforms: ContentPlatform[];
+  formatOther: string | null;
   notes: string | null;
   visibility: ContentVisibility;
   originSlug: string | null;
@@ -129,7 +131,8 @@ function toItem(row: PostRow, userId: string, role: Role): ContentPostItem {
     format: row.format,
     status: row.status,
     brand: row.brand ?? undefined,
-    platform: row.platform ?? undefined,
+    platforms: row.platforms ?? [],
+    formatOther: row.formatOther ?? undefined,
     owner: row.owner
       ? {
           id: row.owner.id,
@@ -188,7 +191,8 @@ export async function getCronogramaData(
         format: true,
         status: true,
         brand: true,
-        platform: true,
+        platforms: true,
+        formatOther: true,
         notes: true,
         visibility: true,
         originSlug: true,

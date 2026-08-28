@@ -1,6 +1,7 @@
 import { LogoMark } from "@/components/layout/logo";
 import { AuthBackdrop } from "@/components/auth/auth-backdrop";
 import { LoginForm } from "@/components/auth/login-form";
+import { AnonymousReportLauncher } from "@/components/reports/anonymous-report-launcher";
 
 export default function LoginPage() {
   return (
@@ -21,6 +22,12 @@ export default function LoginPage() {
           <h1 className="text-lg font-semibold text-foreground">Entrar</h1>
           <p className="mb-5 mt-0.5 text-xs text-muted">Acesse sua conta corporativa</p>
           <LoginForm />
+        </div>
+
+        {/* Canal de denúncia: acessível ANTES do login, de propósito — exigir
+            autenticação para denunciar identificaria o denunciante. */}
+        <div className="mt-4">
+          <AnonymousReportLauncher />
         </div>
 
         <p className="mt-6 text-center text-[11px] text-muted">

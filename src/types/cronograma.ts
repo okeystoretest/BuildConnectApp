@@ -2,7 +2,7 @@
 
 export type FunnelStage = "TOFU" | "MOFU" | "BOFU";
 
-export type ContentFormat = "REEL" | "STORY" | "FEED" | "REEL_FEED" | "CARROSSEL" | "LIVE";
+export type ContentFormat = "REEL" | "STORY" | "FEED" | "CARROSSEL" | "LIVE" | "OUTRO";
 
 export type ContentStatus = "IDEIA" | "EM_PRODUCAO" | "AGENDADO" | "PUBLICADO";
 
@@ -10,8 +10,9 @@ export type ContentStatus = "IDEIA" | "EM_PRODUCAO" | "AGENDADO" | "PUBLICADO";
 export type ContentBrand = "OKEY" | "LOV_CLUB";
 
 /**
- * Rede social em que a publicação vai ao ar. Opcional: nem toda atividade do
- * cronograma é um post (gravação, reunião de pauta…).
+ * Rede social em que a publicação vai ao ar. Um post pode ir ao ar em várias
+ * (`platforms`); a lista vazia é a atividade sem plataforma definida
+ * (gravação, reunião de pauta…).
  */
 export type ContentPlatform = "INSTAGRAM" | "TIKTOK" | "YOUTUBE";
 
@@ -39,8 +40,10 @@ export interface ContentPostItem {
   format: ContentFormat;
   status: ContentStatus;
   brand?: ContentBrand;
-  /** Rede social do post. Ausente = atividade sem plataforma definida. */
-  platform?: ContentPlatform;
+  /** Redes sociais do post. Vazio = atividade sem plataforma definida. */
+  platforms: readonly ContentPlatform[];
+  /** Texto livre do formato quando `format` é OUTRO. */
+  formatOther?: string;
   owner: PostOwner | null;
   notes?: string;
   /** Autor do registro. */

@@ -35,6 +35,8 @@ export interface ItTicket {
   durationLabel?: string;
   /** Preenchido ao entrar em "Em andamento" — base da cronometragem. */
   startedAt?: string;
+  /** Conclusão do chamado. Marca o início da janela de 30 min no quadro. */
+  finishedAt?: string;
   /** Comprovante de entrega anexado na conclusão. */
   proofName?: string;
   /** URL pública real do comprovante (quando houver). */

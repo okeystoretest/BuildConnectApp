@@ -13,7 +13,7 @@ export interface ActionResult {
 }
 
 /**
- * Atribuição de chamados (kanban de Motoristas, ações por botão).
+ * Atribuição de chamados (quadros de Motoristas e de Retaguarda).
  *
  * Regras de permissão:
  *  - "Atribuir para mim": qualquer usuário com tickets.claim (inclui
@@ -132,17 +132,21 @@ export async function unassignTicket(input: { ticketId: string }): Promise<Actio
   }
 }
 
-/** Motoristas ativos para o seletor "Atribuir para" (gestão). */
-export async function listAssignableDrivers(): Promise<
-  { id: string; name: string }[]
-> {
+/**
+ * Pessoas atribuíveis a um chamado, para o seletor "Atribuir para…" e para a
+ * atribuição exigida ao mover um card para "Atribuído".
+ *
+ * Só a gestão pode escolher outra pessoa; para os demais a lista volta vazia
+ * e o modal oferece apenas "Atribuir para mim".
+ */
+export async function listAssignableUsers(): Promise<{ id: string; name: string }[]> {
   const user = await getCurrentUser();
   if (!user || !can(user.role as Role, "tickets.manage")) return [];
 
-  const drivers = await prisma.user.findMany({
+  const people = await prisma.user.findMany({
     where: { active: true },
     select: { id: true, fullName: true },
     orderBy: { fullName: "asc" },
   });
-  return drivers.map((d) => ({ id: d.id, name: d.fullName }));
+  return people.map((p) => ({ id: p.id, name: p.fullName }));
 }

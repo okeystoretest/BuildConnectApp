@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type {
   ContentBrand,
   ContentFormat,
@@ -125,23 +126,97 @@ export function resolvePlatform(value: unknown): ContentPlatform | null {
   return key === "INSTAGRAM" || key === "TIKTOK" || key === "YOUTUBE" ? key : null;
 }
 
+/**
+ * Normaliza a LISTA de redes de um post. Um post pode ir ao ar em várias;
+ * valores desconhecidos e repetidos são descartados, e a ordem canônica de
+ * `PLATFORM_ORDER` é imposta para os selos saírem sempre na mesma sequência.
+ */
+export function resolvePlatforms(value: unknown): ContentPlatform[] {
+  const raw = Array.isArray(value) ? value : value === undefined || value === null ? [] : [value];
+  const found = new Set<ContentPlatform>();
+  for (const entry of raw) {
+    const key = resolvePlatform(entry);
+    if (key) found.add(key);
+  }
+  return PLATFORM_ORDER.filter((option) => found.has(option));
+}
+
+/**
+ * Selo de cada rede social sobre a cor institucional da plataforma.
+ * Fundo e borda saem da mesma cor, em opacidades diferentes (`1f` ≈ 12%,
+ * `59` ≈ 35%), então cada botão/tag carrega a identidade da rede sem
+ * precisar de uma classe por plataforma.
+ */
+export function platformStyle(platform: ContentPlatform): CSSProperties {
+  const { color } = PLATFORM[platform];
+  return {
+    borderColor: `${color}59`,
+    backgroundColor: `${color}1f`,
+    color,
+  };
+}
+
 export const FORMAT_ORDER: readonly ContentFormat[] = [
   "REEL",
   "STORY",
   "FEED",
-  "REEL_FEED",
   "CARROSSEL",
   "LIVE",
+  "OUTRO",
 ];
 
-export const FORMAT_LABEL: Record<ContentFormat, string> = {
-  REEL: "Reel",
-  STORY: "Story",
-  FEED: "Feed",
-  REEL_FEED: "Reel + Feed",
-  CARROSSEL: "Carrossel",
-  LIVE: "Live",
+interface FormatMeta {
+  label: string;
+  /** Cor de identificação do formato. Fixa em hex para valer nos dois temas. */
+  color: string;
+}
+
+/**
+ * Formatos de conteúdo, cada um com cor própria — a tag de formato deixou de
+ * ser cinza para todos e passa a identificar o tipo de peça de relance no
+ * calendário, no backlog e nos detalhes.
+ *
+ * "Reel + Feed" saiu do vocabulário (era só a soma de dois formatos já
+ * existentes); "Outro" entrou, e leva um texto livre no próprio post
+ * (`formatOther`).
+ */
+export const FORMAT: Record<ContentFormat, FormatMeta> = {
+  REEL: { label: "Reel", color: "#8b5cf6" },
+  STORY: { label: "Story", color: "#06b6d4" },
+  FEED: { label: "Feed", color: "#22c55e" },
+  CARROSSEL: { label: "Carrossel", color: "#f97316" },
+  LIVE: { label: "Live", color: "#e11d48" },
+  OUTRO: { label: "Outro", color: "#64748b" },
 };
+
+export const FORMAT_LABEL: Record<ContentFormat, string> = {
+  REEL: FORMAT.REEL.label,
+  STORY: FORMAT.STORY.label,
+  FEED: FORMAT.FEED.label,
+  CARROSSEL: FORMAT.CARROSSEL.label,
+  LIVE: FORMAT.LIVE.label,
+  OUTRO: FORMAT.OUTRO.label,
+};
+
+/**
+ * Rótulo exibido do formato. Em "Outro", mostra o que a pessoa digitou — o
+ * texto livre é a informação útil; a palavra "Outro" não diz nada.
+ */
+export function formatLabel(format: ContentFormat, formatOther?: string): string {
+  if (format !== "OUTRO") return FORMAT_LABEL[format];
+  const custom = formatOther?.trim();
+  return custom && custom.length > 0 ? custom : FORMAT_LABEL.OUTRO;
+}
+
+/** Selo do formato sobre a própria cor — mesma receita do `platformStyle`. */
+export function formatStyle(format: ContentFormat): CSSProperties {
+  const { color } = FORMAT[format];
+  return {
+    borderColor: `${color}59`,
+    backgroundColor: `${color}1f`,
+    color,
+  };
+}
 
 export const STATUS_ORDER: readonly ContentStatus[] = [
   "IDEIA",

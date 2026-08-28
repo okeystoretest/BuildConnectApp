@@ -3,6 +3,11 @@ export type Role = "COLABORADOR" | "GESTOR" | "ADMIN";
 export type Permission =
   | "content.view"
   | "content.upload"
+  // Publicar/remover o VÍDEO DE BOAS-VINDAS de um setor. Separada de
+  // `content.upload` de propósito: o vídeo de boas-vindas é obrigatório para
+  // todo mundo do setor e trocá-lo zera as visualizações — decisão da
+  // administração, não da gestão do setor.
+  | "welcomeVideo.manage"
   | "links.manage"
   | "evaluations.view"
   // Preencher uma avaliação designada a si (avaliador convidado ou autoavaliação).
@@ -10,6 +15,8 @@ export type Permission =
   | "evaluations.fill"
   | "sector.it"
   | "sector.hr"
+  // Ler e tratar as denúncias da Central de Denúncias (DHO).
+  | "reports.manage"
   | "users.manage"
   | "tickets.create"
   | "tickets.viewOwn"

@@ -18,8 +18,11 @@ import type { Role } from "@/types";
  *  - Trocar o vídeo APAGA o arquivo anterior do disco (não acumula órfão na
  *    VPS) e ZERA as visualizações — o vídeo novo tem de ser assistido por
  *    todos, inclusive por quem já tinha visto o antigo.
- *  - Enviar/remover exige `content.upload` (Gestor e Admin). Marcar como
- *    assistido é do próprio usuário logado.
+ *  - Enviar/remover exige `welcomeVideo.manage` — hoje só o Admin. O Gestor
+ *    continua enviando conteúdo do setor (`content.upload`), mas NÃO o vídeo
+ *    de boas-vindas: ele é obrigatório para todos do setor e publicá-lo zera
+ *    as visualizações de quem já havia assistido. Marcar como assistido é do
+ *    próprio usuário logado.
  */
 
 export interface WelcomeVideoResult {
@@ -30,8 +33,11 @@ export interface WelcomeVideoResult {
 async function requireUploader() {
   const user = await getCurrentUser();
   if (!user) return { user: null, error: "Sessão expirada. Faça login novamente." };
-  if (!can(user.role as Role, "content.upload")) {
-    return { user: null, error: "Você não tem permissão para enviar conteúdo." };
+  if (!can(user.role as Role, "welcomeVideo.manage")) {
+    return {
+      user: null,
+      error: "Apenas a administração pode publicar o vídeo de boas-vindas do setor.",
+    };
   }
   return { user, error: null };
 }

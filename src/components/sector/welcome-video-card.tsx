@@ -23,9 +23,11 @@ export interface WelcomeVideoCardProps {
 }
 
 /**
- * Gestão do vídeo de boas-vindas do setor. Visível apenas para quem pode
- * enviar conteúdo (Gestor e Admin) — para o colaborador o vídeo aparece como
- * o modal obrigatório da primeira visita, e mais nada.
+ * Gestão do vídeo de boas-vindas do setor. Visível apenas para quem tem
+ * `welcomeVideo.manage` — hoje só o Admin. Para todos os demais, inclusive o
+ * Gestor, o vídeo aparece como o modal obrigatório da primeira visita, e mais
+ * nada: publicar um vídeo obrigatório para o setor inteiro (e zerar as
+ * visualizações de quem já assistiu) é decisão da administração.
  *
  * Fica logo abaixo do cabeçalho da página, antes das abas: é conteúdo do
  * setor inteiro, não de uma aba específica.
@@ -49,7 +51,7 @@ export function WelcomeVideoCard({
   const [saving, startSave] = useTransition();
   const [removing, startRemove] = useTransition();
 
-  if (!can("content.upload")) return null;
+  if (!can("welcomeVideo.manage")) return null;
 
   function pickFile(selected: File | undefined) {
     if (!selected) return;
