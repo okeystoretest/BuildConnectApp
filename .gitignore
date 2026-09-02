@@ -27,3 +27,10 @@ npm-debug.log*
 
 # Pacotes de entrega
 *.zip
+
+# Ferramentas locais do Claude Code (skills). Ficam na máquina, fora do repo.
+.claude/
+
+# Anotações de trabalho — não fazem parte do código.
+Instruções_BCA.md
+RESUMO-CORRECAO-CRONOGRAMA.md
