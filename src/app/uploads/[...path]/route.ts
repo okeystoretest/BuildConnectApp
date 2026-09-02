@@ -3,6 +3,9 @@ import { stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import path from "node:path";
 import { UPLOADS_ROOT } from "@/lib/storage/config";
+import { getSession } from "@/lib/auth/session";
+import { can } from "@/lib/permissions";
+import type { Role } from "@/types";
 
 /**
  * Servidor dos arquivos enviados (`/uploads/...`).
@@ -16,18 +19,26 @@ import { UPLOADS_ROOT } from "@/lib/storage/config";
  *
  * Suporta Range para que vídeo grande toque com seek, em vez de ser baixado
  * inteiro antes do primeiro frame.
+ *
+ * Autenticação: a rota é isenta do middleware (ver src/middleware.ts), então a
+ * checagem de sessão é feita AQUI. Sem isso, todo o acervo — comprovantes,
+ * documentos do DHO e evidências de denúncia — ficava acessível a quem tivesse
+ * o link, sem login. Nome aleatório não é controle de acesso: URL vaza por
+ * histórico, Referer, encaminhamento e cache de proxy.
  */
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// ".svg" está fora de propósito: SVG é documento ativo (executa script) e
+// nenhum fluxo do sistema grava SVG. Fora do mapa, cai em octet-stream e o
+// navegador baixa em vez de renderizar.
 const CONTENT_TYPE: Record<string, string> = {
   ".webp": "image/webp",
   ".png": "image/png",
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".gif": "image/gif",
-  ".svg": "image/svg+xml",
   ".pdf": "application/pdf",
   ".txt": "text/plain; charset=utf-8",
   ".md": "text/plain; charset=utf-8",
@@ -67,9 +78,20 @@ function nodeToWeb(stream: NodeJS.ReadableStream): ReadableStream {
 
 export async function GET(
   request: Request,
-  { params }: { params: { path: string[] } },
+  { params }: { params: Promise<{ path: string[] }> },
 ) {
-  const filePath = resolveSafePath(params.path ?? []);
+  const session = await getSession();
+  if (!session) return new Response("Não autenticado", { status: 401 });
+
+  // Evidências da Central de Denúncias seguem a mesma régua da tela que as
+  // exibe: só quem trata as denúncias abre o anexo.
+  const { path: segments } = await params;
+  const category = segments?.[0];
+  if (category === "denuncias" && !can(session.role as Role, "reports.manage")) {
+    return new Response("Sem permissão", { status: 403 });
+  }
+
+  const filePath = resolveSafePath(segments ?? []);
   if (!filePath) return new Response("Not found", { status: 404 });
 
   let size: number;
@@ -82,10 +104,24 @@ export async function GET(
   }
 
   const type = CONTENT_TYPE[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
-  // Nomes de arquivo são aleatórios e nunca reaproveitados: cache agressivo.
+  // Anexo (download) para o que o navegador não deve renderizar: formatos do
+  // Office e binário desconhecido. Imagem, vídeo, PDF e texto continuam abrindo
+  // na aba — é o que hr-documents, integration-maps e o modal de vídeo esperam.
+  // O que tornava isso perigoso era SVG, que agora nem é gravado (storage/
+  // files.ts) nem tem Content-Type aqui. "nosniff" fecha o resto: impede o
+  // navegador de adivinhar um tipo executável ignorando o Content-Type.
+  const inline =
+    type.startsWith("image/") ||
+    type.startsWith("video/") ||
+    type.startsWith("text/") ||
+    type === "application/pdf";
+  // Nomes são aleatórios e nunca reaproveitados: cache longo. Mas "private" —
+  // o conteúdo é de usuário autenticado e não pode ficar em proxy compartilhado.
   const baseHeaders: Record<string, string> = {
     "Content-Type": type,
-    "Cache-Control": "public, max-age=31536000, immutable",
+    "X-Content-Type-Options": "nosniff",
+    "Content-Disposition": inline ? "inline" : "attachment",
+    "Cache-Control": "private, max-age=31536000, immutable",
     "Accept-Ranges": "bytes",
   };
 

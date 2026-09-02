@@ -59,6 +59,23 @@ const RULES: Record<
   },
 };
 
+/**
+ * Extensões aceitas por regra.
+ *
+ * O MIME (file.type) vem do header da parte multipart — quem envia escolhe o
+ * valor. Aceitar só o MIME permitia gravar "payload.svg" declarando
+ * "image/png": o arquivo era servido depois como image/svg+xml, na origem da
+ * aplicação, e SVG executa script. A extensão real passa a ser conferida
+ * SEMPRE, e é ela que nomeia o arquivo no disco.
+ */
+const RULE_EXTENSIONS: Record<keyof typeof RULES, ReadonlySet<string>> = {
+  video: new Set([".mp4", ".webm", ".mov", ".mkv"]),
+  document: new Set([".pdf", ".doc", ".docx", ".xls", ".xlsx", ".png"]),
+  pdf: new Set([".pdf"]),
+  instruction: new Set([".pdf", ".doc", ".docx"]),
+  transcript: new Set([".txt", ".vtt", ".srt", ".md"]),
+};
+
 export class FileStorageError extends Error {
   constructor(message: string) {
     super(message);
@@ -89,6 +106,12 @@ export async function storeFile(
   // Alguns formatos chegam sem MIME (ou com MIME genérico) do navegador;
   // a extensão sanitizada é o fallback aceito.
   const extension = safeExtension(file.name);
+
+  // Primeiro corte: a extensão precisa estar na allowlist da regra, sempre.
+  if (!RULE_EXTENSIONS[rule].has(extension)) {
+    throw new FileStorageError(`Extensão inválida para ${label.toLowerCase()}.`);
+  }
+
   const validMime = mimes.has(file.type);
   const validExtension = Boolean(extensions?.has(extension));
   if (!validMime && !validExtension) {
@@ -102,7 +125,8 @@ export async function storeFile(
   const dir = resolveUploadDir(category);
   await mkdir(dir, { recursive: true });
 
-  const filename = `${crypto.randomBytes(16).toString("hex")}${safeExtension(file.name)}`;
+  // Nome novo com a extensão JÁ validada acima.
+  const filename = `${crypto.randomBytes(16).toString("hex")}${extension}`;
   const absolutePath = path.join(dir, filename);
   const buffer = Buffer.from(await file.arrayBuffer());
   await writeFile(absolutePath, buffer);
