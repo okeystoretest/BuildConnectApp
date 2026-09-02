@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ImageUploader } from "@/components/ui/image-uploader";
 import { cn, initials } from "@/lib/utils";
 import {
+  openReportSession,
   searchReportTargets,
   submitAnonymousReport,
   type ReportTargetOption,
@@ -53,6 +54,22 @@ export function AnonymousReportModal({ open, onClose }: AnonymousReportModalProp
   // Descarta respostas de buscas antigas que chegarem fora de ordem.
   const searchToken = useRef(0);
 
+  // Bilhete assinado da sessão de preenchimento (ver lib/reports/ticket.ts).
+  // Emitido quando o modal abre; renovado uma vez se vencer com o formulário
+  // aberto. Não identifica quem preenche.
+  const ticket = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let ativo = true;
+    void openReportSession().then((r) => {
+      if (ativo) ticket.current = r.ticket;
+    });
+    return () => {
+      ativo = false;
+    };
+  }, [open]);
+
   function reset() {
     setQuery("");
     setResults([]);
@@ -84,7 +101,21 @@ export function AnonymousReportModal({ open, onClose }: AnonymousReportModalProp
     const token = ++searchToken.current;
     setSearching(true);
     const timer = setTimeout(() => {
-      searchReportTargets(term)
+      const buscar = async () => {
+        let resposta = await searchReportTargets(term, ticket.current ?? "");
+
+        // Bilhete vencido ou esgotado: pega outro e tenta uma única vez.
+        if (resposta.renew) {
+          const novo = await openReportSession();
+          ticket.current = novo.ticket;
+          resposta = novo.ticket
+            ? await searchReportTargets(term, novo.ticket)
+            : { targets: [] };
+        }
+        return resposta.targets;
+      };
+
+      void buscar()
         .then((found) => {
           if (token !== searchToken.current) return;
           setResults(found);
@@ -111,6 +142,7 @@ export function AnonymousReportModal({ open, onClose }: AnonymousReportModalProp
     const data = new FormData();
     data.set("targetUserId", target.id);
     data.set("description", description);
+    data.set("ticket", ticket.current ?? "");
     for (const file of files) data.append("attachments", file);
 
     const result = await submitAnonymousReport(data);

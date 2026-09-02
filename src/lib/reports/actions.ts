@@ -6,7 +6,43 @@ import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { processAndStoreImages, ImageProcessingError } from "@/lib/storage/images";
+import { consume, clientIp } from "@/lib/rate-limit";
+import { issueTicket, readTicket } from "@/lib/reports/ticket";
 import { MAX_REPORT_ATTACHMENTS, REPORT_TARGET_MIN_QUERY } from "@/types/report";
+
+/**
+ * Tetos das duas actions públicas.
+ *
+ * A busca é generosa o bastante para quem digita um nome (o modal tem debounce
+ * de 300 ms), e apertada o bastante para inviabilizar varrer o alfabeto e
+ * reconstruir o quadro de colaboradores. O envio limita enxurrada de denúncia
+ * falsa e o consumo de disco da VPS por quem não fez login.
+ */
+const SEARCH_WINDOW_MS = 60 * 1000;
+const MAX_SEARCHES_PER_IP = 30;
+const SUBMIT_WINDOW_MS = 60 * 60 * 1000;
+const MAX_SUBMITS_PER_IP = 5;
+// Teto por bilhete de formulário e teto de bilhetes por IP. Multiplicados, são
+// o limite real de extração: mesmo automatizado, ninguém puxa a lista inteira.
+const TICKET_WINDOW_MS = 60 * 60 * 1000;
+const MAX_SEARCHES_PER_TICKET = 25;
+const MAX_TICKETS_PER_IP = 6;
+
+/**
+ * Abre uma sessão de preenchimento e devolve o bilhete assinado.
+ *
+ * Chamada quando o modal abre. Não identifica ninguém (id aleatório, nada
+ * gravado): serve só para dar um teto de buscas a cada abertura do formulário.
+ */
+export async function openReportSession(): Promise<{ ticket: string | null }> {
+  const limit = await consume(
+    "report-session:" + (await clientIp()),
+    MAX_TICKETS_PER_IP,
+    TICKET_WINDOW_MS,
+  );
+  if (!limit.ok) return { ticket: null };
+  return { ticket: issueTicket() };
+}
 
 /**
  * Canal PÚBLICO da Central de Denúncias.
@@ -34,16 +70,43 @@ export interface ReportTargetOption {
   sector: string;
 }
 
+export interface ReportSearchResult {
+  targets: ReportTargetOption[];
+  /** true quando o bilhete venceu/esgotou e o formulário deve pedir outro. */
+  renew?: boolean;
+}
+
 /**
  * Busca do destinatário da denúncia por trecho do nome.
  *
  * Sem consulta não há resposta: uma lista completa de colaboradores exposta
- * numa rota pública seria um diretório da empresa aberto na internet. O
- * mínimo de caracteres e o teto de 8 resultados existem por isso.
+ * numa rota pública seria um diretório da empresa aberto na internet. O mínimo
+ * de caracteres, o teto de 8 resultados, o limite por IP e o bilhete de
+ * formulário existem por isso.
  */
-export async function searchReportTargets(query: string): Promise<ReportTargetOption[]> {
+export async function searchReportTargets(
+  query: string,
+  ticket: string,
+): Promise<ReportSearchResult> {
+  const ticketId = readTicket(ticket);
+  if (!ticketId) return { targets: [], renew: true };
+
   const term = query.trim();
-  if (term.length < REPORT_TARGET_MIN_QUERY) return [];
+  if (term.length < REPORT_TARGET_MIN_QUERY) return { targets: [] };
+
+  const porBilhete = await consume(
+    "report-ticket:" + ticketId,
+    MAX_SEARCHES_PER_TICKET,
+    TICKET_WINDOW_MS,
+  );
+  if (!porBilhete.ok) return { targets: [], renew: true };
+
+  const limit = await consume(
+    "report-search:" + (await clientIp()),
+    MAX_SEARCHES_PER_IP,
+    SEARCH_WINDOW_MS,
+  );
+  if (!limit.ok) return { targets: [] };
 
   const people = await prisma.user.findMany({
     where: { active: true, fullName: { contains: term, mode: "insensitive" } },
@@ -52,11 +115,13 @@ export async function searchReportTargets(query: string): Promise<ReportTargetOp
     take: 8,
   });
 
-  return people.map((person) => ({
-    id: person.id,
-    name: person.fullName,
-    sector: person.sector?.label ?? "—",
-  }));
+  return {
+    targets: people.map((person) => ({
+      id: person.id,
+      name: person.fullName,
+      sector: person.sector?.label ?? "—",
+    })),
+  };
 }
 
 const reportSchema = z.object({
@@ -102,6 +167,27 @@ async function nextReportCode(): Promise<string> {
  * fica na VPS.
  */
 export async function submitAnonymousReport(formData: FormData): Promise<SubmitReportResult> {
+  // Envio também exige o bilhete: fecha o caminho de despejar denúncias por
+  // script sem nem abrir o formulário.
+  if (!readTicket(String(formData.get("ticket") ?? ""))) {
+    return {
+      ok: false,
+      error: "Sessão do formulário expirada. Feche e abra a denúncia novamente.",
+    };
+  }
+
+  const limit = await consume(
+    "report-submit:" + (await clientIp()),
+    MAX_SUBMITS_PER_IP,
+    SUBMIT_WINDOW_MS,
+  );
+  if (!limit.ok) {
+    return {
+      ok: false,
+      error: "Muitos envios seguidos. Tente novamente mais tarde.",
+    };
+  }
+
   const parsed = reportSchema.safeParse({
     targetUserId: formData.get("targetUserId"),
     description: formData.get("description"),

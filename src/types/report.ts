@@ -32,7 +32,7 @@ export interface ReportItem {
 export const MAX_REPORT_ATTACHMENTS = 5;
 
 /** Mínimo de caracteres para a busca de destinatário devolver resultados. */
-export const REPORT_TARGET_MIN_QUERY = 3;
+export const REPORT_TARGET_MIN_QUERY = 4;
 
 export const REPORT_STATUS_ORDER: readonly ReportStatus[] = [
   "ABERTA",
