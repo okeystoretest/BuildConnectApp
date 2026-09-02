@@ -9,18 +9,22 @@ const prisma = new PrismaClient();
 /**
  * Senha inicial de todos os usuários criados pelo seed.
  *
- * Em desenvolvimento cai no valor padrão. Na VPS, defina SEED_PASSWORD no
- * ambiente antes de rodar o seed — o seed é a origem do usuário admin, e um
- * admin com "senha123" numa aplicação exposta na internet é uma porta aberta.
+ * Sempre obrigatória — não há mais valor padrão. O guarda anterior só valia
+ * quando NODE_ENV=production estava presente no shell que rodava o seed; um
+ * console de deploy sem essa variável criava o admin com senha123 numa
+ * aplicação exposta na internet.
  */
-const SEED_PASSWORD = process.env.SEED_PASSWORD?.trim() || "senha123";
+const seedPasswordRaw = process.env.SEED_PASSWORD?.trim();
 
-if (process.env.NODE_ENV === "production" && !process.env.SEED_PASSWORD?.trim()) {
+if (!seedPasswordRaw) {
   throw new Error(
-    "SEED_PASSWORD não definida. Em produção, defina uma senha forte antes de rodar o seed:\n" +
+    "SEED_PASSWORD não definida. Defina uma senha forte antes de rodar o seed:\n" +
       '  SEED_PASSWORD="..." npx prisma db seed',
   );
 }
+
+/** Já validada acima: o módulo nem carrega sem ela. */
+const SEED_PASSWORD: string = seedPasswordRaw;
 
 // Subsetores tratados como vitrine (galeria de fotos).
 const VITRINE_SLUGS = new Set(["okey-vitrine", "lov-club-vitrine"]);
@@ -410,7 +414,7 @@ async function main() {
   await seedUsers(passwordHash);
   await seedAppInheritance();
   await seedEvaluationCycles();
-  console.log(`\nSeed concluído. Senha de todos: "${SEED_PASSWORD}"`);
+  console.log("\nSeed concluído. A senha inicial é o valor de SEED_PASSWORD.");
 }
 
 main()

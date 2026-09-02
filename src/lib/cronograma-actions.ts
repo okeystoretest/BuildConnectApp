@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth/require-user";
+import { resolveAccessibleSlugs, canAccessSlug } from "@/lib/auth/access";
 import { resolveAppScope } from "@/lib/app-scope";
 import { toScheduledDate, canEditPost, canDeletePost } from "@/lib/cronograma-data";
 import { visibilityForSlug } from "@/lib/cronograma-visibility";
@@ -96,8 +97,19 @@ async function requireAuthor(postId: string, scopeId: string, user: { id: string
   return { post, error: null };
 }
 
-/** Resolve o subsetor que guarda os dados e confirma que a ferramenta está ativa. */
-async function requireScope(slug: string) {
+/**
+ * Resolve o subsetor que guarda os dados, confirma que a ferramenta está ativa
+ * e que o usuário tem acesso ao setor pedido.
+ *
+ * A checagem de acesso estava só nas páginas: pela action, qualquer usuário
+ * autenticado escrevia no cronograma de um setor que nem enxerga no menu.
+ */
+async function requireScope(slug: string, user: { id: string; role: string }) {
+  const slugs = await resolveAccessibleSlugs(user.id, user.role as Role);
+  if (!canAccessSlug(slugs, slug)) {
+    return { scope: null, error: "Você não tem acesso a este setor." };
+  }
+
   const scope = await resolveAppScope(slug);
   if (!scope) return { scope: null, error: "Setor não encontrado." };
   if (!scope.scheduleEnabled) {
@@ -134,7 +146,7 @@ export async function createContentPost(input: ContentPostInput): Promise<Action
   }
   const data = parsed.data;
 
-  const { scope, error: scopeError } = await requireScope(data.slug);
+  const { scope, error: scopeError } = await requireScope(data.slug, user);
   if (!scope) return { ok: false, error: scopeError ?? undefined };
 
   const scheduledAt = toScheduledDate(data.date, data.time);
@@ -180,7 +192,7 @@ export async function updateContentPost(
   if (!input.id) return { ok: false, error: "Post não informado." };
   const data = parsed.data;
 
-  const { scope, error: scopeError } = await requireScope(data.slug);
+  const { scope, error: scopeError } = await requireScope(data.slug, user);
   if (!scope) return { ok: false, error: scopeError ?? undefined };
 
   const scheduledAt = toScheduledDate(data.date, data.time);
@@ -225,7 +237,7 @@ export async function setContentPostStatus(input: {
   const { user, error } = await requireUser();
   if (!user) return { ok: false, error: error ?? undefined };
 
-  const { scope, error: scopeError } = await requireScope(input.slug);
+  const { scope, error: scopeError } = await requireScope(input.slug, user);
   if (!scope) return { ok: false, error: scopeError ?? undefined };
 
   const { error: authorError } = await requireAuthor(input.id, scope.id, user);
@@ -254,7 +266,7 @@ export async function deleteContentPost(input: {
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "Sessão expirada. Faça login novamente." };
 
-  const { scope, error: scopeError } = await requireScope(input.slug);
+  const { scope, error: scopeError } = await requireScope(input.slug, user);
   if (!scope) return { ok: false, error: scopeError ?? undefined };
 
   const post = await prisma.contentPost.findFirst({

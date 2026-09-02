@@ -297,7 +297,21 @@ export async function uploadSectorDocument(formData: FormData): Promise<ActionRe
 const linkSchema = z.object({
   slug: z.string().min(1),
   label: z.string().trim().min(1, "Informe o nome do aplicativo."),
-  url: z.string().trim().url("URL inválida."),
+  // .url() do Zod aceita QUALQUER esquema que o construtor URL entenda —
+  // "javascript:..." inclusive, que vira execução de script no navegador de
+  // quem clicar no atalho. O protocolo é conferido à parte.
+  url: z
+    .string()
+    .trim()
+    .url("URL inválida.")
+    .refine((value) => {
+      try {
+        const protocol = new URL(value).protocol;
+        return protocol === "http:" || protocol === "https:";
+      } catch {
+        return false;
+      }
+    }, "Use um endereço http:// ou https://."),
 });
 
 /** Ícone opcional: passa pelo sharp e vira .webp (nunca binário no banco). */

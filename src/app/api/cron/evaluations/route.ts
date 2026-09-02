@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import crypto from "node:crypto";
 import { sweepAvailability } from "@/lib/evaluation-schedule";
 
 /**
@@ -24,7 +25,13 @@ function isAuthorized(request: Request): boolean {
 
   const header = request.headers.get("authorization") ?? "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : header;
-  return token === secret;
+
+  // Mesma régua do session.ts: comparar segredo com "===" para no primeiro
+  // byte diferente e vaza informação por tempo. timingSafeEqual exige buffers
+  // do mesmo tamanho, daí a checagem de comprimento antes.
+  const a = Buffer.from(token);
+  const b = Buffer.from(secret);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 export async function GET(request: Request) {

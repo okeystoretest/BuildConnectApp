@@ -45,5 +45,15 @@ EXPOSE 3000
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
+# Runtime sem root. A imagem base já traz o usuário "node" (uid 1000); build,
+# npm ci e prisma generate rodam como root acima, e só o processo servido cai
+# de privilégio. /app precisa ser gravável pelo cache do next start.
+#
+# ATENÇÃO NO DEPLOY: o volume montado em /var/www/app/uploads precisa pertencer
+# ao uid 1000 — "chown -R 1000:1000" no volume. O entrypoint verifica e falha
+# com mensagem clara se não estiver.
+RUN chown -R node:node /app /var/www/app
+USER node
+
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["npm", "run", "start"]
