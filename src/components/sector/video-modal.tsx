@@ -86,7 +86,6 @@ export function VideoModal({ video, open, onClose }: VideoModalProps) {
           {/* Player — permanece montado e visível ao abrir a transcrição. */}
           <div className="min-w-0">
             {video.filePath ? (
-              // eslint-disable-next-line jsx-a11y/media-has-caption
               <video
                 src={video.filePath}
                 controls

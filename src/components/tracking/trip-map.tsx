@@ -59,7 +59,9 @@ function FitBounds({ trip }: { trip: TripTracking }) {
     if (points.length === 0) return;
     map.fitBounds(L.latLngBounds(points), { padding: [48, 48], maxZoom: 16 });
     // Reenquadra só quando as pontas mudam; o movimento do motorista não
-    // deve arrastar o mapa a cada atualização.
+    // deve arrastar o mapa a cada atualização. Por isso trip.position fica
+    // FORA das dependências, de propósito.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     map,
     trip.hasOrigin,

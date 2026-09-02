@@ -17,14 +17,14 @@ export const dynamic = "force-dynamic";
 
 export async function GET(
   _request: Request,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
   }
 
-  const ticketId = params.id;
+  const { id: ticketId } = await params;
   if (!ticketId) {
     return NextResponse.json({ error: "Chamado inválido." }, { status: 400 });
   }
