@@ -48,6 +48,10 @@ const cspCompleta = [
 const nextConfig = {
   reactStrictMode: true,
   output: "standalone",
+  // Sem "X-Powered-By: Next.js" na resposta. Medido em produção, ele estava
+  // sendo enviado: anuncia o framework para qualquer requisição e entrega de
+  // graça a lista de CVEs que vale a pena tentar primeiro.
+  poweredByHeader: false,
   images: {
     formats: ["image/webp"],
   },
