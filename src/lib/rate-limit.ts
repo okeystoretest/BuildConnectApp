@@ -96,16 +96,26 @@ export async function reset(key: string): Promise<void> {
 /**
  * IP do cliente conforme o proxy da frente (Traefik/Easy Panel).
  *
- * x-forwarded-for pode vir com a cadeia inteira; o primeiro item é o cliente.
- * Cabeçalho é forjável por quem fala direto com a aplicação — por isso ele
- * complementa o limite por usuário, nunca o substitui.
+ * Lê o ÚLTIMO item de x-forwarded-for, não o primeiro. Proxy reverso não
+ * substitui esse cabeçalho: ele ANEXA o IP do peer ao que o cliente mandou.
+ * Quem enviar "x-forwarded-for: 1.1.1.1" chega aqui como "1.1.1.1, <ip-real>",
+ * então ler o primeiro item é ler o que o atacante escreveu — e trocá-lo a
+ * cada requisição daria um balde novo, anulando todo limite por IP.
+ *
+ * O último item é o que o proxy escreveu: o único que o cliente não controla.
+ * Vale também se o proxy substituir em vez de anexar (aí só existe um item).
+ *
+ * Premissa: UM proxy confiável na frente. Se entrar um segundo (CDN antes do
+ * Traefik), este valor passa a ser o IP do proxy interno e todos caem no mesmo
+ * balde — nesse dia, pular a quantidade certa de saltos a partir do fim.
  */
 export async function clientIp(): Promise<string> {
   const list = await headers();
   const forwarded = list.get("x-forwarded-for");
   if (forwarded) {
-    const first = forwarded.split(",")[0]?.trim();
-    if (first) return first;
+    const cadeia = forwarded.split(",");
+    const ultimo = cadeia[cadeia.length - 1]?.trim();
+    if (ultimo) return ultimo;
   }
   return list.get("x-real-ip") ?? "desconhecido";
 }

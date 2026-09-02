@@ -15,10 +15,20 @@ import type { Role } from "@/types";
  * Por usuário barra a força bruta contra uma conta específica; por IP barra a
  * varredura de várias contas a partir do mesmo lugar. O padrão de usuário é
  * público (nome#BC), então o nome não é segredo — só a senha é.
+ *
+ * Só ERRO de senha acumula: acerto zera as duas chaves. Sem isso, um
+ * escritório atrás de um NAT (todo mundo saindo pelo mesmo IP público) somaria
+ * logins legítimos no mesmo balde e travaria sozinho no início do turno —
+ * justamente quando todos entram. O teto por IP é generoso pelo mesmo motivo:
+ * 50 senhas erradas em 10 minutos do mesmo lugar não é gente distraída.
+ *
+ * Efeito colateral aceito: quem tem uma conta válida pode zerar o balde do
+ * próprio IP acertando o próprio login. Quem segura o ataque nesse caso é o
+ * teto POR USUÁRIO, que é o controle que realmente protege cada conta.
  */
 const LOGIN_WINDOW_MS = 10 * 60 * 1000;
 const MAX_ATTEMPTS_PER_USER = 8;
-const MAX_ATTEMPTS_PER_IP = 30;
+const MAX_ATTEMPTS_PER_IP = 50;
 
 const loginSchema = z.object({
   username: z.string().trim().min(1, "Informe seu nome de usuário."),
@@ -73,8 +83,8 @@ export async function login(formData: {
     // Resolve os subsetores acessíveis já no login (RBAC de conteúdo).
     const accessSlugs = await resolveAccessibleSlugs(user.id, user.role as Role);
 
-    // Login válido: a conta deixa de acumular tentativas.
-    await reset(userKey);
+    // Login válido: nem a conta nem o IP acumulam.
+    await Promise.all([reset(userKey), reset(ipKey)]);
 
     await createSession({
       userId: user.id,
