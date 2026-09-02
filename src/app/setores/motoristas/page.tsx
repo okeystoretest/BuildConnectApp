@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { getSession } from "@/lib/auth/session";
+import { getVerifiedSession } from "@/lib/auth/require-user";
 import { resolveAccessibleSlugs, canAccessSlug } from "@/lib/auth/access";
 import { getSectorContent } from "@/lib/sector-data";
 import {
@@ -15,7 +15,7 @@ import type { Role } from "@/types";
 export const dynamic = "force-dynamic";
 
 export default async function DriversSectorPage() {
-  const session = await getSession();
+  const session = await getVerifiedSession();
   if (!session) redirect("/login");
 
   // RBAC: barra acesso direto por URL a quem não tem o subsetor "motoristas".

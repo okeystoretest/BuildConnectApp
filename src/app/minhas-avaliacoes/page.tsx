@@ -3,7 +3,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
 import { MyEvaluationsPanel } from "@/components/me/my-evaluations-panel";
-import { getSession } from "@/lib/auth/session";
+import { getVerifiedSession } from "@/lib/auth/require-user";
 import { getMyEvaluationTasks } from "@/lib/evaluation-rounds";
 import { MULTI_RATER_SLUGS } from "@/lib/evaluation-rounds-config";
 import { getEvaluationForm } from "@/lib/evaluation-data";
@@ -12,7 +12,7 @@ import type { EvalForm } from "@/types/evaluation";
 export const dynamic = "force-dynamic";
 
 export default async function MyEvaluationsPage() {
-  const session = await getSession();
+  const session = await getVerifiedSession();
   if (!session) redirect("/login");
 
   // Cada rodada pode ser de um instrumento diferente (Matriz de Decisão,

@@ -50,6 +50,13 @@ model User {
   avatarPath String?
 
   active    Boolean  @default(true)
+
+  // Versão da sessão. Vai assinada dentro do cookie e é conferida a cada
+  // requisição: incrementar este número invalida NA HORA todas as sessões
+  // abertas do usuário. É o que dá efeito imediato a trocar a senha, mudar o
+  // papel ou desativar a conta — antes, o token seguia valendo até vencer.
+  sessionVersion Int @default(0)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -158,6 +165,25 @@ model SubsectorWelcomeView {
   @@unique([userId, subsectorId])
   @@index([subsectorId])
   @@index([userId])
+}
+
+/**
+ * Contador de tentativas por janela de tempo (login, buscas e envios públicos).
+ *
+ * Em banco, não em memória: o contador precisa sobreviver a restart/deploy —
+ * senão um ataque de senha só espera o próximo deploy para zerar o bloqueio —
+ * e valer para todas as réplicas, se um dia houver mais de uma.
+ *
+ * A chave já vem qualificada por quem a emite ("login:user:joao#BC",
+ * "report-submit:203.0.113.5"). Linhas vencidas são varridas de tempos em
+ * tempos pelo próprio helper.
+ */
+model RateLimit {
+  key     String   @id
+  count   Int      @default(0)
+  resetAt DateTime
+
+  @@index([resetAt])
 }
 
 model UserSubsector {

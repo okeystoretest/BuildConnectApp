@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { getSession } from "@/lib/auth/session";
+import { getVerifiedSession } from "@/lib/auth/require-user";
 import { can } from "@/lib/permissions";
 import { getManagedUsers } from "@/lib/users-data";
 import { getHrDocuments, getIntegrationMaps } from "@/lib/hr-content-data";
@@ -18,7 +18,7 @@ import type { Role } from "@/types";
 export const dynamic = "force-dynamic";
 
 export default async function HrSectorPage() {
-  const session = await getSession();
+  const session = await getVerifiedSession();
   if (!session) redirect("/login");
 
   const role = session.role as Role;

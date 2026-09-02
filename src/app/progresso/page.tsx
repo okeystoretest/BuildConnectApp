@@ -9,11 +9,11 @@ import { SectorProgressBlock } from "@/components/progress/sector-progress-block
 import { PendingContent } from "@/components/progress/pending-content";
 import { EmptyState } from "@/components/ui/empty-state";
 import { BarChart3 } from "lucide-react";
-import { getSession } from "@/lib/auth/session";
+import { getVerifiedSession } from "@/lib/auth/require-user";
 import { getProgressPageData } from "@/lib/progress-page-data";
 
 export default async function ProgressPage() {
-  const session = await getSession();
+  const session = await getVerifiedSession();
   if (!session) redirect("/login");
 
   const data = await getProgressPageData(session.userId);

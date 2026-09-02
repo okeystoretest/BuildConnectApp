@@ -23,6 +23,20 @@ interface SessionPayload {
    * Persistido na sessão para filtrar a navegação no client sem consulta.
    */
   accessSlugs?: string[] | null;
+  /**
+   * Instante (epoch em segundos) em que o token deixa de valer.
+   *
+   * O prazo precisa viver DENTRO do que é assinado. O maxAge do cookie é
+   * instrução para o navegador — quem copiar o valor do cookie a descarta e
+   * usa o token para sempre. Com "exp", quem decide é o servidor.
+   */
+  exp: number;
+  /**
+   * Cópia do User.sessionVersion no momento do login. Quem valida compara com
+   * o número do banco: diferente = sessão revogada (senha trocada, papel
+   * alterado, conta desativada). Ver lib/auth/require-user.ts.
+   */
+  v: number;
 }
 
 function secret(): string {
@@ -39,8 +53,11 @@ function sign(data: string): string {
   return crypto.createHmac("sha256", secret()).update(data).digest("base64url");
 }
 
-export async function createSession(payload: SessionPayload): Promise<void> {
-  const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
+export async function createSession(
+  payload: Omit<SessionPayload, "exp">,
+): Promise<void> {
+  const exp = Math.floor(Date.now() / 1000) + MAX_AGE_SECONDS;
+  const body = Buffer.from(JSON.stringify({ ...payload, exp })).toString("base64url");
   const token = `${body}.${sign(body)}`;
 
   const store = await cookies();
@@ -68,7 +85,18 @@ export async function getSession(): Promise<SessionPayload | null> {
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
 
   try {
-    return JSON.parse(Buffer.from(body, "base64url").toString()) as SessionPayload;
+    const payload = JSON.parse(
+      Buffer.from(body, "base64url").toString(),
+    ) as SessionPayload;
+
+    // Token sem "exp" é do formato antigo (sessão perpétua): recusar em vez de
+    // aceitar sem prazo. Na prática, obriga um novo login após o deploy.
+    if (typeof payload.exp !== "number" || payload.exp * 1000 <= Date.now()) {
+      return null;
+    }
+    // Sem "v" o token é anterior à revogação por versão: recusar.
+    if (typeof payload.v !== "number") return null;
+    return payload;
   } catch {
     return null;
   }

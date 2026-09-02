@@ -10,7 +10,7 @@ import { NotificationProvider } from "@/providers/notification-provider";
 import { ToastProvider } from "@/providers/toast-provider";
 import { OnboardingGate } from "@/components/onboarding/onboarding-gate";
 import { TicketModalHost } from "@/components/tickets/ticket-modal-host";
-import { getSession } from "@/lib/auth/session";
+import { getVerifiedSession } from "@/lib/auth/require-user";
 import type { CurrentUser, Role } from "@/types";
 
 const outfit = Outfit({
@@ -48,7 +48,7 @@ const GUEST_USER: CurrentUser = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const session = await getSession();
+  const session = await getVerifiedSession();
   const user: CurrentUser = session
     ? {
         id: session.userId,

@@ -4,12 +4,12 @@ import { WelcomeBanner } from "@/components/home/welcome-banner";
 import { CompanyValues } from "@/components/home/company-values";
 import { CultureCard } from "@/components/home/culture-card";
 import { InstitutionalVideo } from "@/components/home/institutional-video";
-import { getSession } from "@/lib/auth/session";
+import { getVerifiedSession } from "@/lib/auth/require-user";
 import { getOverallProgress } from "@/lib/progress-data";
 import { COMPANY_VALUES, CULTURE_TEXT } from "@/lib/company-info";
 
 export default async function HomePage() {
-  const session = await getSession();
+  const session = await getVerifiedSession();
   // Defesa em profundidade: o middleware já protege, mas não renderizamos
   // conteúdo sem sessão.
   if (!session) redirect("/login");

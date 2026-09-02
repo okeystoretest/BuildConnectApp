@@ -197,6 +197,12 @@ export async function updateUser(formData: FormData): Promise<UserActionResult> 
   }
   const data = parsed.data;
 
+  // Situação atual, para saber se a edição exige derrubar as sessões abertas.
+  const atual = await prisma.user.findUnique({
+    where: { id },
+    select: { role: true },
+  });
+
   // Senha só é trocada se informada manualmente na edição.
   const password = String(formData.get("password") ?? "");
   if (password && password.length < MIN_PASSWORD_LENGTH) {
@@ -223,6 +229,11 @@ export async function updateUser(formData: FormData): Promise<UserActionResult> 
     const { sectorId, unitId, subIds } = await resolveRefs(data.sector, data.unit, data.subsectors);
     const passwordHash = password ? await hashPassword(password) : undefined;
 
+    // Trocar a senha ou mudar o papel derruba as sessões abertas do usuário na
+    // hora — sem isso, quem foi rebaixado continuaria com o papel antigo até o
+    // token vencer, e a senha antiga seguiria valendo em outro navegador.
+    const revogarSessoes = Boolean(passwordHash) || (atual !== null && atual.role !== data.role);
+
     await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.user.update({
         where: { id },
@@ -234,6 +245,7 @@ export async function updateUser(formData: FormData): Promise<UserActionResult> 
           unitId,
           ...(passwordHash ? { passwordHash } : {}),
           ...(avatarPath ? { avatarPath } : {}),
+          ...(revogarSessoes ? { sessionVersion: { increment: 1 } } : {}),
         },
       });
       // Recria vínculos de subsetor.
@@ -270,8 +282,12 @@ export async function deleteUser(id: string): Promise<UserActionResult> {
   }
 
   try {
-    // Soft delete: desativa em vez de apagar — preserva histórico de chamados etc.
-    await prisma.user.update({ where: { id }, data: { active: false } });
+    // Soft delete: desativa em vez de apagar — preserva histórico de chamados
+    // etc. A versão de sessão sobe junto: quem estava logado cai na hora.
+    await prisma.user.update({
+      where: { id },
+      data: { active: false, sessionVersion: { increment: 1 } },
+    });
     revalidatePath("/setores/rh");
     return { ok: true };
   } catch (e) {

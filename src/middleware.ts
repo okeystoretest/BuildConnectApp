@@ -9,6 +9,9 @@ import type { NextRequest } from "next/server";
  * Roda no Edge runtime, que não tem `node:crypto`. A verificação da
  * assinatura usa Web Crypto (crypto.subtle) — mesmo algoritmo do session.ts
  * (HMAC-SHA256, base64url), apenas com API diferente.
+ *
+ * A borda confere assinatura E prazo: token com HMAC válido mas vencido não é
+ * sessão. O "exp" sai do mesmo payload que o session.ts assina.
  */
 
 const COOKIE_NAME = "bc_session";
@@ -45,7 +48,17 @@ async function isValidToken(token: string, secret: string): Promise<boolean> {
   for (let i = 0; i < expected.length; i += 1) {
     diff |= expected.charCodeAt(i) ^ signature.charCodeAt(i);
   }
-  return diff === 0;
+  if (diff !== 0) return false;
+
+  // Assinatura confere; falta o prazo. O atob só entende base64 padrão, então
+  // o base64url volta ao alfabeto original antes de decodificar.
+  try {
+    const json = atob(body.replace(/-/g, "+").replace(/_/g, "/"));
+    const payload = JSON.parse(json) as { exp?: number };
+    return typeof payload.exp === "number" && payload.exp * 1000 > Date.now();
+  } catch {
+    return false;
+  }
 }
 
 export async function middleware(request: NextRequest) {

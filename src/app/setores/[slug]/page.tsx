@@ -5,24 +5,28 @@ import { getSectorContent } from "@/lib/sector-data";
 import { getSectorEvaluations } from "@/lib/sector-evaluations-data";
 import { getCronogramaData } from "@/lib/cronograma-data";
 import { getSectorWelcomeVideo } from "@/lib/welcome-video-data";
-import { getSession } from "@/lib/auth/session";
+import { getVerifiedSession } from "@/lib/auth/require-user";
 import { resolveAccessibleSlugs, canAccessSlug } from "@/lib/auth/access";
 import { can } from "@/lib/permissions";
 import { prisma } from "@/lib/db/prisma";
 import type { Role } from "@/types";
 
+/** Query da URL depois de resolvida (Next 15 entrega como Promise). */
+type SectorSearchParams = { aba?: string; ano?: string; mes?: string };
+
 interface PageProps {
-  params: { slug: string };
+  params: Promise<{ slug: string }>;
   /** `aba`, `ano` e `mes` guardam o estado do Cronograma na URL. */
-  searchParams?: { aba?: string; ano?: string; mes?: string };
+  searchParams?: Promise<SectorSearchParams>;
 }
 
 // Conteúdo depende do usuário (progresso), então a rota é dinâmica.
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { slug } = await params;
   const sub = await prisma.subsector.findUnique({
-    where: { slug: params.slug },
+    where: { slug },
     select: { label: true },
   });
   return {
@@ -31,7 +35,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 /** Mês exibido no Cronograma: o da URL quando válido, senão o atual. */
-function resolveMonth(searchParams?: PageProps["searchParams"]) {
+function resolveMonth(searchParams?: SectorSearchParams) {
   const now = new Date();
   const year = Number(searchParams?.ano);
   const month = Number(searchParams?.mes);
@@ -45,35 +49,37 @@ function resolveMonth(searchParams?: PageProps["searchParams"]) {
 }
 
 export default async function Page({ params, searchParams }: PageProps) {
-  const session = await getSession();
+  const { slug } = await params;
+  const query = await searchParams;
+  const session = await getVerifiedSession();
   if (!session) redirect("/login");
 
   const role = session.role as Role;
 
   // RBAC: barra acesso direto por URL a subsetores fora do escopo do usuário.
   const slugs = await resolveAccessibleSlugs(session.userId, role);
-  if (!canAccessSlug(slugs, params.slug)) notFound();
+  if (!canAccessSlug(slugs, slug)) notFound();
 
-  const sector = await getSectorContent(params.slug, session.userId);
+  const sector = await getSectorContent(slug, session.userId);
   if (!sector) notFound();
 
   // Avaliações (preenchimento) ficam na aba Avaliações do próprio setor.
   // Só carrega para quem pode preencher (Gestor/Admin). RH é excluído no helper.
   const evaluations = can(role, "evaluations.view")
-    ? await getSectorEvaluations(params.slug, role === "ADMIN")
+    ? await getSectorEvaluations(slug, role === "ADMIN")
     : null;
 
   // Cronograma: null quando o subsetor (ou sua origem) não habilita a ferramenta.
-  const { year, month } = resolveMonth(searchParams);
+  const { year, month } = resolveMonth(query);
   const cronograma = await getCronogramaData(
-    params.slug,
+    slug,
     year,
     month,
     session.userId,
     role,
   );
 
-  const welcome = await getSectorWelcomeVideo(params.slug, session.userId);
+  const welcome = await getSectorWelcomeVideo(slug, session.userId);
 
   return (
     <SectorPage
@@ -81,7 +87,7 @@ export default async function Page({ params, searchParams }: PageProps) {
       welcome={welcome}
       evaluations={evaluations}
       cronograma={cronograma}
-      initialTab={searchParams?.aba}
+      initialTab={query?.aba}
     />
   );
 }
