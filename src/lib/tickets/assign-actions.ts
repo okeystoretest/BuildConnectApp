@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth/require-user";
+import { resolveAccessibleSlugs, canAccessSlug } from "@/lib/auth/access";
 import { can } from "@/lib/permissions";
 import type { Role } from "@/types";
 
@@ -63,6 +64,16 @@ export async function assignTicket(input: {
     if (!ticket) return { ok: false, error: "Chamado não encontrado." };
     if (ticket.status === "CONCLUIDO" || ticket.status === "CANCELADO") {
       return { ok: false, error: "Chamado já encerrado." };
+    }
+
+    // Assumir exige a MESMA lotação que ler o quadro. Sem isto, a permissão de
+    // papel (tickets.claim, que todo colaborador tem) bastava para assumir
+    // chamado de um setor que a pessoa nem enxerga — e, como responsável, ela
+    // passaria a poder mudar status e concluir.
+    const slugDoQuadro = ticket.destination === "MOTORISTAS" ? "motoristas" : "ti";
+    const slugs = await resolveAccessibleSlugs(user.id, role);
+    if (!canAccessSlug(slugs, slugDoQuadro)) {
+      return { ok: false, error: "Você não tem acesso ao quadro deste chamado." };
     }
 
     // Se atribui para outro, confirma que o alvo existe e está ativo.
