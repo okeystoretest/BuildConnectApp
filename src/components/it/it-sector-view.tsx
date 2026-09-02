@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { ShieldAlert } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { Tabs, TabPanel, type TabItem } from "@/components/ui/tabs";
@@ -56,20 +55,15 @@ export function ItSectorView({
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [editingLink, setEditingLink] = useState<LinkItem | null>(null);
 
-  if (!can("sector.it")) {
-    return (
-      <AppShell eyebrow="Setores · Retaguarda" title="Retaguarda">
-        <EmptyState
-          icon={<ShieldAlert className="h-5 w-5" />}
-          title="Acesso restrito"
-          description="Esta área é exclusiva da administração. Fale com o DHO se precisar de acesso."
-        />
-      </AppShell>
-    );
-  }
+  // Quem chega aqui já passou pelo RBAC de subsetor no servidor
+  // (setores/ti/page.tsx). O que varia por papel são as ações, não o acesso:
+  // enviar conteúdo exige content.upload; o resto dos painéis se autolimita
+  // (LinksPanel por links.manage, KanbanBoard por tickets.manage/claim).
+  const canUpload = can("content.upload");
 
-  const uploadLabel =
-    active === "instrucoes-video"
+  const uploadLabel = !canUpload
+    ? undefined
+    : active === "instrucoes-video"
       ? "Enviar vídeo"
       : active === "documentos"
         ? "Enviar documento"

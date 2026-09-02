@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
-import { getSession } from "@/lib/auth/session";
-import { can } from "@/lib/permissions";
+import { getVerifiedSession } from "@/lib/auth/require-user";
+import { resolveAccessibleSlugs, canAccessSlug } from "@/lib/auth/access";
 import { getSectorContent } from "@/lib/sector-data";
 import { getItTickets, getItDashboard } from "@/lib/it-data-db";
 import { ItSectorView } from "@/components/it/it-sector-view";
@@ -11,11 +11,14 @@ import type { Role } from "@/types";
 export const dynamic = "force-dynamic";
 
 export default async function ItSectorPage() {
-  const session = await getSession();
+  const session = await getVerifiedSession();
   if (!session) redirect("/login");
 
-  // Retaguarda é restrito: só quem tem `sector.it` (ADMIN) acessa, mesmo por URL direta.
-  if (!can(session.role as Role, "sector.it")) notFound();
+  // RBAC por subsetor, igual a Motoristas: entra quem está lotado na
+  // Retaguarda (o setor tem um único subsetor homônimo, de slug "ti"), em
+  // qualquer papel. ADMIN passa direto (resolveAccessibleSlugs devolve null).
+  const slugs = await resolveAccessibleSlugs(session.userId, session.role as Role);
+  if (!canAccessSlug(slugs, "ti")) notFound();
 
   const [content, tickets, dashboard] = await Promise.all([
     getSectorContent("ti", session.userId),

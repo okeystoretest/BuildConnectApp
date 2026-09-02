@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
-import { getSession } from "@/lib/auth/session";
+import { getCurrentUser } from "@/lib/auth/require-user";
+import { resolveAccessibleSlugs, canAccessSlug } from "@/lib/auth/access";
 import { getItTickets } from "@/lib/it-data-db";
 import { getDriverTickets } from "@/lib/driver-data-db";
+import type { Role } from "@/types";
 import type { ItTicket } from "@/types/it";
 
 export const dynamic = "force-dynamic";
@@ -11,24 +13,35 @@ export const dynamic = "force-dynamic";
  * "quase em tempo real" via polling no cliente. Devolve os mesmos DTOs que
  * a página server-side monta na carga inicial, já com anexos e comprovante.
  *
- * Autenticado; qualquer usuário logado que acesse o board pode consultar —
- * a visibilidade fina por papel é reforçada no próprio board (TI) e nas
- * Server Actions de mutação.
+ * Autorização: a MESMA da página que este endpoint abastece — RBAC por
+ * subsetor ("ti" ou "motoristas"). Antes bastava estar logado, enquanto a tela
+ * exigia o setor: quem não tinha acesso à página lia o mesmo conteúdo por aqui
+ * (título, descrição, solicitante, nota técnica e links dos anexos).
+ * getCurrentUser em vez de getSession para que usuário desativado perca o
+ * acesso na hora, sem esperar o cookie vencer.
  */
 export async function GET(request: Request) {
-  const session = await getSession();
-  if (!session) {
+  const user = await getCurrentUser();
+  if (!user) {
     return NextResponse.json({ error: "Não autenticado." }, { status: 401 });
   }
 
   const { searchParams } = new URL(request.url);
   const destination = (searchParams.get("destination") ?? "TI").toUpperCase();
 
+  const slugs = await resolveAccessibleSlugs(user.id, user.role as Role);
+
   try {
     let tickets: ItTicket[];
     if (destination === "MOTORISTAS") {
+      if (!canAccessSlug(slugs, "motoristas")) {
+        return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
+      }
       tickets = await getDriverTickets();
     } else if (destination === "TI") {
+      if (!canAccessSlug(slugs, "ti")) {
+        return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
+      }
       tickets = await getItTickets();
     } else {
       return NextResponse.json({ error: "Destino inválido." }, { status: 400 });

@@ -49,16 +49,22 @@ export const SECTOR_GROUPS: readonly SectorGroup[] = [
 ];
 
 /**
- * Setores transversais, sem subsetores. Os slugs `ti` e `rh` permanecem —
- * são a chave das rotas dedicadas e do RBAC. Apenas a nomenclatura muda:
- * TI → Retaguarda e RH → DHO.
+ * Setores transversais, sem subsetores próprios. Os slugs "ti" e "rh"
+ * permanecem — são a chave das rotas dedicadas e do RBAC. Apenas a
+ * nomenclatura muda: TI → Retaguarda e RH → DHO.
+ *
+ * Retaguarda não declara permissão: quem está lotado no setor entra, em
+ * qualquer papel (a sidebar cai no filtro por slug de subsetor). Antes exigia
+ * "sector.it", que só o ADMIN tem — colaborador e gestor da própria Retaguarda
+ * ficavam de fora da própria área. O que continua restrito são as AÇÕES:
+ * enviar conteúdo (content.upload), gerir aplicativos (links.manage) e
+ * excluir/atribuir chamados a terceiros (tickets.manage).
  */
 export const STANDALONE_SECTORS: readonly SectorGroup[] = [
   {
     label: "Retaguarda",
     icon: "MonitorSmartphone",
     items: [{ label: "Retaguarda", href: "/setores/ti", icon: "MonitorSmartphone" }],
-    permission: "sector.it",
   },
   {
     label: "DHO",
