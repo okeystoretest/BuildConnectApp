@@ -353,3 +353,36 @@ export async function getRaterRoster(
   });
   return users.map((u) => ({ id: u.id, name: u.fullName, sector: u.sector?.label ?? "—" }));
 }
+
+/**
+ * Quantas avaliações estão pendentes para o usuário — o número do indicador
+ * vermelho em "Minhas Avaliações".
+ *
+ * Espelha exatamente `getMyEvaluationTasks`, em contagem: feedbacks designados
+ * em rodada ainda coletando, mais a autoavaliação de rodadas que já fecharam
+ * o feedback e ainda não receberam a resposta do próprio avaliado.
+ *
+ * Conta em vez de montar os DTOs porque roda a cada requisição de página, para
+ * qualquer tela: são duas contagens sobre índice, sem carregar formulário,
+ * nome de avaliado nem título de instrumento.
+ */
+export async function countMyPendingEvaluations(userId: string): Promise<number> {
+  const [feedback, selfAssessment] = await Promise.all([
+    prisma.evaluationAssignment.count({
+      where: {
+        raterId: userId,
+        status: "PENDENTE",
+        round: { status: "COLETANDO_FEEDBACK" },
+      },
+    }),
+    prisma.evaluationRound.count({
+      where: {
+        subjectId: userId,
+        status: "AGUARDANDO_AUTO",
+        evaluations: { none: { isSelfAssessment: true } },
+      },
+    }),
+  ]);
+
+  return feedback + selfAssessment;
+}

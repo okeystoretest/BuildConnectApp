@@ -1,8 +1,15 @@
 import type { SectorGroup, SectorLink } from "@/types";
 
+/**
+ * Rota de "Minhas Avaliações". Nomeada porque é o único item do menu que
+ * carrega um indicador de pendências — a barra lateral precisa reconhecê-lo
+ * sem comparar o rótulo, que muda de nome mais fácil do que a rota.
+ */
+export const MY_EVALUATIONS_HREF = "/minhas-avaliacoes";
+
 export const GENERAL_LINKS: readonly SectorLink[] = [
   { label: "Meu Progresso", href: "/progresso", icon: "BarChart3" },
-  { label: "Minhas Avaliações", href: "/minhas-avaliacoes", icon: "ClipboardCheck" },
+  { label: "Minhas Avaliações", href: MY_EVALUATIONS_HREF, icon: "ClipboardCheck" },
   { label: "Meus Chamados", href: "/chamados", icon: "Ticket" },
 ];
 

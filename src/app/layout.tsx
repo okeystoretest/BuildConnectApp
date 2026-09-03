@@ -7,7 +7,9 @@ import { NavigationProvider } from "@/providers/navigation-provider";
 import { ThemeProvider, THEME_SCRIPT } from "@/providers/theme-provider";
 import { TicketModalProvider } from "@/providers/ticket-modal-provider";
 import { NotificationProvider } from "@/providers/notification-provider";
+import { PendingEvaluationsProvider } from "@/providers/pending-evaluations-provider";
 import { ToastProvider } from "@/providers/toast-provider";
+import { countMyPendingEvaluations } from "@/lib/evaluation-rounds";
 import { OnboardingGate } from "@/components/onboarding/onboarding-gate";
 import { TicketModalHost } from "@/components/tickets/ticket-modal-host";
 import { getVerifiedSession } from "@/lib/auth/require-user";
@@ -62,6 +64,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       }
     : GUEST_USER;
 
+  // Contagem inicial do indicador de "Minhas Avaliações", já renderizada — o
+  // número aparece certo na primeira pintura, sem piscar de zero. Sem sessão
+  // (tela de login) não há o que contar e nem consulta é feita.
+  const pendingEvaluations = session ? await countMyPendingEvaluations(session.userId) : 0;
+
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <head>
@@ -71,19 +78,21 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <ThemeProvider>
           <RoleProvider initialUser={user}>
             <NotificationProvider>
-              <ToastProvider>
-                <SidebarProvider>
-                  {/* Navegação client-side: mantém a casca montada entre setores. */}
-                  <NavigationProvider>
-                    <TicketModalProvider>
-                      {children}
-                      {/* Vídeo obrigatório: bloqueia toda a plataforma até a conclusão. */}
-                      <OnboardingGate />
-                      <TicketModalHost />
-                    </TicketModalProvider>
-                  </NavigationProvider>
-                </SidebarProvider>
-              </ToastProvider>
+              <PendingEvaluationsProvider initialCount={pendingEvaluations}>
+                <ToastProvider>
+                  <SidebarProvider>
+                    {/* Navegação client-side: mantém a casca montada entre setores. */}
+                    <NavigationProvider>
+                      <TicketModalProvider>
+                        {children}
+                        {/* Vídeo obrigatório: bloqueia toda a plataforma até a conclusão. */}
+                        <OnboardingGate />
+                        <TicketModalHost />
+                      </TicketModalProvider>
+                    </NavigationProvider>
+                  </SidebarProvider>
+                </ToastProvider>
+              </PendingEvaluationsProvider>
             </NotificationProvider>
           </RoleProvider>
         </ThemeProvider>

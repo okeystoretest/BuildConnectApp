@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { EvaluationFormModal } from "@/components/hr/evaluation-form-modal";
 import { submitRoundEvaluation } from "@/lib/evaluation-rounds-actions";
+import { usePendingEvaluations } from "@/providers/pending-evaluations-provider";
 import type { EvalForm, MyEvaluationTask } from "@/types/evaluation";
 
 export interface MyEvaluationsPanelProps {
@@ -29,6 +30,7 @@ interface ActiveTask {
  */
 export function MyEvaluationsPanel({ tasks, forms }: MyEvaluationsPanelProps) {
   const [active, setActive] = useState<ActiveTask | null>(null);
+  const { refresh: refreshPendingCount } = usePendingEvaluations();
 
   function start(task: MyEvaluationTask) {
     const form = forms[task.typeSlug];
@@ -92,7 +94,12 @@ export function MyEvaluationsPanel({ tasks, forms }: MyEvaluationsPanelProps) {
           subjectName={active.task.subjectName}
           eyebrow={active.task.self ? "Autoavaliação" : `Avaliação de ${active.task.subjectName}`}
           onClose={() => setActive(null)}
-          onSubmitted={() => setActive(null)}
+          onSubmitted={() => {
+            setActive(null);
+            // Derruba o indicador da barra lateral na hora, sem esperar o
+            // ciclo do poll nem o router.refresh() chegar ao layout.
+            refreshPendingCount();
+          }}
           onSubmit={(payload) =>
             submitRoundEvaluation({
               roundId: active.task.roundId,

@@ -8,11 +8,13 @@ import { cn, initials } from "@/lib/utils";
 import { ROLE_LABEL } from "@/lib/permissions";
 import {
   GENERAL_LINKS,
+  MY_EVALUATIONS_HREF,
   SECTOR_GROUPS,
   STANDALONE_SECTORS,
   slugFromHref,
 } from "@/lib/navigation";
 import { useRole } from "@/providers/role-provider";
+import { usePendingEvaluations } from "@/providers/pending-evaluations-provider";
 import { useSidebar } from "@/providers/sidebar-provider";
 import { useTicketModal } from "@/providers/ticket-modal-provider";
 import { useNavigation } from "@/providers/navigation-provider";
@@ -80,6 +82,7 @@ export function Sidebar() {
   } = useSidebar();
   const { openModal } = useTicketModal();
   const { pendingHref } = useNavigation();
+  const { count: pendingEvaluations } = usePendingEvaluations();
   const [loggingOut, startLogout] = useTransition();
 
   // RBAC de conteúdo: `null` = ADMIN (acesso total). Caso contrário, só os
@@ -257,6 +260,7 @@ export function Sidebar() {
                 pending={pendingHref === link.href}
                 collapsed={collapsed}
                 icon={<Icon name={link.icon} className="h-4 w-4" />}
+                badge={link.href === MY_EVALUATIONS_HREF ? pendingEvaluations : 0}
                 onNavigate={() => setMobileOpen(false)}
               />
             ))}
@@ -506,6 +510,7 @@ function NavItem({
   collapsed,
   nested = false,
   pending = false,
+  badge = 0,
   onNavigate,
 }: {
   href: string;
@@ -516,14 +521,23 @@ function NavItem({
   nested?: boolean;
   /** Destino da navegação em andamento: sinaliza o clique antes da troca. */
   pending?: boolean;
+  /** Pendências do item. Zero não desenha nada. */
+  badge?: number;
   onNavigate: () => void;
 }) {
+  const hasBadge = badge > 0;
+  // Acima de 99 a pílula ficaria mais larga que o próprio rótulo.
+  const badgeLabel = badge > 99 ? "99+" : String(badge);
+
   return (
     <NavLink
       href={href}
       onNavigate={onNavigate}
       title={collapsed ? label : undefined}
       aria-current={active ? "page" : undefined}
+      // A pílula (e o ponto, no modo retraído) é informação visual; o leitor de
+      // tela recebe a contagem por aqui.
+      aria-label={hasBadge ? `${label} · ${badge} pendente${badge > 1 ? "s" : ""}` : undefined}
       className={cn(
         "focus-ring flex items-center gap-3 rounded-lg transition-all duration-200",
         nested ? "px-3 py-2 text-[13px]" : "px-3 py-2.5 text-sm",
@@ -536,14 +550,29 @@ function NavItem({
     >
       <span
         className={cn(
-          "flex shrink-0 items-center justify-center rounded-md transition-colors duration-200",
+          // `relative` sustenta o ponto do modo retraído, ancorado no ícone.
+          "relative flex shrink-0 items-center justify-center rounded-md transition-colors duration-200",
           nested ? "h-6 w-6" : "h-7 w-7",
           active || pending ? "bg-primary/15 text-primary" : "bg-accent/10 text-accent",
         )}
       >
         {icon}
+        {/* Recolhido não há rótulo onde encostar a pílula: vira um ponto no
+            canto do ícone. A contagem em texto segue no aria-label do link. */}
+        {hasBadge && collapsed && (
+          <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-danger ring-2 ring-surface" />
+        )}
       </span>
-      {!collapsed && <span className="truncate">{label}</span>}
+      {!collapsed && (
+        <>
+          <span className="truncate">{label}</span>
+          {hasBadge && (
+            <span className="ml-auto flex h-5 min-w-[1.25rem] shrink-0 items-center justify-center rounded-full bg-danger px-1.5 text-[11px] font-bold leading-none text-white">
+              {badgeLabel}
+            </span>
+          )}
+        </>
+      )}
     </NavLink>
   );
 }
