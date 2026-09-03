@@ -73,15 +73,19 @@ export async function updateTicketStatus(input: {
     const data: {
       status: typeof status;
       assigneeId?: string;
+      assignedById?: string;
       startedAt?: Date;
       finishedAt?: Date | null;
       resolutionNote?: string;
     } = { status };
 
     // Ao entrar em andamento pela primeira vez, cronometra e atribui ao ator.
+    // O atribuidor vai junto: EM_ANDAMENTO é status privado, e sem ele o card
+    // sumiria do quadro de quem acabou de puxar o chamado para si.
     if (status === "EM_ANDAMENTO" && !current.startedAt) {
       data.startedAt = new Date();
       data.assigneeId = user.id;
+      data.assignedById = user.id;
     }
     if (status === "CONCLUIDO") {
       data.finishedAt = new Date();

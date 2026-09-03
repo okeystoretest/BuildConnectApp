@@ -66,6 +66,8 @@ model User {
   authoredPosts      ContentPost[]      @relation("ContentPostAuthor")
   requestedTickets   Ticket[]           @relation("TicketRequester")
   assignedTickets    Ticket[]           @relation("TicketAssignee")
+  // Chamados que este usuário atribuiu (a si mesmo ou a outra pessoa).
+  ticketsAssignedOut Ticket[]           @relation("TicketAssigner")
   evaluationsReceived Evaluation[]      @relation("EvaluationSubject")
   evaluationsGiven    Evaluation[]      @relation("EvaluationEvaluator")
   evaluationCycles    EvaluationCycle[] @relation("EvaluationCycleSubject")
@@ -459,6 +461,14 @@ model Ticket {
   assigneeId String?
   assignee   User?   @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
 
+  // Quem fez a atribuição. Na maioria dos casos é o próprio responsável (o
+  // analista que assume o chamado), e aí os dois campos coincidem. Existe para
+  // o caso em que a gestão atribui a OUTRA pessoa: sem isto, quem atribuiu
+  // perderia o chamado de vista no instante seguinte, porque o quadro esconde
+  // chamado atribuído de quem não é parte dele.
+  assignedById String?
+  assignedBy   User?   @relation("TicketAssigner", fields: [assignedById], references: [id], onDelete: SetNull)
+
   // Unidade de origem do chamado (TI e Motoristas).
   unitId String?
   unit   Unit?   @relation(fields: [unitId], references: [id], onDelete: SetNull)
@@ -496,6 +506,7 @@ model Ticket {
   @@index([destination, status])
   @@index([requesterId])
   @@index([assigneeId])
+  @@index([assignedById])
   @@index([createdAt])
 }
 

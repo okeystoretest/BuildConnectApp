@@ -64,10 +64,12 @@ export function KanbanBoard({ tickets: source, readOnly = false }: KanbanBoardPr
   const [people, setPeople] = useState<{ id: string; name: string }[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
 
-  // Camada visual de privacidade — reforçada no backend.
+  // Espelho da regra do servidor, que é quem de fato recorta (a consulta nem
+  // devolve o chamado alheio). Mantido aqui para o quadro não piscar entre uma
+  // ação otimista e o poll seguinte.
   const visibleTickets = useMemo(
-    () => filterVisibleTickets(tickets, { name: user.name, role }),
-    [tickets, user.name, role],
+    () => filterVisibleTickets(tickets, { id: user.id, role }),
+    [tickets, user.id, role],
   );
 
   async function persistStatus(id: string, status: ItTicketStatus, resolutionNote?: string) {
@@ -76,11 +78,23 @@ export function KanbanBoard({ tickets: source, readOnly = false }: KanbanBoardPr
   }
 
   function applyStatus(id: string, status: ItTicketStatus) {
-    const startedTracking =
-      status === "EM_ANDAMENTO"
-        ? { startedAt: new Date().toISOString() }
-        : {};
-    applyOptimistic(id, { status, ...startedTracking });
+    // Espelha o servidor: entrar em andamento pela primeira vez cronometra E
+    // atribui o chamado ao ator. Sem replicar a atribuição aqui, o card
+    // passaria a um status privado sem dono conhecido no cliente, e o espelho
+    // de privacidade o esconderia de quem acabou de movê-lo.
+    const current = tickets.find((t) => t.id === id);
+    const claiming = status === "EM_ANDAMENTO" && !current?.startedAt;
+    applyOptimistic(id, {
+      status,
+      ...(claiming
+        ? {
+            startedAt: new Date().toISOString(),
+            assignee: user.name,
+            assigneeId: user.id,
+            assignedById: user.id,
+          }
+        : {}),
+    });
     void persistStatus(id, status);
   }
 
@@ -126,6 +140,7 @@ export function KanbanBoard({ tickets: source, readOnly = false }: KanbanBoardPr
       status: "PENDENTE",
       assigneeId: undefined,
       assignee: undefined,
+      assignedById: undefined,
     });
     void unassignTicket({ ticketId: ticket.id }).then((res) => {
       if (!res.ok) refresh();
@@ -137,10 +152,14 @@ export function KanbanBoard({ tickets: source, readOnly = false }: KanbanBoardPr
     if (!assigning) return;
     const id = assigning.id;
     setAssigning(null);
+    // assignedById precisa entrar já no otimista: sem ele o card mudaria para
+    // ATRIBUIDO e o espelho de privacidade o esconderia de quem acabou de
+    // atribuir, até o poll seguinte trazer o valor do servidor.
     applyOptimistic(id, {
       status: "ATRIBUIDO",
       assigneeId: userId,
       assignee: userName,
+      assignedById: user.id,
     });
     void assignTicket({ ticketId: id, assigneeId: userId }).then((res) => {
       if (!res.ok) refresh();

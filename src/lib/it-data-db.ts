@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { archiveCutoff } from "@/lib/archive-window";
 import type {
@@ -68,6 +69,7 @@ interface DbTicketRow {
   resolutionNote: string | null;
   requester: { fullName: string; sector: { label: string } | null } | null;
   assignee: { id: string; fullName: string } | null;
+  assignedById: string | null;
   unit: { label: string } | null;
   images?: DbImageRow[];
 }
@@ -88,6 +90,7 @@ function mapTicket(row: DbTicketRow): ItTicket {
     timeLabel: timeLabel(row.createdAt),
     assignee: row.assignee?.fullName,
     assigneeId: row.assignee?.id,
+    assignedById: row.assignedById ?? undefined,
     durationLabel: durationLabel(row.startedAt, row.finishedAt),
     startedAt: row.startedAt?.toISOString(),
     finishedAt: row.finishedAt?.toISOString(),
@@ -113,24 +116,59 @@ const DASHBOARD_INCLUDE = {
   unit: { select: { label: true } },
 } as const;
 
+/** Quem está pedindo o quadro. O corte de privacidade depende disto. */
+export interface TicketViewer {
+  id: string;
+  role: string;
+}
+
 /**
- * Chamados do QUADRO de TI.
+ * Recorte de privacidade da consulta, espelhando `lib/ticket-visibility`.
  *
- * Concluído continua no quadro por 30 minutos (ver `lib/tickets/archive`);
+ * ATRIBUIDO e EM_ANDAMENTO só saem do banco para o responsável e para quem fez
+ * a atribuição; PENDENTE e CONCLUIDO saem para todo mundo. ADMIN não passa por
+ * aqui — é quem exclui e audita.
+ *
+ * Isto é o que efetivamente esconde o chamado: filtrar depois, no navegador,
+ * ainda entregava título, descrição, solicitante, nota técnica e links dos
+ * anexos a qualquer pessoa lotada no setor que abrisse o DevTools.
+ */
+function visibilityFilter(viewer: TicketViewer): Prisma.TicketWhereInput {
+  if (viewer.role === "ADMIN") return {};
+  return {
+    OR: [
+      { status: { notIn: ["ATRIBUIDO", "EM_ANDAMENTO"] } },
+      { assigneeId: viewer.id },
+      { assignedById: viewer.id },
+    ],
+  };
+}
+
+/**
+ * Chamados do QUADRO de TI, já recortados para quem está olhando.
+ *
+ * Concluído continua no quadro por 30 minutos (ver `lib/archive-window`);
  * passado o prazo ele sai daqui e só aparece no Histórico. O corte é feito na
  * consulta — o que está arquivado nem chega ao cliente.
  */
-export async function getItTickets(): Promise<ItTicket[]> {
+export async function getItTickets(viewer: TicketViewer): Promise<ItTicket[]> {
   const rows = await prisma.ticket.findMany({
     where: {
       destination: "TI",
       status: { not: "CANCELADO" },
-      OR: [
-        { status: { not: "CONCLUIDO" } },
-        { status: "CONCLUIDO", finishedAt: { gte: archiveCutoff() } },
-        // Concluído sem carimbo de conclusão (dado legado): mantém no quadro
-        // em vez de sumir sem nunca ter passado pela janela de 30 min.
-        { status: "CONCLUIDO", finishedAt: null },
+      // Dois recortes independentes (janela de arquivamento e privacidade), por
+      // isso em AND: dois `OR` no mesmo nível se sobrescreveriam.
+      AND: [
+        {
+          OR: [
+            { status: { not: "CONCLUIDO" } },
+            { status: "CONCLUIDO", finishedAt: { gte: archiveCutoff() } },
+            // Concluído sem carimbo de conclusão (dado legado): mantém no quadro
+            // em vez de sumir sem nunca ter passado pela janela de 30 min.
+            { status: "CONCLUIDO", finishedAt: null },
+          ],
+        },
+        visibilityFilter(viewer),
       ],
     },
     orderBy: { createdAt: "desc" },

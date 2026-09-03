@@ -22,7 +22,9 @@ export default async function ItSectorPage() {
 
   const [content, tickets, dashboard] = await Promise.all([
     getSectorContent("ti", session.userId),
-    getItTickets(),
+    // O quadro já sai do banco recortado: chamado atribuído a terceiro nem
+    // chega a esta página (ver `lib/ticket-visibility`).
+    getItTickets({ id: session.userId, role: session.role }),
     getItDashboard(),
   ]);
 

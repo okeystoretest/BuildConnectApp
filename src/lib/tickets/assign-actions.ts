@@ -87,9 +87,12 @@ export async function assignTicket(input: {
       }
     }
 
+    // assignedById é quem executou a ação, não o alvo. Na auto-atribuição os
+    // dois coincidem; quando a gestão designa outra pessoa, é o que mantém o
+    // chamado visível para quem o distribuiu (ver `lib/ticket-visibility`).
     await prisma.ticket.update({
       where: { id: ticketId },
-      data: { assigneeId: targetId, status: "ATRIBUIDO" },
+      data: { assigneeId: targetId, assignedById: user.id, status: "ATRIBUIDO" },
     });
 
     revalidatePath("/setores/motoristas");
@@ -129,9 +132,11 @@ export async function unassignTicket(input: { ticketId: string }): Promise<Actio
       return { ok: false, error: "Chamado em andamento — conclua a corrida." };
     }
 
+    // Volta a ser público: limpa também o atribuidor, senão quem atribuiu
+    // continuaria "parte" de um chamado que ninguém assumiu.
     await prisma.ticket.update({
       where: { id: ticketId },
-      data: { assigneeId: null, status: "PENDENTE" },
+      data: { assigneeId: null, assignedById: null, status: "PENDENTE" },
     });
 
     revalidatePath("/setores/motoristas");

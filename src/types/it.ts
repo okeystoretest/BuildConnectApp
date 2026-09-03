@@ -32,6 +32,12 @@ export interface ItTicket {
   assignee?: string;
   /** Id do responsável — usado para decidir ações do ator no kanban. */
   assigneeId?: string;
+  /**
+   * Id de quem fez a atribuição. Coincide com `assigneeId` quando o próprio
+   * responsável assumiu o chamado; difere quando a gestão designou outra
+   * pessoa. É meio da regra de visibilidade (ver `lib/ticket-visibility`).
+   */
+  assignedById?: string;
   durationLabel?: string;
   /** Preenchido ao entrar em "Em andamento" — base da cronometragem. */
   startedAt?: string;

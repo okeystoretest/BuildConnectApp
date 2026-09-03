@@ -42,7 +42,10 @@ export async function GET(request: Request) {
       if (!canAccessSlug(slugs, "ti")) {
         return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
       }
-      tickets = await getItTickets();
+      // Mesmo recorte de privacidade da página: chamado atribuído a terceiro
+      // não sai daqui. Antes o endpoint devolvia o quadro inteiro e a
+      // ocultação era só visual, no navegador de quem recebia tudo.
+      tickets = await getItTickets({ id: user.id, role: user.role });
     } else {
       return NextResponse.json({ error: "Destino inválido." }, { status: 400 });
     }
