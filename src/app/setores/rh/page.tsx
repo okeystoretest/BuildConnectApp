@@ -12,6 +12,7 @@ import {
 } from "@/lib/evaluation-rounds";
 import { getSectorWelcomeVideo } from "@/lib/welcome-video-data";
 import { getReportsBoard } from "@/lib/reports/data";
+import { getFormsForViewer } from "@/lib/forms/data";
 import { HrSectorView } from "@/components/hr/hr-sector-view";
 import type { Role } from "@/types";
 
@@ -30,6 +31,7 @@ export default async function HrSectorPage() {
   const canHrAdmin = can(role, "sector.hr");
   const canEvaluations = can(role, "evaluations.view");
   const canReports = can(role, "reports.manage");
+  const canForms = can(role, "forms.manage");
   if (!canHrAdmin && !canEvaluations) notFound();
 
   // Escopo de resultados: Admin vê tudo; Gestor vê só o setor dele.
@@ -46,6 +48,7 @@ export default async function HrSectorPage() {
     assignSubjects,
     assignRaters,
     reports,
+    forms,
   ] = await Promise.all([
     canHrAdmin ? getManagedUsers() : Promise.resolve([]),
     canHrAdmin ? getHrDocuments() : Promise.resolve([]),
@@ -58,6 +61,8 @@ export default async function HrSectorPage() {
     getRaterRoster(sectorScope),
     // Denúncias só são lidas por quem pode tratá-las.
     canReports ? getReportsBoard() : Promise.resolve([]),
+    // A consulta já recorta por setor; a permissão só evita a ida ao banco.
+    canForms ? getFormsForViewer() : Promise.resolve([]),
   ]);
 
   const welcome = await getSectorWelcomeVideo("rh", session.userId);
@@ -78,6 +83,7 @@ export default async function HrSectorPage() {
       canReports={canReports}
       reports={reports}
       welcome={welcome}
+      forms={forms}
     />
   );
 }

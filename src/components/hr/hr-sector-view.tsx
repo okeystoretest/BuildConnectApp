@@ -32,6 +32,7 @@ import type {
   EvaluationSubject,
 } from "@/types/evaluation";
 import type { ReportItem } from "@/types/report";
+import type { FormListItem } from "@/types/form";
 
 export interface HrSectorViewProps {
   canHrAdmin: boolean;
@@ -53,6 +54,8 @@ export interface HrSectorViewProps {
   reports: ReportItem[];
   /** Vídeo de boas-vindas do setor (modal + card de gestão). */
   welcome?: SectorWelcomeVideoData | null;
+  /** Formulários do DHO, recortados por setor na consulta. */
+  forms: FormListItem[];
 }
 
 export function HrSectorView({
@@ -70,6 +73,7 @@ export function HrSectorView({
   canReports,
   reports,
   welcome,
+  forms,
 }: HrSectorViewProps) {
   const { can } = useRole();
   const [mapModalOpen, setMapModalOpen] = useState(false);
@@ -143,6 +147,7 @@ export function HrSectorView({
             assignSubjects={assignSubjects}
             assignRaters={assignRaters}
             rounds={rounds}
+            forms={forms}
           />
         )}
 

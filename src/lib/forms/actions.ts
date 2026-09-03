@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db/prisma";
 import { getVerifiedSession } from "@/lib/auth/require-user";
 import { can } from "@/lib/permissions";
 import { canEditStructure, NO_SECTOR } from "./rules";
+import { getFormResults, type FormResults } from "./data";
 import type { Role } from "@/types";
 import type { FormDraft } from "@/types/form";
 
@@ -283,4 +284,15 @@ export async function listFormRecipients(): Promise<{
     users: users.map((u) => ({ id: u.id, name: u.fullName, sector: u.sector?.label ?? "—" })),
     sectors,
   };
+}
+
+/**
+ * Resultados, para o painel do DHO buscar sob demanda.
+ *
+ * A leitura mora em `./data`, que não é "use server" — este invólucro é o que
+ * a torna chamável do cliente. O recorte por setor não se repete aqui: vem de
+ * `getFormDraft`, dentro de `getFormResults`.
+ */
+export async function fetchFormResults(formId: string): Promise<FormResults | null> {
+  return getFormResults(formId);
 }

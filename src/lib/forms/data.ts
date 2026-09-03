@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { getVerifiedSession } from "@/lib/auth/require-user";
 import { can } from "@/lib/permissions";
 import { formScopeFor } from "./rules";
+import { aggregate, type QuestionResult } from "./aggregate";
 import type { Role } from "@/types";
 import type { FormDraft, FormListItem, FormQuestionKind, FormStatus } from "@/types/form";
 
@@ -110,5 +111,53 @@ export async function getFormDraft(formId: string): Promise<FormDraft | null> {
         scaleMaxLabel: q.scaleMaxLabel ?? undefined,
       })),
     })),
+  };
+}
+
+export interface FormResults {
+  form: FormDraft;
+  results: QuestionResult[];
+  responseCount: number;
+  assignedCount: number;
+  /** Quem ainda não respondeu. Funciona mesmo no anônimo: sai da atribuição. */
+  pending: { id: string; name: string }[];
+}
+
+export async function getFormResults(formId: string): Promise<FormResults | null> {
+  const form = await getFormDraft(formId);
+  if (!form) return null;
+
+  const [responses, assignments] = await Promise.all([
+    prisma.formResponse.findMany({
+      where: { formId },
+      select: {
+        answers: { select: { questionId: true, text: true, number: true, optionIds: true } },
+      },
+    }),
+    prisma.formAssignment.findMany({
+      where: { formId },
+      select: { status: true, user: { select: { id: true, fullName: true, active: true } } },
+    }),
+  ]);
+
+  return {
+    form,
+    results: aggregate(
+      form,
+      responses.map((r) => ({
+        answers: r.answers.map((a) => ({
+          questionId: a.questionId,
+          text: a.text ?? undefined,
+          number: a.number ?? undefined,
+          optionIds: a.optionIds,
+        })),
+      })),
+    ),
+    responseCount: responses.length,
+    assignedCount: assignments.length,
+    // Usuário desativado sai da cobrança: pendência dele não é acionável.
+    pending: assignments
+      .filter((a) => a.status === "PENDENTE" && a.user.active)
+      .map((a) => ({ id: a.user.id, name: a.user.fullName })),
   };
 }

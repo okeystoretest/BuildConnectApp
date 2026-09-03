@@ -14,10 +14,12 @@ import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { EvaluationAssignmentPanel } from "@/components/hr/evaluation-assignment-panel";
 import { EvaluationResultView } from "@/components/hr/evaluation-result-view";
+import { FormsPanel } from "@/components/hr/forms-panel";
 import { RoundConsolidatedView } from "@/components/hr/round-consolidated-view";
 import { fetchEvaluationDetail } from "@/lib/evaluation-results-actions";
 import { fetchRoundConsolidated } from "@/lib/evaluation-rounds-actions";
 import { cn } from "@/lib/utils";
+import { useRole } from "@/providers/role-provider";
 import type {
   AssignableEvaluationType,
   EfficacyConsolidated,
@@ -28,6 +30,7 @@ import type {
   EvaluationResultTypeCard,
   EvaluationSubject,
 } from "@/types/evaluation";
+import type { FormListItem } from "@/types/form";
 
 export interface EvaluationResultsPanelProps {
   /** Nível 1: um card por instrumento, já com avaliados e registros dentro. */
@@ -37,6 +40,8 @@ export interface EvaluationResultsPanelProps {
   assignSubjects: readonly EvaluationSubject[];
   assignRaters: readonly { id: string; name: string; sector: string }[];
   rounds: readonly EfficacyRoundRow[];
+  /** Formulários do DHO, já recortados por setor na consulta. */
+  forms: readonly FormListItem[];
 }
 
 /** Card especial de atribuição — não é um instrumento, é uma ação. */
@@ -54,7 +59,9 @@ export function EvaluationResultsPanel({
   assignSubjects,
   assignRaters,
   rounds,
+  forms,
 }: EvaluationResultsPanelProps) {
+  const { can } = useRole();
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [subjectId, setSubjectId] = useState<string | null>(null);
 
@@ -96,6 +103,15 @@ export function EvaluationResultsPanel({
             <TypeCard key={type.slug} type={type} onOpen={() => setOpenKey(type.slug)} />
           ))}
         </div>
+
+        {/* Formulários do DHO. Ficam atrás de forms.manage, que é de GESTOR e
+            ADMIN — a mesma permissão que as Server Actions exigem. */}
+        {can("forms.manage") && (
+          <section className="border-t border-border pt-6">
+            <h3 className="mb-3 text-base font-semibold text-foreground">Formulários</h3>
+            <FormsPanel forms={forms} />
+          </section>
+        )}
       </div>
     );
   }
