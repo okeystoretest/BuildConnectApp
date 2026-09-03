@@ -4,14 +4,19 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { OTHER_OPTION, formatAddress, getUnitAddress } from "@/lib/units";
-import { DEPARTURE_POINTS, DRIVER_OPTIONS, SERVICE_TYPES } from "@/types/ticket-form";
+import { DEPARTURE_POINTS, DRIVER_UNASSIGNED_LABEL, SERVICE_TYPES } from "@/types/ticket-form";
 import type { DriverTicketForm } from "@/types/ticket-form";
+import type { DriverOption } from "@/lib/tickets/actions";
 import { AddressFields } from "./address-fields";
 
 export interface DriverTicketFieldsProps {
   form: DriverTicketForm;
   onChange: (patch: Partial<DriverTicketForm>) => void;
   errors: Partial<Record<keyof DriverTicketForm, string>>;
+  /** Motoristas ativos de Logística › Motoristas, carregados do banco. */
+  drivers: readonly DriverOption[];
+  /** A lista ainda está sendo buscada. */
+  driversLoading?: boolean;
 }
 
 function Field({
@@ -36,21 +41,41 @@ function Field({
   );
 }
 
-export function DriverTicketFields({ form, onChange, errors }: DriverTicketFieldsProps) {
+export function DriverTicketFields({
+  form,
+  onChange,
+  errors,
+  drivers,
+  driversLoading = false,
+}: DriverTicketFieldsProps) {
   const customDeparture = form.departurePoint === OTHER_OPTION;
   const linkedAddress = customDeparture ? null : getUnitAddress(form.departurePoint);
   // Unidade sem endereço cadastrado também exige preenchimento manual.
   const needsManualAddress = customDeparture || (Boolean(form.departurePoint) && !linkedAddress);
 
+  // "Em aberto" primeiro, com valor vazio; depois os motoristas do banco.
+  const driverOptions = [
+    { value: "", label: DRIVER_UNASSIGNED_LABEL },
+    ...drivers.map((d) => ({ value: d.id, label: d.name })),
+  ];
+
   return (
     <div className="space-y-5">
-      <Field label="Motorista" htmlFor="driver">
+      <Field label="Motorista" htmlFor="driver" error={errors.driverId}>
         <Select
           id="driver"
-          options={DRIVER_OPTIONS}
-          value={form.driver}
-          onChange={(e) => onChange({ driver: e.target.value })}
+          options={driverOptions}
+          value={form.driverId}
+          disabled={driversLoading}
+          onChange={(e) => onChange({ driverId: e.target.value })}
         />
+        <p className="mt-1.5 text-xs text-muted">
+          {driversLoading
+            ? "Carregando motoristas…"
+            : drivers.length === 0
+              ? "Nenhum motorista cadastrado em Logística › Motoristas. O chamado será aberto em aberto, para ser assumido no quadro."
+              : "Escolher um motorista já atribui o chamado a ele. Em aberto, qualquer motorista pode assumir."}
+        </p>
       </Field>
 
       <div className="grid gap-4 sm:grid-cols-2">

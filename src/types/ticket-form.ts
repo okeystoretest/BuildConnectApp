@@ -17,12 +17,14 @@ export const IT_CATEGORIES = [
 
 export type ItCategoryOption = (typeof IT_CATEGORIES)[number];
 
-export const DRIVER_OPTIONS = [
-  "Em aberto",
-  "João Motta",
-  "Pedro Dias",
-  "Gustavo Rocha",
-] as const;
+/**
+ * Rótulo da opção "sem motorista definido". O valor gravado é a string vazia:
+ * o chamado nasce PENDENTE e é assumido no quadro de Motoristas.
+ *
+ * A lista de motoristas em si NÃO mora aqui — vem do banco, pelos usuários
+ * lotados em Logística › Motoristas (ver `listDrivers` em `lib/tickets/actions`).
+ */
+export const DRIVER_UNASSIGNED_LABEL = "Em aberto";
 
 /** Unidades cadastradas + "Outro" ao final. */
 export const DEPARTURE_POINTS = DEPARTURE_OPTIONS;
@@ -44,7 +46,8 @@ export interface ItTicketForm {
 }
 
 export interface DriverTicketForm {
-  driver: string;
+  /** Id do motorista escolhido. Vazio = "Em aberto". */
+  driverId: string;
   departurePoint: string;
   /** Preenchidos apenas quando `departurePoint` é "Outro". */
   departureStreet: string;

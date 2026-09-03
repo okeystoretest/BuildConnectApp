@@ -24,9 +24,72 @@ import { MAX_TICKET_IMAGES } from "@/types/ticket-form";
  *  5. Em falha do banco, desfaz os arquivos já gravados (sem órfãos).
  */
 
+/**
+ * Subsetor que define quem é motorista: Logística › Motoristas.
+ *
+ * O select do formulário sai daqui — antes era uma lista de três nomes fixos
+ * no código, que não correspondia a usuário nenhum do banco.
+ */
+const DRIVER_SUBSECTOR_SLUG = "motoristas";
+const DRIVER_SECTOR_SLUG = "logistica";
+
+export interface DriverOption {
+  id: string;
+  name: string;
+}
+
+/**
+ * Motoristas selecionáveis na abertura de chamado: usuários ATIVOS lotados em
+ * Logística › Motoristas. Exige sessão — é a lista nominal do quadro de
+ * pessoal, não deve sair para quem não está autenticado.
+ */
+export async function listDrivers(): Promise<DriverOption[]> {
+  const user = await getCurrentUser();
+  if (!user) return [];
+
+  const drivers = await prisma.user.findMany({
+    where: {
+      active: true,
+      subsectors: {
+        some: {
+          subsector: {
+            slug: DRIVER_SUBSECTOR_SLUG,
+            sector: { slug: DRIVER_SECTOR_SLUG },
+          },
+        },
+      },
+    },
+    select: { id: true, fullName: true },
+    orderBy: { fullName: "asc" },
+  });
+
+  return drivers.map((d) => ({ id: d.id, name: d.fullName }));
+}
+
+/** `true` se o id corresponde a um motorista ativo. Revalidado no servidor. */
+async function isActiveDriver(userId: string): Promise<boolean> {
+  const found = await prisma.user.findFirst({
+    where: {
+      id: userId,
+      active: true,
+      subsectors: {
+        some: {
+          subsector: {
+            slug: DRIVER_SUBSECTOR_SLUG,
+            sector: { slug: DRIVER_SECTOR_SLUG },
+          },
+        },
+      },
+    },
+    select: { id: true },
+  });
+  return found !== null;
+}
+
 const driverTicketSchema = z
   .object({
-    driver: z.string().trim().min(1, "Selecione o motorista."),
+    // Vazio = "Em aberto": o chamado nasce PENDENTE e é assumido no quadro.
+    driverId: z.string().trim().optional().default(""),
     departurePoint: z.string().trim().min(1, "Informe o ponto de partida."),
     departureStreet: z.string().trim().optional().default(""),
     departureNumber: z.string().trim().optional().default(""),
@@ -101,7 +164,7 @@ export async function createDriverTicket(
 
   // 2. Validação dos campos textuais.
   const raw = {
-    driver: formData.get("driver"),
+    driverId: formData.get("driverId"),
     departurePoint: formData.get("departurePoint"),
     departureStreet: formData.get("departureStreet"),
     departureNumber: formData.get("departureNumber"),
@@ -126,6 +189,16 @@ export async function createDriverTicket(
     return { ok: false, error: "Revise os campos destacados.", fieldErrors };
   }
   const data = parsed.data;
+
+  // Motorista escolhido: revalida no servidor que o id é mesmo de um motorista
+  // ativo. O select pode ser adulterado; a lotação é o que decide.
+  if (data.driverId && !(await isActiveDriver(data.driverId))) {
+    return {
+      ok: false,
+      error: "Revise os campos destacados.",
+      fieldErrors: { driverId: "Motorista indisponível. Escolha outro ou deixe em aberto." },
+    };
+  }
 
   // Resolve o endereço de PARTIDA. Quando o ponto de partida é uma unidade
   // conhecida, o formulário não preenche os campos manuais (só exibe o
@@ -175,7 +248,17 @@ export async function createDriverTicket(
         data: {
           code,
           destination: "MOTORISTAS",
-          status: "PENDENTE",
+          // Escolher um motorista JÁ atribui o chamado. Antes o campo era
+          // validado e descartado: o solicitante escolhia e nada acontecia.
+          // O solicitante fica registrado como atribuidor (ver
+          // `lib/ticket-visibility`).
+          ...(data.driverId
+            ? {
+                status: "ATRIBUIDO" as const,
+                assigneeId: data.driverId,
+                assignedById: user.id,
+              }
+            : { status: "PENDENTE" as const }),
           title,
           description: data.description,
           requesterId: user.id,
