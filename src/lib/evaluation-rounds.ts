@@ -332,6 +332,25 @@ export async function getMyEvaluationTasks(userId: string): Promise<MyEvaluation
     });
   }
 
+  // 3) Formulários do DHO atribuídos e ainda não respondidos. Só de
+  //    formulários PUBLICADOS: encerrar congela o resultado e a tarefa some.
+  const formAssignments = await prisma.formAssignment.findMany({
+    where: { userId, status: "PENDENTE", form: { status: "PUBLICADO" } },
+    orderBy: { createdAt: "asc" },
+    select: { form: { select: { id: true, title: true } } },
+  });
+  for (const a of formAssignments) {
+    tasks.push({
+      kind: "FORMULARIO",
+      roundId: "",
+      formId: a.form.id,
+      typeSlug: "formulario",
+      typeTitle: "Formulário do DHO",
+      subjectName: a.form.title,
+      self: false,
+    });
+  }
+
   return tasks;
 }
 
@@ -359,15 +378,16 @@ export async function getRaterRoster(
  * vermelho em "Minhas Avaliações".
  *
  * Espelha exatamente `getMyEvaluationTasks`, em contagem: feedbacks designados
- * em rodada ainda coletando, mais a autoavaliação de rodadas que já fecharam
- * o feedback e ainda não receberam a resposta do próprio avaliado.
+ * em rodada ainda coletando, a autoavaliação de rodadas que já fecharam o
+ * feedback e ainda não receberam a resposta do próprio avaliado, e os
+ * formulários do DHO atribuídos e não respondidos.
  *
  * Conta em vez de montar os DTOs porque roda a cada requisição de página, para
- * qualquer tela: são duas contagens sobre índice, sem carregar formulário,
+ * qualquer tela: são três contagens sobre índice, sem carregar formulário,
  * nome de avaliado nem título de instrumento.
  */
 export async function countMyPendingEvaluations(userId: string): Promise<number> {
-  const [feedback, selfAssessment] = await Promise.all([
+  const [feedback, selfAssessment, forms] = await Promise.all([
     prisma.evaluationAssignment.count({
       where: {
         raterId: userId,
@@ -382,7 +402,10 @@ export async function countMyPendingEvaluations(userId: string): Promise<number>
         evaluations: { none: { isSelfAssessment: true } },
       },
     }),
+    prisma.formAssignment.count({
+      where: { userId, status: "PENDENTE", form: { status: "PUBLICADO" } },
+    }),
   ]);
 
-  return feedback + selfAssessment;
+  return feedback + selfAssessment + forms;
 }

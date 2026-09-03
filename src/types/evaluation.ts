@@ -335,8 +335,11 @@ export type MatrizZone =
 
 /** Tarefa na aba "Minhas avaliações" do usuário logado. */
 export interface MyEvaluationTask {
-  kind: "FEEDBACK" | "AUTOAVALIACAO";
+  kind: "FEEDBACK" | "AUTOAVALIACAO" | "FORMULARIO";
+  /** Rodada de avaliação. Vazio nas tarefas de formulário. */
   roundId: string;
+  /** Formulário do DHO. Preenchido só quando kind === "FORMULARIO". */
+  formId?: string;
   typeSlug: string;
   typeTitle: string;
   /** Nome do avaliado (ou "Você" na autoavaliação). */
