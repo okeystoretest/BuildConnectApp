@@ -77,11 +77,14 @@ export function EvaluationFormModal({
   const maxTotal = totalQuestions * form.scaleMax;
 
   const hasLabels = form.scaleLabels.length === form.scaleMax;
-  // Escalas longas (Matriz de Decisão: 1–10) não cabem com o círculo de 48px.
-  // Reduz o alvo e permite rolagem horizontal da faixa no celular.
+  // Escalas longas (Matriz de Decisão: 1–10) não cabem com o alvo cheio.
+  // Reduz o círculo e permite rolagem horizontal da faixa no celular.
   const dense = form.scaleMax > 6;
-  const cellClass = dense ? "w-9" : "w-12";
-  const dotClass = dense ? "h-9 w-9 text-sm" : "h-12 w-12 text-base";
+  // Largura do alvo. O cabeçalho da tabela e as linhas PRECISAM usar a mesma
+  // medida para as colunas casarem; por isso ela sai de um lugar só, em vez de
+  // dois literais mantidos em sincronia à mão.
+  const cellClass = dense ? "w-9" : "w-11";
+  const dotClass = cellClass + (dense ? " h-9 text-sm" : " h-11 text-base");
   const rowGapClass = dense ? "gap-1.5 sm:gap-2" : "gap-3 sm:gap-4";
   const scaleValues = useMemo(
     () => Array.from({ length: form.scaleMax }, (_, i) => i + 1),
@@ -194,9 +197,17 @@ export function EvaluationFormModal({
         {/* Corpo */}
         <div className="scrollbar-slim flex-1 overflow-y-auto px-7 py-6">
           {!isSummary && currentSection && (
-            <div className="overflow-hidden rounded-xl border border-border">
-              {/* Cabeçalho da tabela: critério + escala (oculto no mobile, onde a linha empilha) */}
-              <div className="hidden items-center gap-4 border-b border-border bg-surface-2 px-5 py-3.5 sm:grid" style={{ gridTemplateColumns: `minmax(0,1fr) auto` }}>
+            // overflow-clip (e não overflow-hidden) recorta os cantos
+            // arredondados SEM criar um contêiner de rolagem — é o que deixa o
+            // cabeçalho abaixo grudar na borda do corpo rolável. Com
+            // overflow-hidden, o sticky se ancoraria neste box, que não rola, e
+            // o cabeçalho subiria junto com as linhas até sumir.
+            <div className="overflow-clip rounded-xl border border-border">
+              {/* Cabeçalho da tabela: critério + escala (oculto no mobile, onde
+                  a linha empilha). Sticky: a lista de critérios rola dentro do
+                  corpo do modal e a faixa da escala saía de vista logo no
+                  primeiro rolar, deixando os círculos sem legenda. */}
+              <div className="sticky top-0 z-10 hidden items-center gap-4 border-b border-border bg-surface-2 px-5 py-3.5 sm:grid" style={{ gridTemplateColumns: `minmax(0,1fr) auto` }}>
                 <span className="text-sm font-bold uppercase tracking-wide text-muted">
                   Critério de avaliação
                 </span>
@@ -234,12 +245,19 @@ export function EvaluationFormModal({
 
                     <div
                       className={
+                        // A faixa só rola de fato nas escalas longas (1–10) em
+                        // tela estreita; nas curtas ela cabe inteira.
+                        //
                         // overflow-y-hidden é obrigatório: com overflow-x-auto o
-                        // navegador computa overflow-y como auto, e o botão
-                        // ativo (scale-105) estoura a linha em 2px — aparecia
-                        // uma barra de rolagem vertical na linha respondida.
-                        // O py-1 dá a folga para o botão ampliado não ser cortado.
-                        "scrollbar-slim flex max-w-full items-center overflow-x-auto overflow-y-hidden py-1 " +
+                        // navegador computa overflow-y como auto, e qualquer
+                        // transbordo de 1px viraria barra de rolagem vertical na
+                        // linha respondida.
+                        //
+                        // O padding dá a folga para o anel do botão ativo não
+                        // ser recortado pela borda de rolagem. Ele é sombra, não
+                        // caixa: ao contrário do scale que havia aqui antes, não
+                        // entra na área rolável e não força barra horizontal.
+                        "scrollbar-slim flex max-w-full items-center overflow-x-auto overflow-y-hidden px-0.5 py-1 " +
                         rowGapClass
                       }
                       role="radiogroup"
@@ -261,7 +279,7 @@ export function EvaluationFormModal({
                               dotClass +
                               " " +
                               (active
-                                ? "border-primary bg-primary text-primary-foreground scale-105 shadow-md"
+                                ? "border-primary bg-primary text-primary-foreground shadow-md ring-2 ring-primary/40"
                                 : "border-border bg-surface text-muted hover:border-primary/50 hover:text-foreground")
                             }
                           >
