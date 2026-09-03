@@ -1016,6 +1016,12 @@ model Form {
   // Prazo informativo. Não bloqueia resposta — quem bloqueia é o status.
   dueAt       DateTime?
 
+  // Rodada em curso. Reabrir um formulário encerrado incrementa este número e
+  // devolve TODAS as atribuições a PENDENTE: todo mundo responde de novo. As
+  // respostas anteriores não são apagadas — ficam marcadas com a rodada em que
+  // foram dadas, e é assim que o resultado antigo continua consultável.
+  currentRound Int @default(1)
+
   sections    FormSection[]
   assignments FormAssignment[]
   responses   FormResponse[]
@@ -1102,9 +1108,14 @@ model FormResponse {
 
   submittedAt DateTime @default(now())
 
+  // Rodada em que esta resposta foi dada. O default 1 é o que faz a migration
+  // ser aditiva: tudo que já existe vira rodada 1 sem script de conversão.
+  round Int @default(1)
+
   answers FormAnswer[]
 
   @@index([formId])
+  @@index([formId, round])
 }
 
 model FormAnswer {
