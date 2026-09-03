@@ -27,7 +27,11 @@ export type Permission =
   // de terceiros. Separada de `tickets.manage` de propósito — a gestão de
   // setor precisa distribuir corrida e chamado, mas não apagar registro.
   | "tickets.assign"
-  | "tickets.claim";
+  | "tickets.claim"
+  // Criar, publicar e ler os resultados dos formulários do DHO. GESTOR e ADMIN.
+  // O recorte por setor NÃO mora aqui: a matriz é por papel, e quem recorta é
+  // a cláusula de consulta (ver formScopeFor em lib/forms/rules).
+  | "forms.manage";
 
 export interface SectorLink {
   label: string;

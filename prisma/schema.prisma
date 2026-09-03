@@ -66,6 +66,10 @@ model User {
   authoredPosts      ContentPost[]      @relation("ContentPostAuthor")
   requestedTickets   Ticket[]           @relation("TicketRequester")
   assignedTickets    Ticket[]           @relation("TicketAssignee")
+  // Formulários do DHO: criados, atribuídos a responder, e respondidos.
+  authoredForms   Form[]           @relation("FormAuthor")
+  formAssignments FormAssignment[] @relation("FormAssignee")
+  formResponses   FormResponse[]   @relation("FormRespondent")
   // Chamados que este usuário atribuiu (a si mesmo ou a outra pessoa).
   ticketsAssignedOut Ticket[]           @relation("TicketAssigner")
   evaluationsReceived Evaluation[]      @relation("EvaluationSubject")
@@ -96,6 +100,7 @@ model Sector {
 
   subsectors Subsector[]
   users      User[]
+  forms      Form[]
 
   @@index([order])
 }
@@ -955,4 +960,170 @@ model NotificationRead {
 
   @@id([notificationId, userId])
   @@index([userId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Formulários do DHO
+//
+// Subsistema SEPARADO dos 5 instrumentos de avaliação. Aqueles guardam Int em
+// EvaluationAnswer.value e têm uma escala só por instrumento, aplicada a todas
+// as perguntas: não há onde um formulário com texto, opções e tipo por pergunta
+// caber. Estender aqueles modelos obrigaria todo o código de resultado — médias,
+// consolidação da Eficácia, quadrantes da Matriz de Decisão — a tratar
+// "resposta sem número".
+// ─────────────────────────────────────────────────────────────
+
+enum FormStatus {
+  RASCUNHO
+  PUBLICADO
+  ENCERRADO
+}
+
+enum FormAssignmentStatus {
+  PENDENTE
+  CONCLUIDA
+}
+
+enum FormQuestionKind {
+  TEXTO_CURTO
+  PARAGRAFO
+  MULTIPLA_ESCOLHA
+  CAIXAS_SELECAO
+  LISTA_SUSPENSA
+  ESCALA_LINEAR
+}
+
+model Form {
+  id          String     @id @default(cuid())
+  title       String
+  description String?
+  status      FormStatus @default(RASCUNHO)
+
+  // Respostas não guardam autor. Definido na publicação; imutável depois.
+  anonymous Boolean @default(false)
+
+  // Setor dono, e a chave do recorte de leitura. GESTOR grava o próprio setor;
+  // ADMIN grava null — formulário da empresa, que nenhum gestor lê. É
+  // intencional, não efeito colateral do null.
+  ownerSectorId String?
+  ownerSector   Sector? @relation(fields: [ownerSectorId], references: [id], onDelete: SetNull)
+
+  createdById String?
+  createdBy   User?   @relation("FormAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  publishedAt DateTime?
+  closedAt    DateTime?
+  // Prazo informativo. Não bloqueia resposta — quem bloqueia é o status.
+  dueAt       DateTime?
+
+  sections    FormSection[]
+  assignments FormAssignment[]
+  responses   FormResponse[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([ownerSectorId])
+}
+
+model FormSection {
+  id          String  @id @default(cuid())
+  formId      String
+  form        Form    @relation(fields: [formId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  order       Int     @default(0)
+
+  questions FormQuestion[]
+
+  @@index([formId, order])
+}
+
+model FormQuestion {
+  id        String           @id @default(cuid())
+  sectionId String
+  section   FormSection      @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  kind      FormQuestionKind
+  label     String
+  helpText  String?
+  required  Boolean          @default(false)
+  order     Int              @default(0)
+
+  // Só para ESCALA_LINEAR.
+  scaleMin      Int?
+  scaleMax      Int?
+  scaleMinLabel String?
+  scaleMaxLabel String?
+
+  options FormOption[]
+  answers FormAnswer[]
+
+  @@index([sectionId, order])
+}
+
+model FormOption {
+  id         String       @id @default(cuid())
+  questionId String
+  question   FormQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  label      String
+  order      Int          @default(0)
+
+  @@index([questionId, order])
+}
+
+// Pendência de resposta. É ESTE registro — e não a resposta — que responde
+// "quem já respondeu", e é o que permite cobrar quem falta num formulário
+// anônimo sem ligar ninguém ao que respondeu.
+model FormAssignment {
+  id     String @id @default(cuid())
+  formId String
+  form   Form   @relation(fields: [formId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation("FormAssignee", fields: [userId], references: [id], onDelete: Cascade)
+
+  status      FormAssignmentStatus @default(PENDENTE)
+  respondedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@unique([formId, userId])
+  @@index([userId, status])
+}
+
+model FormResponse {
+  id     String @id @default(cuid())
+  formId String
+  form   Form   @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  // null quando o formulário é anônimo.
+  respondentId String?
+  respondent   User?   @relation("FormRespondent", fields: [respondentId], references: [id], onDelete: SetNull)
+
+  submittedAt DateTime @default(now())
+
+  answers FormAnswer[]
+
+  @@index([formId])
+}
+
+model FormAnswer {
+  id         String       @id @default(cuid())
+  responseId String
+  response   FormResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  questionId String
+  question   FormQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  // TEXTO_CURTO, PARAGRAFO
+  text String?
+  // ESCALA_LINEAR
+  number Int?
+  // MULTIPLA_ESCOLHA e LISTA_SUSPENSA guardam 1; CAIXAS_SELECAO guarda N.
+  // Array e não FK: mantém "uma linha por pergunta" cravado no banco pela
+  // unique abaixo. O preço, sem integridade referencial, é coberto por travar
+  // a estrutura depois da primeira resposta (ver lib/forms/rules.ts).
+  optionIds String[] @default([])
+
+  @@unique([responseId, questionId])
+  @@index([questionId])
 }
