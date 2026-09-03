@@ -17,13 +17,8 @@ import {
   UserRound,
   Users,
 } from "lucide-react";
-import {
-  IT_ASSIGNEES,
-  IT_DASHBOARD,
-  IT_MONTHS,
-  IT_STATUS_LABEL,
-  IT_TICKETS,
-} from "@/lib/it-data";
+import { IT_STATUS_LABEL } from "@/lib/it-data";
+import { MONTH_LABEL } from "@/lib/funnel";
 import type { ItDashboardData, ItTicket } from "@/types/it";
 import { KpiTile } from "./kpi-tile";
 import { DistributionPanel } from "./distribution-panel";
@@ -44,7 +39,34 @@ function useClock(): string {
   return now.toLocaleTimeString("pt-BR", { hour12: false });
 }
 
+/**
+ * Quando estes dados chegaram do servidor.
+ *
+ * A página é dinâmica e o dashboard não faz polling: o dado é do instante em
+ * que a tela montou. Fica em estado (e não calculado no render) porque o
+ * carimbo depende do relógio — computá-lo no render faria o HTML do servidor
+ * divergir do cliente na hidratação. Antes havia aqui uma data fixa escrita no
+ * código, que anunciava "23/07/2026" para sempre.
+ */
+function useLoadedAt(): string {
+  const [loadedAt, setLoadedAt] = useState<Date | null>(null);
+  useEffect(() => setLoadedAt(new Date()), []);
+  if (!loadedAt) return "—";
+  return loadedAt.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+}
+
 const STATUS_FILTERS = ["Todos", "PENDENTE", "ATRIBUIDO", "EM_ANDAMENTO", "CONCLUIDO"] as const;
+
+/** Opção "sem recorte" de cada filtro da tabela. */
+const ALL_ASSIGNEES = "Todos os responsáveis";
+const ALL_MONTHS = "Todos os meses";
+
+/** "2026-07" -> "Julho 2026". */
+function monthLabel(key: string): string {
+  const [year, month] = key.split("-");
+  const name = MONTH_LABEL[Number(month) - 1];
+  return name && year ? `${name} ${year}` : key;
+}
 
 export interface DashboardExtra {
   label: string;
@@ -53,25 +75,28 @@ export interface DashboardExtra {
 
 export interface ItDashboardProps {
   title?: string;
-  data?: ItDashboardData;
-  tickets?: readonly ItTicket[];
+  /** Agregações do setor, vindas do banco. */
+  data: ItDashboardData;
+  /** Chamados do quadro, já recortados pela visibilidade de quem olha. */
+  tickets: readonly ItTicket[];
   /** Métricas adicionais exibidas após os KPIs padrão. */
   extras?: readonly DashboardExtra[];
 }
 
 export function ItDashboard({
   title = "Build.Connect · TI",
-  data = IT_DASHBOARD,
-  tickets = IT_TICKETS,
+  data,
+  tickets,
   extras = [],
 }: ItDashboardProps) {
   const [fullscreen, setFullscreen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const overlayRef = useRef<HTMLDivElement | null>(null);
-  const [assignee, setAssignee] = useState<string>(IT_ASSIGNEES[0]);
-  const [month, setMonth] = useState<string>(IT_MONTHS[0]);
+  const [assignee, setAssignee] = useState<string>(ALL_ASSIGNEES);
+  const [month, setMonth] = useState<string>(ALL_MONTHS);
   const [statusFilter, setStatusFilter] = useState<string>("Todos");
   const clock = useClock();
+  const loadedAt = useLoadedAt();
 
   // O overlay é renderizado por portal — só depois da hidratação.
   useEffect(() => setMounted(true), []);
@@ -122,12 +147,50 @@ export function ItDashboard({
     };
   }, [fullscreen]);
 
+  /**
+   * Opções dos filtros, derivadas dos chamados que estão na tela.
+   *
+   * Antes eram três nomes e três meses escritos no código — e, pior, nenhum
+   * dos dois filtrava coisa alguma: o usuário escolhia e a tabela não mudava.
+   * Saindo dos dados, a lista só oferece recorte que existe.
+   */
+  const assigneeOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const ticket of tickets) if (ticket.assignee) names.add(ticket.assignee);
+    return [ALL_ASSIGNEES, ...[...names].sort((a, b) => a.localeCompare(b, "pt-BR"))];
+  }, [tickets]);
+
+  const monthOptions = useMemo(() => {
+    const keys = new Set<string>();
+    for (const ticket of tickets) if (ticket.openedAt) keys.add(ticket.openedAt.slice(0, 7));
+    // Mais recente primeiro: "YYYY-MM" ordena por texto igual a por data.
+    const sorted = [...keys].sort().reverse();
+    return [
+      { value: ALL_MONTHS, label: ALL_MONTHS },
+      ...sorted.map((key) => ({ value: key, label: monthLabel(key) })),
+    ];
+  }, [tickets]);
+
+  // Um recorte que sumiu da lista (o último chamado daquele responsável foi
+  // concluído e arquivado, por exemplo) deixaria a tabela presa em zero
+  // registro, sem opção visível para desfazer. Volta para "todos".
+  useEffect(() => {
+    if (!assigneeOptions.includes(assignee)) setAssignee(ALL_ASSIGNEES);
+  }, [assigneeOptions, assignee]);
+
+  useEffect(() => {
+    if (!monthOptions.some((option) => option.value === month)) setMonth(ALL_MONTHS);
+  }, [monthOptions, month]);
+
   const rows = useMemo(
     () =>
-      statusFilter === "Todos"
-        ? tickets
-        : tickets.filter((ticket) => ticket.status === statusFilter),
-    [statusFilter, tickets],
+      tickets.filter((ticket) => {
+        if (statusFilter !== "Todos" && ticket.status !== statusFilter) return false;
+        if (assignee !== ALL_ASSIGNEES && ticket.assignee !== assignee) return false;
+        if (month !== ALL_MONTHS && ticket.openedAt.slice(0, 7) !== month) return false;
+        return true;
+      }),
+    [tickets, statusFilter, assignee, month],
   );
 
   /**
@@ -142,40 +205,14 @@ export function ItDashboard({
       <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-lg font-bold tracking-tight text-foreground">{title}</p>
-          <p className="mt-0.5 text-[11px] text-muted">Última atualização: 23/07/2026, 16:07</p>
+          <p className="mt-0.5 text-[11px] text-muted">Última atualização: {loadedAt}</p>
         </div>
 
+        {/* Os filtros de responsável e de mês moraram aqui e recortam APENAS a
+            tabela do rodapé — nunca os KPIs, que são a agregação do setor
+            calculada no servidor. Ficam junto da tabela, onde o efeito é
+            visível: no cabeçalho pareciam governar o dashboard inteiro. */}
         <div className="flex flex-wrap items-center gap-2">
-          <label className="flex items-center gap-2 text-xs text-muted">
-            <UserRound className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Responsável:</span>
-            <select
-              value={assignee}
-              onChange={(e) => setAssignee(e.target.value)}
-              aria-label="Filtrar por responsável"
-              className="focus-ring h-8 rounded-lg border border-border bg-surface-2 px-2 text-xs text-foreground"
-            >
-              {IT_ASSIGNEES.map((option) => (
-                <option key={option}>{option}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="flex items-center gap-2 text-xs text-muted">
-            <CalendarDays className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Mês:</span>
-            <select
-              value={month}
-              onChange={(e) => setMonth(e.target.value)}
-              aria-label="Filtrar por mês"
-              className="focus-ring h-8 rounded-lg border border-border bg-surface-2 px-2 text-xs text-foreground"
-            >
-              {IT_MONTHS.map((option) => (
-                <option key={option}>{option}</option>
-              ))}
-            </select>
-          </label>
-
           <div className="text-right">
             <p className="font-mono text-sm font-bold text-foreground">{clock}</p>
             <p className="text-[10px] text-muted">Horário atual</p>
@@ -268,7 +305,41 @@ export function ItDashboard({
             Chamados do período
           </h3>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-2 text-xs text-muted">
+              <UserRound className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Responsável:</span>
+              <select
+                value={assignee}
+                onChange={(e) => setAssignee(e.target.value)}
+                aria-label="Filtrar tabela por responsável"
+                className="focus-ring h-8 rounded-lg border border-border bg-surface-2 px-2 text-xs text-foreground"
+              >
+                {assigneeOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex items-center gap-2 text-xs text-muted">
+              <CalendarDays className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Mês:</span>
+              <select
+                value={month}
+                onChange={(e) => setMonth(e.target.value)}
+                aria-label="Filtrar tabela por mês"
+                className="focus-ring h-8 rounded-lg border border-border bg-surface-2 px-2 text-xs text-foreground"
+              >
+                {monthOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
             <label className="flex items-center gap-2 text-xs text-muted">
               Status:
               <select

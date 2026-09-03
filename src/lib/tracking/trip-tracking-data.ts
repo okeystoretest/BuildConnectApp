@@ -11,8 +11,8 @@ import type {
 
 /**
  * Monta o DTO TripTracking (consumido pelo front) a partir do Trip e suas
- * posições persistidas. É a contraparte real do mockTrackingSource: mesma
- * forma de saída, dados vindos do banco.
+ * posições persistidas. É a única fonte do rastreamento — a corrida simulada
+ * que existia ao lado foi removida.
  *
  * Decisões:
  *  - ETA/velocidade média derivam das últimas posições reais, sem inventar.

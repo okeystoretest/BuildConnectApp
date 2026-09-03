@@ -48,39 +48,31 @@ function sectorSlug(label: string): string {
 
 // Instrumentos de avaliação: fonte da verdade em src/lib/evaluation-catalog.ts.
 
-// Vínculo dos usuários por rótulos (resolvidos para FK durante o seed).
+/**
+ * Administrador inicial.
+ *
+ * O seed criava quatro pessoas de demonstração — Ana Ribeiro, Carlos Mendes,
+ * Beatriz Souza e Pedro Dias — com nome, setor e unidade inventados. Elas
+ * foram removidas: o banco não nasce mais povoado de gente que não existe.
+ *
+ * Sobra o que é indispensável para entrar na aplicação num banco novo: UM
+ * administrador, com identidade vinda do ambiente em vez de escrita no código.
+ * Os demais usuários são cadastrados pela própria tela de Gestão de Usuários.
+ *
+ * O upsert é por `username`: rodar o seed de novo não duplica nem sobrescreve
+ * a senha de um admin que já existe.
+ */
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME?.trim() || "admin#BC";
+const ADMIN_FULLNAME = process.env.ADMIN_FULLNAME?.trim() || "Administrador";
+
 const users = [
   {
-    username: "ana#BC",
-    fullName: "Ana Ribeiro",
-    role: Role.COLABORADOR,
-    sectorLabel: "Logística",
-    subsectorLabels: ["Estoque"],
-    unitLabel: "Unidade 1",
-  },
-  {
-    username: "carlos#BC",
-    fullName: "Carlos Mendes",
-    role: Role.GESTOR,
-    sectorLabel: "Comercial",
-    subsectorLabels: ["Vendas"],
-    unitLabel: "OKEY Store (Iguatemi)",
-  },
-  {
-    username: "beatriz#BC",
-    fullName: "Beatriz Souza",
+    username: ADMIN_USERNAME,
+    fullName: ADMIN_FULLNAME,
     role: Role.ADMIN,
     sectorLabel: "Retaguarda",
-    subsectorLabels: [],
-    unitLabel: "Unidade 1",
-  },
-  {
-    username: "pedro#BC",
-    fullName: "Pedro Dias",
-    role: Role.COLABORADOR,
-    sectorLabel: "Logística",
-    subsectorLabels: ["Motoristas"],
-    unitLabel: "Unidade 2",
+    subsectorLabels: [] as string[],
+    unitLabel: UNIT_RECORDS[0]?.label ?? "",
   },
 ];
 

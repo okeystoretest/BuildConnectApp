@@ -1,3 +1,30 @@
+# Scripts de manutenção
+
+## `limpar-mock.sql` — remover os dados de demonstração
+
+O seed deixou de criar os quatro usuários fictícios (Ana Ribeiro, Carlos
+Mendes, Beatriz Souza e Pedro Dias); quem rodou o seed antes disso tem essas
+linhas gravadas. Este script as remove, junto dos chamados de demonstração —
+os de código no formato antigo `#2051`, distinto dos reais `RET-`/`MOT-`.
+
+**Leia o arquivo antes de executar.** Ele está em três blocos: inspeção (não
+altera nada), o aviso sobre garantir um administrador ativo, e a remoção em
+transação, que termina em `ROLLBACK` de propósito — trocar por `COMMIT` é uma
+decisão sua, depois de conferir o resultado da inspeção.
+
+```bash
+pg_dump -Fc -f backup-antes-da-limpeza.dump "$DATABASE_URL"   # primeiro isto
+psql "$DATABASE_URL" -f scripts/limpar-mock.sql
+```
+
+Antes de apagar o admin de demonstração, crie o definitivo:
+
+```bash
+SEED_PASSWORD="senha-forte" ADMIN_USERNAME="seunome#BC"   ADMIN_FULLNAME="Seu Nome" npx prisma db seed
+```
+
+---
+
 # Reset da estrutura de Avaliações
 
 Dois scripts equivalentes para **apagar todos os dados de avaliação** e
