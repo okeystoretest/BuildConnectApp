@@ -1,56 +1,49 @@
 import { cn } from "@/lib/utils";
 
-/** Cores literais da marca — não seguem o tema. */
-const BRAND_PURPLE = "#4A2E74";
-const BRAND_GREEN = "#5FB881";
+/**
+ * Arquivo da marca. É a MESMA arte do favicon: `public/favicon.png` e
+ * `public/apple-touch-icon.png` são reduções deste 512×512.
+ *
+ * Servir o arquivo, em vez de redesenhar a marca em SVG, é o que garante que
+ * a aba do navegador, a tela de login e a barra lateral não voltem a divergir.
+ */
+const BRAND_MARK = "/build-connect-icon.png";
 
 /**
- * Marca da Build.Connect: dois losangos entrelaçados.
- * O roxo passa por cima na metade superior; o verde, na inferior.
+ * Símbolo da Build.Connect: dois losangos entrelaçados como elo de corrente.
+ *
+ * Aqui havia um SVG desenhado à mão que NÃO era a marca. Duas diferenças:
+ *
+ *  - O entrelaçamento estava invertido. A máscara cobria a metade superior,
+ *    pondo o roxo na frente em cima e o verde na frente embaixo. No arquivo
+ *    real é o contrário: verde na frente no cruzamento de cima, roxo na frente
+ *    no de baixo.
+ *  - A geometria era outra: os centros ficavam a 120px um do outro contra os
+ *    ~157px da arte, com losangos menores.
+ *
+ * O resultado é que a aba do navegador mostrava um logotipo e a aplicação,
+ * outro. Retraçar em SVG só recolocaria a divergência a uma distância menor —
+ * a arte passa a vir do arquivo.
  */
-export function LogoMark({ className }: { className?: string }) {
+export function LogoMark({
+  className,
+  /**
+   * `true` quando o símbolo aparece ao lado do nome escrito. Vira decorativo:
+   * sem isso o leitor de tela anunciaria "Build.Connect" duas vezes seguidas.
+   */
+  decorative = false,
+}: {
+  className?: string;
+  decorative?: boolean;
+}) {
   return (
-    <svg
-      viewBox="0 0 512 512"
-      className={cn("shrink-0", className)}
-      role="img"
-      aria-label="Build.Connect"
-    >
-      <defs>
-        <mask id="bc-logo-top">
-          <rect width="512" height="512" fill="black" />
-          <rect width="512" height="256" fill="white" />
-        </mask>
-      </defs>
-      <g fill="none" strokeWidth="62" strokeLinejoin="round">
-        <rect
-          x="-80"
-          y="-80"
-          width="160"
-          height="160"
-          transform="translate(196 256) rotate(45)"
-          stroke={BRAND_PURPLE}
-        />
-        <rect
-          x="-80"
-          y="-80"
-          width="160"
-          height="160"
-          transform="translate(316 256) rotate(45)"
-          stroke={BRAND_GREEN}
-        />
-        <g mask="url(#bc-logo-top)">
-          <rect
-            x="-80"
-            y="-80"
-            width="160"
-            height="160"
-            transform="translate(196 256) rotate(45)"
-            stroke={BRAND_PURPLE}
-          />
-        </g>
-      </g>
-    </svg>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={BRAND_MARK}
+      alt={decorative ? "" : "Build.Connect"}
+      aria-hidden={decorative || undefined}
+      className={cn("shrink-0 object-contain", className)}
+    />
   );
 }
 
@@ -63,7 +56,7 @@ export function Logo({
 }) {
   return (
     <div className={cn("flex items-center gap-2.5", className)}>
-      <LogoMark className="h-10 w-10" />
+      <LogoMark className="h-10 w-10" decorative={showText} />
       {showText && (
         <div className="leading-none">
           <span className="text-[17px] font-bold tracking-tight text-foreground">Build.</span>
