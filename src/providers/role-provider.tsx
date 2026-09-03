@@ -1,18 +1,17 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useMemo } from "react";
 import type { CurrentUser, Permission, Role } from "@/types";
 import { can as canFn } from "@/lib/permissions";
 
 interface RoleContextValue {
   user: CurrentUser;
-  role: Role;
   /**
-   * Troca o papel ATIVO apenas na sessão do navegador — recurso de
-   * pré-visualização para ADMIN. Não altera a sessão no servidor nem o
-   * papel real do usuário.
+   * Papel REAL da sessão, validado no servidor. Não há como trocá-lo pelo
+   * cliente: o papel governa o que a tela oferece, e um seletor no navegador
+   * fazia a interface discordar do que o servidor autoriza.
    */
-  setRole: (role: Role) => void;
+  role: Role;
   can: (permission: Permission) => boolean;
 }
 
@@ -25,12 +24,12 @@ export function RoleProvider({
   initialUser: CurrentUser;
   children: React.ReactNode;
 }) {
-  const [role, setRole] = useState<Role>(initialUser.role);
+  const role = initialUser.role;
 
   const can = useCallback((permission: Permission) => canFn(role, permission), [role]);
 
   const value = useMemo<RoleContextValue>(
-    () => ({ user: { ...initialUser, role }, role, setRole, can }),
+    () => ({ user: initialUser, role, can }),
     [initialUser, role, can],
   );
 

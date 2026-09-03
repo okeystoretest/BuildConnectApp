@@ -4,7 +4,6 @@ import { Menu } from "lucide-react";
 import { useSidebar } from "@/providers/sidebar-provider";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/components/notifications/notification-bell";
-import { RoleSwitcher } from "./role-switcher";
 import { ThemeToggle } from "./theme-toggle";
 
 export interface TopbarProps {
@@ -33,9 +32,6 @@ export function Topbar({ eyebrow, title }: TopbarProps) {
       </div>
 
       <div className="flex items-center gap-2">
-        <div className="hidden sm:block">
-          <RoleSwitcher />
-        </div>
         <ThemeToggle />
         <NotificationBell />
       </div>
