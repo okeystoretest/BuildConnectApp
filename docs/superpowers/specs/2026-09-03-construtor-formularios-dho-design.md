@@ -183,35 +183,47 @@ DHO › Resultados › Formulários › abre o formulário → dashboard (seçã
 
 ## 5. Dashboard de respostas
 
-### A paleta foi validada, não escolhida no olho
+### Cor: a paleta do sistema, e uma só por gráfico
 
-Os tokens da casa **reprovam como paleta categórica**:
+A cor sai dos tokens da casa — nada de paleta importada de referência. O que o
+validador mostrou é onde eles podem e onde não podem ser usados.
+
+**Como paleta categórica, reprovam.** `accent` (#7f5cff) e `info` (#3c83f6) ficam a
+ΔE 2,6 em deuteranopia: indistinguíveis. E não há como contornar redistribuindo —
+violeta 253 e azul 217 distam 36°, então ou se afastam em luminosidade (e o violeta
+cai abaixo de 3:1 de contraste) ou ficam perto demais para qualquer visão. Testado nas
+duas direções. **A paleta da casa comporta duas séries categóricas, não quatro.**
+
+Isso não atrapalha, porque **este dashboard não tem série múltipla**. Cada pergunta é
+uma medida sobre categorias — uma série só. Pintar cada opção de uma cor seria erro
+duplo: ilegível no daltonismo e semanticamente vazio, já que a identidade está no
+rótulo ao lado da barra.
+
+**Preenchimento: `accent`.** É o único token que passa contraste nos dois temas:
 
 ```
-#7f5cff (accent) ↔ #3c83f6 (info) : ΔE 2,6 deuteranopia · 11,0 visão normal  → FAIL
+accent   escuro #7f5cff sobre #151122 →  4,30:1  PASS
+         claro  #603ce2 sobre #ffffff →  6,48:1  PASS
+primary  escuro #4ade80 sobre #151122 → 10,62:1  PASS
+         claro  #2bab5a sobre #ffffff →  2,97:1  FAIL   ← abaixo do mínimo de 3:1
 ```
 
-Violeta e azul são indistinguíveis para daltonismo verde-vermelho e quase
-indistinguíveis para todo mundo. Isso derruba o reflexo natural — pintar cada opção de
-uma cor. E há um segundo motivo para derrubá-lo: numa pergunta de opção única **a cor
-não codificaria nada**, porque a identidade já está no rótulo ao lado da barra.
+`primary` fica fora do preenchimento por dois motivos: reprova no tema claro por pouco,
+e é a cor de ação da interface — barra verde num painel lê como coisa clicável. Trilha
+e vazio usam `surface-3`/`border`. Estados (respondido, pendente) usam os tokens de
+status **com rótulo**, nunca cor sozinha.
 
-Onde a cor for de fato necessária (comparar setores lado a lado), este conjunto passa
-nos cinco testes, **nos dois temas, com um set só**:
+**Comparar setores não pede cor:** são pequenos múltiplos, um gráfico por setor, todos
+no mesmo violeta. O que se lê é o comprimento da barra, não o matiz.
 
-```
-#1f9149  #8955e3  #a56d0d  #0086b2
-verde    violeta   âmbar    azul
-pior par adjacente: ΔE 20,2 (protanopia) · 23,2 (visão normal)
-```
-
-Reprodução: `node scripts/validate_palette.js "#1f9149,#8955e3,#a56d0d,#0086b2" --mode dark --surface "#151122"`
+Reprodução: `node scripts/validate_palette.js "<hex,...>" --mode dark --surface "#151122"`
+(skill `dataviz`); o contraste, por luminância relativa WCAG.
 
 ### A forma segue o trabalho do dado
 
 | Tipo da pergunta | Forma | Por quê |
 |---|---|---|
-| Múltipla escolha, caixas, lista suspensa | Barras **horizontais**, uma cor só, ordenadas por volume | Rótulos são texto de comprimento variável; horizontal não corta nem gira |
+| Múltipla escolha, caixas, lista suspensa | Barras **horizontais** em `accent`, ordenadas por volume | Rótulos são texto de comprimento variável; horizontal não corta nem gira |
 | Escala linear | Barras verticais **na ordem 1→N**, mais a média em número grande | A ordem carrega significado; ordenar por volume destruiria a leitura |
 | Texto e parágrafo | Lista com busca — **não é gráfico** | Não há o que agregar; a resposta é o dado |
 | Taxa de resposta | Número grande + medidor | Uma proporção não pede pizza |
