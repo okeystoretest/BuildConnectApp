@@ -1,5 +1,5 @@
 import type { Role } from "@/types";
-import type { FormStatus } from "@/types/form";
+import type { FormDraft, FormStatus } from "@/types/form";
 
 /**
  * Regras do ciclo de vida de um formulário, em forma pura.
@@ -12,18 +12,80 @@ import type { FormStatus } from "@/types/form";
 /**
  * Estrutura editável.
  *
- * Rascunho: à vontade. Publicado sem resposta: também — corrigir um erro de
- * digitação antes de alguém responder é legítimo. Depois da PRIMEIRA resposta,
- * trava: apagar uma opção deixaria `FormAnswer.optionIds` apontando para o nada
- * e, pior, mudaria o significado do que já foi respondido.
+ * Rascunho e publicado: sim, mesmo com respostas já gravadas. Encerrado: não —
+ * é resultado congelado, e editá-lo mudaria o significado de um número que
+ * alguém já leu. Para mexer num encerrado, reabra: a rodada nova é o lugar onde
+ * estrutura nova faz sentido.
+ *
+ * **Mudou em 03/09/2026, a pedido.** Antes, a primeira resposta travava a
+ * estrutura. A proteção não sumiu — mudou de lugar: em vez de recusar a edição,
+ * `removalImpact` diz exatamente o que será destruído e a tela pergunta antes
+ * de gravar. Quem grava é `saveForm`, que atualiza pergunta por pergunta em vez
+ * de apagar e recriar, para que o que não foi mexido conserve as respostas.
  */
-export function canEditStructure(form: {
-  status: FormStatus;
-  responseCount: number;
-}): boolean {
-  if (form.status === "ENCERRADO") return false;
-  if (form.status === "RASCUNHO") return true;
-  return form.responseCount === 0;
+export function canEditStructure(form: { status: FormStatus }): boolean {
+  return form.status !== "ENCERRADO";
+}
+
+/** Reabrir só faz sentido para o que está encerrado. */
+export function canReopen(form: { status: FormStatus }): boolean {
+  return form.status === "ENCERRADO";
+}
+
+/** Um item que some do formulário levando dado junto. */
+export interface RemovalImpact {
+  kind: "pergunta" | "opção";
+  id: string;
+  label: string;
+  /** Respostas destruídas (pergunta) ou que ficam órfãs (opção). */
+  affected: number;
+}
+
+/**
+ * O que salvar este rascunho vai DESTRUIR.
+ *
+ * Compara o que está no banco com o que a tela devolve e devolve só o que sai
+ * levando dado junto. É a conta que substituiu a antiga trava de edição, e é a
+ * única coisa entre o usuário e uma perda silenciosa.
+ *
+ * Só entra na lista o que tem `affected > 0`: apagar uma pergunta que ninguém
+ * respondeu não perde nada, e avisar sobre isso seria ruído — ruído faz o aviso
+ * que importa ser ignorado.
+ *
+ * Compara por ID, nunca por rótulo: renomear uma pergunta é edição legítima e
+ * não pode ser lida como "apagou uma e criou outra".
+ */
+export function removalImpact(
+  existing: {
+    questions: readonly { id: string; label: string; answers: number }[];
+    options: readonly { id: string; label: string; chosen: number }[];
+  },
+  draft: FormDraft,
+): RemovalImpact[] {
+  const questions = draft.sections.flatMap((s) => s.questions);
+  const keptQuestions = new Set(questions.map((q) => q.id));
+  const keptOptions = new Set(questions.flatMap((q) => q.options.map((o) => o.id)));
+
+  // Perguntas primeiro: perder uma pergunta é mais grave que perder uma opção,
+  // e a tela lista na ordem recebida.
+  return [
+    ...existing.questions
+      .filter((q) => !keptQuestions.has(q.id) && q.answers > 0)
+      .map((q): RemovalImpact => ({
+        kind: "pergunta",
+        id: q.id,
+        label: q.label,
+        affected: q.answers,
+      })),
+    ...existing.options
+      .filter((o) => !keptOptions.has(o.id) && o.chosen > 0)
+      .map((o): RemovalImpact => ({
+        kind: "opção",
+        id: o.id,
+        label: o.label,
+        affected: o.chosen,
+      })),
+  ];
 }
 
 /**

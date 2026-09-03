@@ -122,7 +122,18 @@ export async function saveForm(input: {
 
   const existing = await editableForm(input.formId, me);
   if (!existing) return { ok: false, error: "Formulário não encontrado." };
-  if (!canEditStructure({ status: existing.status, responseCount: existing._count.responses })) {
+  if (!canEditStructure({ status: existing.status })) {
+    return { ok: false, error: "Formulário encerrado. Reabra antes de editar." };
+  }
+
+  // TRAVA PROVISÓRIA — sai na Fase 3, junto com a reescrita abaixo.
+  //
+  // `canEditStructure` já permite editar formulário respondido. Esta função
+  // ainda NÃO pode: enquanto ela apagar e recriar a estrutura inteira, liberar
+  // a edição apagaria todas as respostas em silêncio, via o cascade de
+  // FormQuestion para FormAnswer. A regra mudou antes da gravação, de
+  // propósito — a regra é testável e a gravação é o que precisa de cuidado.
+  if (existing._count.responses > 0) {
     return {
       ok: false,
       error: "Este formulário já recebeu respostas. Só título e descrição podem mudar.",
