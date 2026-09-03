@@ -52,8 +52,9 @@ export function KanbanBoard({ tickets: source, readOnly = false }: KanbanBoardPr
   const router = useRouter();
 
   const { tickets, applyOptimistic, setLocal, refresh } = useTicketsPoll("TI", source);
+  // Apagar em definitivo é do ADMIN; distribuir é da gestão do setor.
   const canDelete = can("tickets.manage");
-  const canAssignOthers = can("tickets.manage");
+  const canAssignOthers = can("tickets.assign");
   const canClaim = can("tickets.claim");
 
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -102,7 +103,7 @@ export function KanbanBoard({ tickets: source, readOnly = false }: KanbanBoardPr
   async function openAssign(ticket: ItTicket) {
     setAssigning(ticket);
     if (canAssignOthers && people.length === 0) {
-      setPeople(await listAssignableUsers());
+      setPeople(await listAssignableUsers("TI"));
     }
   }
 

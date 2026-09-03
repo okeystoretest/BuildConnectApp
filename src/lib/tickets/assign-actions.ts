@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth/require-user";
 import { resolveAccessibleSlugs, canAccessSlug } from "@/lib/auth/access";
 import { can } from "@/lib/permissions";
+import { listDrivers } from "@/lib/tickets/actions";
 import type { Role } from "@/types";
 
 export interface ActionResult {
@@ -19,8 +20,12 @@ export interface ActionResult {
  * Regras de permissão:
  *  - "Atribuir para mim": qualquer usuário com tickets.claim (inclui
  *    COLABORADOR/motorista). Só pode atribuir A SI MESMO.
- *  - "Atribuir para <alguém>": exige tickets.manage (GESTOR/ADMIN).
- *  - "Desatribuir": o próprio responsável OU tickets.manage.
+ *  - "Atribuir para <alguém>": exige tickets.assign (GESTOR/ADMIN).
+ *  - "Desatribuir": o próprio responsável OU tickets.assign.
+ *
+ * Distribuir trabalho é tickets.assign, não tickets.manage. A gestão de setor
+ * precisa encaminhar corrida e chamado; apagar registro em definitivo segue
+ * sendo só do ADMIN.
  *
  * Atribuir move PENDENTE → ATRIBUIDO; desatribuir volta a PENDENTE e limpa
  * a atribuição. Nenhuma das duas mexe em cronometragem (isso é do "Iniciar").
@@ -47,12 +52,12 @@ export async function assignTicket(input: {
   const targetId = parsed.data.assigneeId ?? user.id;
   const isSelf = targetId === user.id;
 
-  // Atribuir para si exige claim; atribuir para outro exige manage.
+  // Atribuir para si exige claim; atribuir para outro exige assign.
   if (isSelf) {
     if (!can(role, "tickets.claim")) {
       return { ok: false, error: "Você não pode assumir chamados." };
     }
-  } else if (!can(role, "tickets.manage")) {
+  } else if (!can(role, "tickets.assign")) {
     return { ok: false, error: "Só a gestão pode atribuir a outra pessoa." };
   }
 
@@ -121,9 +126,9 @@ export async function unassignTicket(input: { ticketId: string }): Promise<Actio
     });
     if (!ticket) return { ok: false, error: "Chamado não encontrado." };
 
-    const isManager = can(user.role as Role, "tickets.manage");
+    const canAssign = can(user.role as Role, "tickets.assign");
     const isAssignee = ticket.assigneeId === user.id;
-    if (!isManager && !isAssignee) {
+    if (!canAssign && !isAssignee) {
       return { ok: false, error: "Você não pode desatribuir este chamado." };
     }
     // Depois de iniciada a corrida, desatribuir não faz sentido pelo botão —
@@ -152,12 +157,23 @@ export async function unassignTicket(input: { ticketId: string }): Promise<Actio
  * Pessoas atribuíveis a um chamado, para o seletor "Atribuir para…" e para a
  * atribuição exigida ao mover um card para "Atribuído".
  *
- * Só a gestão pode escolher outra pessoa; para os demais a lista volta vazia
- * e o modal oferece apenas "Atribuir para mim".
+ * Só quem tem tickets.assign pode escolher outra pessoa; para os demais a
+ * lista volta vazia e o modal oferece apenas "Atribuir para mim".
+ *
+ * No quadro de MOTORISTAS a lista é a dos motoristas — usuários lotados em
+ * Logística › Motoristas, o mesmo recorte do seletor de abertura de chamado.
+ * Sem o destino a lista sairia com a empresa inteira, e daria para encaminhar
+ * uma entrega a alguém do Marketing.
  */
-export async function listAssignableUsers(): Promise<{ id: string; name: string }[]> {
+export async function listAssignableUsers(
+  destination?: "TI" | "MOTORISTAS",
+): Promise<{ id: string; name: string }[]> {
   const user = await getCurrentUser();
-  if (!user || !can(user.role as Role, "tickets.manage")) return [];
+  if (!user || !can(user.role as Role, "tickets.assign")) return [];
+
+  if (destination === "MOTORISTAS") {
+    return listDrivers();
+  }
 
   const people = await prisma.user.findMany({
     where: { active: true },

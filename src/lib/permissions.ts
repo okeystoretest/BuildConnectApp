@@ -20,6 +20,7 @@ const MATRIX: Record<Role, readonly Permission[]> = {
     "evaluations.fill",
     "tickets.create",
     "tickets.viewOwn",
+    "tickets.assign",
     "tickets.claim",
   ],
   ADMIN: [
@@ -36,6 +37,7 @@ const MATRIX: Record<Role, readonly Permission[]> = {
     "tickets.create",
     "tickets.viewOwn",
     "tickets.manage",
+    "tickets.assign",
     "tickets.claim",
   ],
 } as const;

@@ -20,7 +20,13 @@ export type Permission =
   | "users.manage"
   | "tickets.create"
   | "tickets.viewOwn"
+  // Gestão TOTAL do chamado, incluindo a EXCLUSÃO definitiva (que apaga
+  // anexos e comprovante do disco). Exclusiva do ADMIN.
   | "tickets.manage"
+  // Distribuir trabalho: atribuir um chamado a OUTRA pessoa e desatribuir o
+  // de terceiros. Separada de `tickets.manage` de propósito — a gestão de
+  // setor precisa distribuir corrida e chamado, mas não apagar registro.
+  | "tickets.assign"
   | "tickets.claim";
 
 export interface SectorLink {

@@ -28,9 +28,15 @@ export interface DriverKanbanBoardProps {
  *
  * Cada card mostra botões conforme status/papel (ver DriverTicketCard). Este
  * board é a tela operacional do motorista: assumir, iniciar (liga o GPS),
- * concluir. A gestão (tickets.manage) tem os mesmos botões mais "Atribuir
- * para…" e a exclusão definitiva. Sincroniza "quase em tempo real" via
- * polling (~15s). O board de TI (KanbanBoard) segue com drag.
+ * concluir.
+ *
+ * A gestão do setor (tickets.assign) distribui trabalho: "Atribuir para…" e
+ * "Desatribuir" o de terceiros. Dirigir e enviar comprovante seguem sendo do
+ * responsável — quem distribui a corrida não a executa. Exclusão definitiva
+ * continua exclusiva do ADMIN (tickets.manage).
+ *
+ * Sincroniza "quase em tempo real" via polling (~15s). O board de TI
+ * (KanbanBoard) segue com drag.
  *
  * Concluído permanece 30 minutos no quadro e depois passa ao Histórico, aberto
  * pelo botão do cabeçalho.
@@ -39,6 +45,9 @@ export function DriverKanbanBoard({ tickets: source }: DriverKanbanBoardProps) {
   const { user, can } = useRole();
   const router = useRouter();
 
+  // Distribuir (atribuir a terceiro, desatribuir) e apagar são poderes
+  // distintos: o gestor do setor tem o primeiro, só o admin tem o segundo.
+  const canAssignOthers = can("tickets.assign");
   const canManage = can("tickets.manage");
   const canClaim = can("tickets.claim");
 
@@ -86,7 +95,8 @@ export function DriverKanbanBoard({ tickets: source }: DriverKanbanBoardProps) {
   async function handleOpenAssignOther(ticket: ItTicket) {
     setAssigning(ticket);
     if (drivers.length === 0) {
-      const list = await listAssignableUsers();
+      // Neste quadro a lista são os motoristas, não a empresa inteira.
+      const list = await listAssignableUsers("MOTORISTAS");
       setDrivers(list);
     }
   }
@@ -184,6 +194,7 @@ export function DriverKanbanBoard({ tickets: source }: DriverKanbanBoardProps) {
                   key={ticket.id}
                   ticket={ticket}
                   currentUserId={user.id}
+                  canAssignOthers={canAssignOthers}
                   canManage={canManage}
                   canClaim={canClaim}
                   canDelete={canManage}

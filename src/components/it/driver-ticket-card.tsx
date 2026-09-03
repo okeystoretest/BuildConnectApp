@@ -13,7 +13,13 @@ export interface DriverTicketCardProps {
   ticket: ItTicket;
   /** Id do usuário logado — decide se ele é o responsável. */
   currentUserId: string;
-  /** Pode atribuir a OUTra pessoa (tickets.manage). */
+  /** Pode atribuir a OUTRA pessoa e desatribuir o de terceiros (tickets.assign). */
+  canAssignOthers: boolean;
+  /**
+   * Pode agir NO LUGAR do responsável — iniciar a corrida e enviar o
+   * comprovante por ele (tickets.manage). Distribuir trabalho não dá esse
+   * direito: quem encaminha a corrida não é quem dirige.
+   */
   canManage: boolean;
   /** Pode assumir para si (tickets.claim). */
   canClaim: boolean;
@@ -36,8 +42,8 @@ export interface DriverTicketCardProps {
  * Card do kanban de Motoristas. Sem arrastar: cada coluna expõe botões de
  * ação conforme o status e o papel do usuário.
  *
- *  - PENDENTE:     "Atribuir para mim" (claim) · "Atribuir para" (manage)
- *  - ATRIBUIDO:    "Iniciar" (liga o GPS) · "Desatribuir"
+ *  - PENDENTE:     "Atribuir para mim" (claim) · "Atribuir para" (assign)
+ *  - ATRIBUIDO:    "Iniciar" (liga o GPS) · "Desatribuir" (dono ou assign)
  *  - EM_ANDAMENTO: DriverTripController (GPS ativo) · "Concluir" (comprovante)
  *  - CONCLUIDO:    somente leitura
  *
@@ -48,6 +54,7 @@ export interface DriverTicketCardProps {
 export function DriverTicketCard({
   ticket,
   currentUserId,
+  canAssignOthers,
   canManage,
   canClaim,
   canDelete,
@@ -137,7 +144,7 @@ export function DriverTicketCard({
                 <UserPlus className="h-3.5 w-3.5" /> Atribuir para mim
               </Button>
             )}
-            {canManage && (
+            {canAssignOthers && (
               <Button
                 size="sm"
                 variant="secondary"
@@ -159,7 +166,7 @@ export function DriverTicketCard({
                 onStarted={() => onStarted(ticket)}
               />
             )}
-            {(isMine || canManage) && (
+            {(isMine || canAssignOthers) && (
               <Button
                 size="sm"
                 variant="ghost"
@@ -169,7 +176,7 @@ export function DriverTicketCard({
                 <UserMinus className="h-3.5 w-3.5" /> Desatribuir
               </Button>
             )}
-            {!isMine && !canManage && (
+            {!isMine && !canManage && !canAssignOthers && (
               <p className="text-center text-[11px] text-muted">Atribuído a outra pessoa.</p>
             )}
           </div>
