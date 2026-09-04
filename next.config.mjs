@@ -48,6 +48,13 @@ const cspCompleta = [
 const nextConfig = {
   reactStrictMode: true,
   output: "standalone",
+  // Baileys fora do empacotamento do servidor.
+  //
+  // Ele carrega libsignal e protobufjs com require dinâmico, e mantém um
+  // WebSocket vivo — coisas que o bundler do Next ou quebra na análise
+  // estática, ou duplica a cada recompilação, deixando duas conexões
+  // disputando a mesma sessão. Externo, é o Node que o carrega, uma vez.
+  serverExternalPackages: ["baileys"],
   // Sem "X-Powered-By: Next.js" na resposta. Medido em produção, ele estava
   // sendo enviado: anuncia o framework para qualquer requisição e entrega de
   // graça a lista de CVEs que vale a pena tentar primeiro.

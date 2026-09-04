@@ -74,6 +74,8 @@ model User {
   authoredPosts      ContentPost[]      @relation("ContentPostAuthor")
   requestedTickets   Ticket[]           @relation("TicketRequester")
   assignedTickets    Ticket[]           @relation("TicketAssignee")
+  // Notificações de WhatsApp endereçadas a este usuário (fila + auditoria).
+  whatsappMessages WhatsappMessage[] @relation("WhatsappRecipient")
   // Formulários do DHO: criados, atribuídos a responder, e respondidos.
   authoredForms   Form[]           @relation("FormAuthor")
   formAssignments FormAssignment[] @relation("FormAssignee")
@@ -1145,4 +1147,64 @@ model FormAnswer {
 
   @@unique([responseId, questionId])
   @@index([questionId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Notificações por WhatsApp
+// ─────────────────────────────────────────────────────────────
+
+enum WhatsappKind {
+  AVALIACAO
+  FORMULARIO
+}
+
+enum WhatsappStatus {
+  PENDENTE
+  ENVIADO
+  FALHOU
+}
+
+// Credenciais da sessão do Baileys.
+//
+// No BANCO, e não em arquivo, por dois motivos. O primeiro é segurança: o
+// único disco persistente do deploy é o volume de /uploads, e a rota
+// app/uploads/[...path] serve qualquer arquivo de lá para quem tem sessão —
+// a credencial do WhatsApp ficaria baixável por qualquer colaborador logado.
+// O segundo é operação: trocar o número vira apagar estas linhas por um botão,
+// em vez de mexer em volume no console do servidor.
+//
+// NUNCA logar o conteúdo de `data`. Quem tem isto É o WhatsApp da empresa.
+model WhatsappSession {
+  // "creds" para as credenciais; as demais chaves são as do próprio Baileys.
+  id        String   @id
+  data      Json
+  updatedAt DateTime @updatedAt
+}
+
+// Fila de envio E log de auditoria, na mesma tabela.
+//
+// Fila porque publicar um formulário não pode esperar 40 envios de 1 a 3
+// segundos cada — a Server Action grava as linhas e devolve; o envio é
+// drenado depois. E se o WhatsApp estiver fora do ar naquele instante, a
+// mensagem espera em vez de se perder em silêncio.
+//
+// Log porque é aqui que se responde "fulano recebeu?" sem guardar número
+// nenhum: o telefone é resolvido do User na hora do envio e não é persistido
+// aqui, para esta tabela não virar uma lista de contatos.
+model WhatsappMessage {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("WhatsappRecipient", fields: [userId], references: [id], onDelete: Cascade)
+
+  kind     WhatsappKind
+  status   WhatsappStatus @default(PENDENTE)
+  attempts Int            @default(0)
+  /** Motivo da falha, em português. Nunca contém o número nem credencial. */
+  error    String?
+
+  createdAt DateTime  @default(now())
+  sentAt    DateTime?
+
+  @@index([status, createdAt])
+  @@index([userId])
 }
