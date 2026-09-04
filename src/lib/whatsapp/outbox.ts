@@ -148,7 +148,12 @@ export async function drainOutbox(options: DrainOptions = {}): Promise<DrainResu
 
         await sender(jid, MESSAGE_TEXT[msg.kind]);
 
-        await prisma.whatsappMessage.update({
+        // updateMany, e não update: a linha pode ter sumido entre a leitura da
+        // fila e agora — basta o destinatário ser excluído do sistema, e o
+        // cascade leva a mensagem junto. `update` LANÇA quando não acha, e o
+        // erro escaparia do laço abortando os envios restantes; `updateMany`
+        // sobre zero linhas simplesmente não faz nada.
+        await prisma.whatsappMessage.updateMany({
           where: { id: msg.id },
           data: { status: "ENVIADO", sentAt: new Date(), attempts: msg.attempts + 1, error: null },
         });
@@ -165,7 +170,9 @@ export async function drainOutbox(options: DrainOptions = {}): Promise<DrainResu
             ? e.message.slice(0, 300)
             : "Falha desconhecida no envio.";
 
-        await prisma.whatsappMessage.update({
+        // Mesmo motivo do updateMany acima: registrar a falha não pode, ela
+        // própria, virar uma exceção que derruba o laço.
+        await prisma.whatsappMessage.updateMany({
           where: { id: msg.id },
           data: {
             // Falha passageira volta para a fila; só se desiste depois de

@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test \"src/**/*.test.ts\"",
-    "test:db": "tsx --test \"src/**/*.dbtest.ts\"",
+    "test:db": "tsx --test --test-concurrency=1 \"src/**/*.dbtest.ts\"",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",

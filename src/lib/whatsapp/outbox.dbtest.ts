@@ -183,3 +183,33 @@ test("o lote respeita o teto e o resto continua na fila", async () => {
   assert.equal(res.enviados, 2);
   assert.equal(res.pendentes, 3, "os outros três esperam a próxima rodada");
 });
+
+test("destinatário excluído no meio da drenagem não derruba os demais", async () => {
+  // Foi o defeito que apareceu em 03/09/2026, quando dois arquivos de teste
+  // dividiram o mesmo banco: `update` LANÇA se a linha sumiu, e a exceção
+  // escapava do laço abortando os envios restantes. Em produção bastaria
+  // alguém excluir um colaborador durante a drenagem — o cascade leva a
+  // mensagem, e todos os destinatários seguintes ficariam sem receber.
+  const a = await makeUser("11987654321");
+  const some = await makeUser("11987654322");
+  const c = await makeUser("11987654323");
+  await enqueue([a], "AVALIACAO");
+  await enqueue([some], "AVALIACAO");
+  await enqueue([c], "AVALIACAO");
+
+  const enviados: string[] = [];
+  const res = await drainOutbox({
+    delayMs: semEspera,
+    resolveJid: async (cands) => cands[0]!,
+    sender: async (jid) => {
+      // No meio do envio do segundo, o destinatário some do sistema.
+      if (jid.startsWith("5511987654322")) {
+        await prisma.user.delete({ where: { id: some } });
+      }
+      enviados.push(jid);
+    },
+  });
+
+  assert.equal(enviados.length, 3, "os três chegaram a ser enviados");
+  assert.equal(res.enviados, 3, "e nenhum erro abortou o laço");
+});
