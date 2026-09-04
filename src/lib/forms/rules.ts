@@ -58,7 +58,7 @@ export interface RemovalImpact {
 export function removalImpact(
   existing: {
     questions: readonly { id: string; label: string; answers: number }[];
-    options: readonly { id: string; label: string; chosen: number }[];
+    options: readonly { id: string; questionId: string; label: string; chosen: number }[];
   },
   draft: FormDraft,
 ): RemovalImpact[] {
@@ -78,7 +78,10 @@ export function removalImpact(
         affected: q.answers,
       })),
     ...existing.options
-      .filter((o) => !keptOptions.has(o.id) && o.chosen > 0)
+      // A opção só é perda PRÓPRIA se a pergunta dela sobreviver. Quando a
+      // pergunta inteira sai, a linha dela já contou essa perda — listar a
+      // opção de novo seria contar duas vezes o mesmo dado.
+      .filter((o) => !keptOptions.has(o.id) && keptQuestions.has(o.questionId) && o.chosen > 0)
       .map((o): RemovalImpact => ({
         kind: "opção",
         id: o.id,

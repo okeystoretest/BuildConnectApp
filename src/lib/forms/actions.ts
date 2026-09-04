@@ -5,19 +5,42 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { getVerifiedSession } from "@/lib/auth/require-user";
 import { can } from "@/lib/permissions";
-import { canEditStructure, NO_SECTOR } from "./rules";
+import {
+  closeFormFor,
+  deleteFormFor,
+  listRecipientsFor,
+  publishFormFor,
+  reopenFormFor,
+  saveFormFor,
+  type FormActor,
+} from "./core";
 import { getFormResults, type FormResults } from "./data";
+import type { RemovalImpact } from "./rules";
 import type { Role } from "@/types";
 import type { FormDraft } from "@/types/form";
+
+/**
+ * Ações do construtor.
+ *
+ * Este arquivo faz duas coisas e só duas: resolve QUEM está pedindo e revalida
+ * as rotas depois. O trabalho mora em `./core`, que recebe o ator por parâmetro
+ * — é o que permite testá-lo contra um banco de verdade, já que
+ * `getVerifiedSession()` depende do cookie da requisição e não existe fora de
+ * uma.
+ */
 
 export interface FormActionResult {
   ok: boolean;
   id?: string;
   error?: string;
+  /** saveForm: o que a gravação destruiria. Vem quando ela é recusada. */
+  removals?: RemovalImpact[];
+  /** deleteForm: quantas respostas a exclusão levaria junto. */
+  responseCount?: number;
 }
 
 /** Ator autorizado + seu setor, ou null. */
-async function actor(): Promise<{ id: string; role: Role; sectorId: string | null } | null> {
+async function actor(): Promise<FormActor | null> {
   const session = await getVerifiedSession();
   if (!session) return null;
   const role = session.role as Role;
@@ -29,16 +52,7 @@ async function actor(): Promise<{ id: string; role: Role; sectorId: string | nul
   return { id: session.userId, role, sectorId: user?.sectorId ?? null };
 }
 
-/** Formulário que o ator pode editar, com a contagem que trava a estrutura. */
-async function editableForm(formId: string, me: { role: Role; sectorId: string | null }) {
-  return prisma.form.findFirst({
-    where: {
-      id: formId,
-      ...(me.role === "ADMIN" ? {} : { ownerSectorId: me.sectorId ?? NO_SECTOR }),
-    },
-    select: { id: true, status: true, _count: { select: { responses: true } } },
-  });
-}
+const DENIED: FormActionResult = { ok: false, error: "Sem permissão." };
 
 export async function createForm(): Promise<FormActionResult> {
   const me = await actor();
@@ -74,16 +88,19 @@ export async function createForm(): Promise<FormActionResult> {
 
 const draftSchema = z.object({
   formId: z.string().min(1),
+  confirmRemovals: z.boolean().optional(),
   draft: z.object({
     title: z.string().trim().min(1, "O formulário precisa de um título."),
     description: z.string().trim().optional(),
     sections: z
       .array(
         z.object({
+          id: z.string().min(1),
           title: z.string().trim().min(1),
           description: z.string().trim().optional(),
           questions: z.array(
             z.object({
+              id: z.string().min(1),
               kind: z.enum([
                 "TEXTO_CURTO",
                 "PARAGRAFO",
@@ -95,7 +112,9 @@ const draftSchema = z.object({
               label: z.string().trim().min(1, "Toda pergunta precisa de um enunciado."),
               helpText: z.string().trim().optional(),
               required: z.boolean(),
-              options: z.array(z.object({ label: z.string().trim().min(1) })),
+              options: z.array(
+                z.object({ id: z.string().min(1), label: z.string().trim().min(1) }),
+              ),
               scaleMin: z.number().int().optional(),
               scaleMax: z.number().int().optional(),
               scaleMinLabel: z.string().trim().optional(),
@@ -111,77 +130,25 @@ const draftSchema = z.object({
 export async function saveForm(input: {
   formId: string;
   draft: FormDraft;
+  confirmRemovals?: boolean;
 }): Promise<FormActionResult> {
   const me = await actor();
-  if (!me) return { ok: false, error: "Sem permissão." };
+  if (!me) return DENIED;
 
+  // O id de cada linha virou dado de verdade: é ele que liga o que a tela
+  // devolve ao que está gravado, e portanto o que preserva as respostas. Por
+  // isso o schema passou a exigi-lo em seção, pergunta e opção.
   const parsed = draftSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
   }
 
-  const existing = await editableForm(input.formId, me);
-  if (!existing) return { ok: false, error: "Formulário não encontrado." };
-  if (!canEditStructure({ status: existing.status })) {
-    return { ok: false, error: "Formulário encerrado. Reabra antes de editar." };
+  const result = await saveFormFor(me, input);
+  if (result.ok) {
+    revalidatePath(`/setores/rh/formularios/${input.formId}`);
+    revalidatePath("/setores/rh");
   }
-
-  // TRAVA PROVISÓRIA — sai na Fase 3, junto com a reescrita abaixo.
-  //
-  // `canEditStructure` já permite editar formulário respondido. Esta função
-  // ainda NÃO pode: enquanto ela apagar e recriar a estrutura inteira, liberar
-  // a edição apagaria todas as respostas em silêncio, via o cascade de
-  // FormQuestion para FormAnswer. A regra mudou antes da gravação, de
-  // propósito — a regra é testável e a gravação é o que precisa de cuidado.
-  if (existing._count.responses > 0) {
-    return {
-      ok: false,
-      error: "Este formulário já recebeu respostas. Só título e descrição podem mudar.",
-    };
-  }
-
-  const { draft } = parsed.data;
-
-  // Substitui a estrutura inteira em transação. É seguro porque a guarda acima
-  // garante zero respostas: não há FormAnswer apontando para as perguntas que
-  // saem. O cascade do schema limpa perguntas e opções junto com as seções.
-  await prisma.$transaction(async (tx) => {
-    await tx.form.update({
-      where: { id: input.formId },
-      data: { title: draft.title, description: draft.description || null },
-    });
-    await tx.formSection.deleteMany({ where: { formId: input.formId } });
-    for (const [si, section] of draft.sections.entries()) {
-      await tx.formSection.create({
-        data: {
-          formId: input.formId,
-          title: section.title,
-          description: section.description || null,
-          order: si,
-          questions: {
-            create: section.questions.map((q, qi) => ({
-              kind: q.kind,
-              label: q.label,
-              helpText: q.helpText || null,
-              required: q.required,
-              order: qi,
-              scaleMin: q.kind === "ESCALA_LINEAR" ? (q.scaleMin ?? 1) : null,
-              scaleMax: q.kind === "ESCALA_LINEAR" ? (q.scaleMax ?? 5) : null,
-              scaleMinLabel: q.scaleMinLabel || null,
-              scaleMaxLabel: q.scaleMaxLabel || null,
-              options: {
-                create: q.options.map((o, oi) => ({ label: o.label, order: oi })),
-              },
-            })),
-          },
-        },
-      });
-    }
-  });
-
-  revalidatePath(`/setores/rh/formularios/${input.formId}`);
-  revalidatePath("/setores/rh");
-  return { ok: true };
+  return result;
 }
 
 const publishSchema = z.object({
@@ -200,72 +167,56 @@ export async function publishForm(input: {
   dueAt?: string;
 }): Promise<FormActionResult> {
   const me = await actor();
-  if (!me) return { ok: false, error: "Sem permissão." };
+  if (!me) return DENIED;
 
   const parsed = publishSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Dados inválidos." };
 
-  const existing = await editableForm(input.formId, me);
-  if (!existing) return { ok: false, error: "Formulário não encontrado." };
-  if (existing.status !== "RASCUNHO") {
-    return { ok: false, error: "Este formulário já foi publicado." };
+  const result = await publishFormFor(me, parsed.data);
+  if (result.ok) {
+    revalidatePath("/setores/rh");
+    revalidatePath("/minhas-avaliacoes");
   }
-
-  // Resolve setores + pessoas para uma lista de destinatários. O GESTOR só
-  // alcança gente do próprio setor: a cláusula é aplicada aqui, não confiando
-  // no que a tela mandou.
-  const recipients = await prisma.user.findMany({
-    where: {
-      active: true,
-      ...(me.role === "ADMIN" ? {} : { sectorId: me.sectorId ?? NO_SECTOR }),
-      OR: [
-        { id: { in: parsed.data.userIds } },
-        { sectorId: { in: parsed.data.sectorIds } },
-      ],
-    },
-    select: { id: true },
-  });
-
-  if (recipients.length === 0) {
-    return { ok: false, error: "Escolha ao menos um destinatário." };
-  }
-
-  await prisma.$transaction([
-    prisma.form.update({
-      where: { id: input.formId },
-      data: {
-        status: "PUBLICADO",
-        anonymous: parsed.data.anonymous,
-        publishedAt: new Date(),
-        dueAt: parsed.data.dueAt ? new Date(parsed.data.dueAt) : null,
-      },
-    }),
-    prisma.formAssignment.createMany({
-      data: recipients.map((r) => ({ formId: input.formId, userId: r.id })),
-      skipDuplicates: true,
-    }),
-  ]);
-
-  revalidatePath("/setores/rh");
-  revalidatePath("/minhas-avaliacoes");
-  return { ok: true };
+  return result;
 }
 
 export async function closeForm(formId: string): Promise<FormActionResult> {
   const me = await actor();
-  if (!me) return { ok: false, error: "Sem permissão." };
+  if (!me) return DENIED;
 
-  const existing = await editableForm(formId, me);
-  if (!existing) return { ok: false, error: "Formulário não encontrado." };
+  const result = await closeFormFor(me, formId);
+  if (result.ok) {
+    revalidatePath("/setores/rh");
+    revalidatePath("/minhas-avaliacoes");
+  }
+  return result;
+}
 
-  await prisma.form.update({
-    where: { id: formId },
-    data: { status: "ENCERRADO", closedAt: new Date() },
-  });
+export async function reopenForm(formId: string): Promise<FormActionResult> {
+  const me = await actor();
+  if (!me) return DENIED;
 
-  revalidatePath("/setores/rh");
-  revalidatePath("/minhas-avaliacoes");
-  return { ok: true };
+  const result = await reopenFormFor(me, formId);
+  if (result.ok) {
+    revalidatePath("/setores/rh");
+    revalidatePath("/minhas-avaliacoes");
+  }
+  return result;
+}
+
+export async function deleteForm(input: {
+  formId: string;
+  confirmation?: string;
+}): Promise<FormActionResult> {
+  const me = await actor();
+  if (!me) return DENIED;
+
+  const result = await deleteFormFor(me, input);
+  if (result.ok) {
+    revalidatePath("/setores/rh");
+    revalidatePath("/minhas-avaliacoes");
+  }
+  return result;
 }
 
 export async function listFormRecipients(): Promise<{
@@ -274,27 +225,7 @@ export async function listFormRecipients(): Promise<{
 }> {
   const me = await actor();
   if (!me) return { users: [], sectors: [] };
-
-  const scoped = me.role === "ADMIN" ? {} : { sectorId: me.sectorId ?? NO_SECTOR };
-
-  const [users, sectors] = await Promise.all([
-    prisma.user.findMany({
-      where: { active: true, ...scoped },
-      select: { id: true, fullName: true, sector: { select: { label: true } } },
-      orderBy: { fullName: "asc" },
-    }),
-    me.role === "ADMIN"
-      ? prisma.sector.findMany({ select: { id: true, label: true }, orderBy: { order: "asc" } })
-      : prisma.sector.findMany({
-          where: { id: me.sectorId ?? NO_SECTOR },
-          select: { id: true, label: true },
-        }),
-  ]);
-
-  return {
-    users: users.map((u) => ({ id: u.id, name: u.fullName, sector: u.sector?.label ?? "—" })),
-    sectors,
-  };
+  return listRecipientsFor(me);
 }
 
 /**
@@ -304,6 +235,9 @@ export async function listFormRecipients(): Promise<{
  * a torna chamável do cliente. O recorte por setor não se repete aqui: vem de
  * `getFormDraft`, dentro de `getFormResults`.
  */
-export async function fetchFormResults(formId: string): Promise<FormResults | null> {
-  return getFormResults(formId);
+export async function fetchFormResults(
+  formId: string,
+  round?: number,
+): Promise<FormResults | null> {
+  return getFormResults(formId, round);
 }

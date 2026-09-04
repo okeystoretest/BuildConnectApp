@@ -2,26 +2,25 @@ import { prisma } from "@/lib/db/prisma";
 import { getVerifiedSession } from "@/lib/auth/require-user";
 import { can } from "@/lib/permissions";
 import { formScopeFor } from "./rules";
-import { aggregate, type QuestionResult } from "./aggregate";
+import { formsInScope, formDraftInScope, formResultsInScope } from "./data-core";
+import type { ReadScope, FormResults } from "./data-core";
 import type { Role } from "@/types";
-import type { FormDraft, FormListItem, FormQuestionKind, FormStatus } from "@/types/form";
+import type { FormDraft, FormListItem } from "@/types/form";
+
+export type { FormResults } from "./data-core";
 
 /**
- * Leitura dos formulários do DHO.
+ * Leitura dos formulários do DHO, para quem está logado.
  *
- * O recorte por setor é CLÁUSULA DE CONSULTA, não filtro de tela: o gestor de
- * outro setor não recebe o formulário, em vez de recebê-lo e não vê-lo.
+ * Resolve o escopo a partir da sessão e delega a `./data-core`. A regra do
+ * recorte mora em `./rules` (`formScopeFor`), que é onde ela tem teste — aqui
+ * só se descobre o setor do usuário.
  */
-
-/**
- * Escopo de leitura do ator, já na forma da cláusula `where`.
- * A regra em si mora em `./rules` — aqui só se resolve o setor do usuário.
- */
-async function readScope() {
+async function readScope(): Promise<ReadScope | "denied"> {
   const session = await getVerifiedSession();
-  if (!session) return "denied" as const;
+  if (!session) return "denied";
   const role = session.role as Role;
-  if (!can(role, "forms.manage")) return "denied" as const;
+  if (!can(role, "forms.manage")) return "denied";
 
   const actor = await prisma.user.findUnique({
     where: { id: session.userId },
@@ -30,134 +29,23 @@ async function readScope() {
   return formScopeFor({ role, sectorId: actor?.sectorId ?? null });
 }
 
-function dateLabel(d: Date): string {
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
-}
-
 export async function getFormsForViewer(): Promise<FormListItem[]> {
   const scope = await readScope();
   if (scope === "denied") return [];
-
-  const rows = await prisma.form.findMany({
-    where: scope === null ? {} : { ownerSectorId: scope.ownerSectorId },
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      title: true,
-      status: true,
-      anonymous: true,
-      createdAt: true,
-      _count: { select: { responses: true, assignments: true } },
-    },
-  });
-
-  return rows.map((f) => ({
-    id: f.id,
-    title: f.title,
-    status: f.status as FormStatus,
-    anonymous: f.anonymous,
-    responseCount: f._count.responses,
-    assignedCount: f._count.assignments,
-    createdAtLabel: dateLabel(f.createdAt),
-  }));
+  return formsInScope(scope);
 }
 
 export async function getFormDraft(formId: string): Promise<FormDraft | null> {
   const scope = await readScope();
   if (scope === "denied") return null;
-
-  const form = await prisma.form.findFirst({
-    where: {
-      id: formId,
-      ...(scope === null ? {} : { ownerSectorId: scope.ownerSectorId }),
-    },
-    include: {
-      sections: {
-        orderBy: { order: "asc" },
-        include: {
-          questions: {
-            orderBy: { order: "asc" },
-            include: { options: { orderBy: { order: "asc" } } },
-          },
-        },
-      },
-    },
-  });
-  if (!form) return null;
-
-  return {
-    id: form.id,
-    title: form.title,
-    description: form.description ?? undefined,
-    status: form.status as FormStatus,
-    anonymous: form.anonymous,
-    dueAt: form.dueAt?.toISOString(),
-    sections: form.sections.map((s) => ({
-      id: s.id,
-      title: s.title,
-      description: s.description ?? undefined,
-      order: s.order,
-      questions: s.questions.map((q) => ({
-        id: q.id,
-        kind: q.kind as FormQuestionKind,
-        label: q.label,
-        helpText: q.helpText ?? undefined,
-        required: q.required,
-        order: q.order,
-        options: q.options.map((o) => ({ id: o.id, label: o.label, order: o.order })),
-        scaleMin: q.scaleMin ?? undefined,
-        scaleMax: q.scaleMax ?? undefined,
-        scaleMinLabel: q.scaleMinLabel ?? undefined,
-        scaleMaxLabel: q.scaleMaxLabel ?? undefined,
-      })),
-    })),
-  };
+  return formDraftInScope(scope, formId);
 }
 
-export interface FormResults {
-  form: FormDraft;
-  results: QuestionResult[];
-  responseCount: number;
-  assignedCount: number;
-  /** Quem ainda não respondeu. Funciona mesmo no anônimo: sai da atribuição. */
-  pending: { id: string; name: string }[];
-}
-
-export async function getFormResults(formId: string): Promise<FormResults | null> {
-  const form = await getFormDraft(formId);
-  if (!form) return null;
-
-  const [responses, assignments] = await Promise.all([
-    prisma.formResponse.findMany({
-      where: { formId },
-      select: {
-        answers: { select: { questionId: true, text: true, number: true, optionIds: true } },
-      },
-    }),
-    prisma.formAssignment.findMany({
-      where: { formId },
-      select: { status: true, user: { select: { id: true, fullName: true, active: true } } },
-    }),
-  ]);
-
-  return {
-    form,
-    results: aggregate(
-      form,
-      responses.map((r) => ({
-        answers: r.answers.map((a) => ({
-          questionId: a.questionId,
-          text: a.text ?? undefined,
-          number: a.number ?? undefined,
-          optionIds: a.optionIds,
-        })),
-      })),
-    ),
-    responseCount: responses.length,
-    assignedCount: assignments.length,
-    // Usuário desativado sai da cobrança: pendência dele não é acionável.
-    pending: assignments
-      .filter((a) => a.status === "PENDENTE" && a.user.active)
-      .map((a) => ({ id: a.user.id, name: a.user.fullName })),
-  };
+export async function getFormResults(
+  formId: string,
+  round?: number,
+): Promise<FormResults | null> {
+  const scope = await readScope();
+  if (scope === "denied") return null;
+  return formResultsInScope(scope, formId, round);
 }

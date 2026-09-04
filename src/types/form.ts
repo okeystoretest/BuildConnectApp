@@ -81,6 +81,8 @@ export interface FormDraft {
   status: FormStatus;
   anonymous: boolean;
   dueAt?: string;
+  /** Rodada em curso. Reabrir incrementa; as respostas antigas ficam na sua. */
+  currentRound: number;
   sections: FormSectionDraft[];
 }
 

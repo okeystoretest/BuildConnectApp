@@ -97,6 +97,7 @@ function draftWith(questions: { id: string; optionIds?: string[] }[]): FormDraft
     title: "F",
     status: "PUBLICADO",
     anonymous: false,
+    currentRound: 1,
     sections: [
       {
         id: "s1",
@@ -122,7 +123,7 @@ function draftWith(questions: { id: string; optionIds?: string[] }[]): FormDraft
 test("rascunho idêntico ao banco não destrói nada", () => {
   const existing = {
     questions: [{ id: "q1", label: "P1", answers: 4 }],
-    options: [{ id: "o1", label: "O1", chosen: 4 }],
+    options: [{ id: "o1", questionId: "q1", label: "O1", chosen: 4 }],
   };
   assert.deepEqual(removalImpact(existing, draftWith([{ id: "q1", optionIds: ["o1"] }])), []);
 });
@@ -154,8 +155,8 @@ test("apagar opção escolhida é impacto", () => {
   const existing = {
     questions: [{ id: "q1", label: "P1", answers: 5 }],
     options: [
-      { id: "o1", label: "Sim", chosen: 5 },
-      { id: "o2", label: "Não", chosen: 2 },
+      { id: "o1", questionId: "q1", label: "Sim", chosen: 5 },
+      { id: "o2", questionId: "q1", label: "Não", chosen: 2 },
     ],
   };
   assert.deepEqual(removalImpact(existing, draftWith([{ id: "q1", optionIds: ["o1"] }])), [
@@ -167,8 +168,8 @@ test("apagar opção nunca escolhida não é impacto", () => {
   const existing = {
     questions: [{ id: "q1", label: "P1", answers: 5 }],
     options: [
-      { id: "o1", label: "Sim", chosen: 5 },
-      { id: "o2", label: "Ninguém marcou", chosen: 0 },
+      { id: "o1", questionId: "q1", label: "Sim", chosen: 5 },
+      { id: "o2", questionId: "q1", label: "Ninguém marcou", chosen: 0 },
     ],
   };
   assert.deepEqual(removalImpact(existing, draftWith([{ id: "q1", optionIds: ["o1"] }])), []);
@@ -187,11 +188,28 @@ test("perguntas vêm antes de opções no aviso", () => {
   // A tela lista na ordem recebida. Pergunta perdida é mais grave que opção
   // perdida, então aparece primeiro.
   const existing = {
-    questions: [{ id: "q1", label: "P1", answers: 2 }],
-    options: [{ id: "o1", label: "O1", chosen: 1 }],
+    questions: [
+      { id: "q1", label: "P1", answers: 2 },
+      { id: "q2", label: "P2", answers: 4 },
+    ],
+    options: [{ id: "o1", questionId: "q2", label: "O1", chosen: 1 }],
   };
-  const impacts = removalImpact(existing, draftWith([]));
+  // q1 sai inteira; q2 fica, mas perde a opção o1.
+  const impacts = removalImpact(existing, draftWith([{ id: "q2", optionIds: [] }]));
   assert.equal(impacts.length, 2);
   assert.equal(impacts[0]!.kind, "pergunta");
   assert.equal(impacts[1]!.kind, "opção");
+});
+
+test("opção de pergunta removida NÃO é contada duas vezes", () => {
+  // Apagar uma pergunta leva as opções dela junto. Avisar sobre as duas coisas
+  // faria a mesma perda aparecer duas vezes e inflaria o aviso — foi o defeito
+  // que o teste de integração encontrou em 03/09/2026.
+  const existing = {
+    questions: [{ id: "q1", label: "Some inteira", answers: 3 }],
+    options: [{ id: "o1", questionId: "q1", label: "Opção dela", chosen: 3 }],
+  };
+  const impacts = removalImpact(existing, draftWith([]));
+  assert.equal(impacts.length, 1);
+  assert.equal(impacts[0]!.kind, "pergunta");
 });

@@ -8,6 +8,7 @@ const form: FormDraft = {
   title: "Clima",
   status: "PUBLICADO",
   anonymous: true,
+  currentRound: 1,
   sections: [
     {
       id: "s1",
