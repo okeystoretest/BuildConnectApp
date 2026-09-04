@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { EyeOff, Users } from "lucide-react";
+import { EyeOff, History, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { StatCard } from "@/components/ui/stat-card";
@@ -13,6 +13,10 @@ import type { QuestionResult } from "@/lib/forms/aggregate";
 
 export interface FormDashboardProps {
   data: FormResults;
+  /** Troca a rodada exibida. Ausente = sem navegação entre rodadas. */
+  onSelectRound?: (round: number) => void;
+  /** Buscando outra rodada no servidor. */
+  loading?: boolean;
 }
 
 /** Barras verticais da escala, na ordem 1→N: aqui a ordem carrega significado. */
@@ -82,8 +86,9 @@ function TextAnswers({ texts }: { texts: readonly string[] }) {
   );
 }
 
-export function FormDashboard({ data }: FormDashboardProps) {
-  const { form, results, responseCount, assignedCount, pending } = data;
+export function FormDashboard({ data, onSelectRound, loading }: FormDashboardProps) {
+  const { form, results, responseCount, assignedCount, pending, round, rounds } = data;
+  const isCurrent = round === form.currentRound;
   const rate = assignedCount === 0 ? 0 : Math.round((responseCount / assignedCount) * 100);
   const visible = showsAggregate(form, responseCount);
 
@@ -100,6 +105,43 @@ export function FormDashboard({ data }: FormDashboardProps) {
           </Badge>
         )}
       </div>
+
+      {/* Uma rodada só não é escolha: o seletor apareceria com um botão único.
+          Ele surge quando reabrir criou a segunda. */}
+      {rounds.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface p-3">
+          <span className="mr-1 inline-flex items-center gap-1.5 text-xs font-medium text-muted">
+            <History className="h-3.5 w-3.5" />
+            Rodada
+          </span>
+          {rounds.map((r) => {
+            const active = r === round;
+            return (
+              <button
+                key={r}
+                type="button"
+                onClick={() => onSelectRound?.(r)}
+                disabled={loading || !onSelectRound}
+                aria-pressed={active}
+                className={
+                  "focus-ring rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-60 " +
+                  (active
+                    ? "border-accent bg-accent/10 text-accent"
+                    : "border-border bg-surface-3 text-muted hover:border-border-strong hover:text-foreground")
+                }
+              >
+                {r}
+                {r === form.currentRound && " · atual"}
+              </button>
+            );
+          })}
+          {!isCurrent && (
+            <span className="ml-auto text-xs text-muted">
+              Coleta encerrada. &quot;Quem falta&quot; reflete a rodada atual.
+            </span>
+          )}
+        </div>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Respostas" value={responseCount} />

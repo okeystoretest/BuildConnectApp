@@ -71,10 +71,10 @@ export function FormsPanel({ forms }: FormsPanelProps) {
     });
   }
 
-  function openResults(formId: string) {
+  function openResults(formId: string, round?: number) {
     setOpeningId(formId);
     startAction(async () => {
-      const res = await fetchFormResults(formId);
+      const res = await fetchFormResults(formId, round);
       setOpeningId(null);
       if (!res) {
         error("Não foi possível carregar os resultados.");
@@ -152,7 +152,13 @@ export function FormsPanel({ forms }: FormsPanelProps) {
           Voltar aos formulários
         </button>
         <h3 className="text-xl font-bold text-foreground">{results.form.title}</h3>
-        <FormDashboard data={results} />
+        <FormDashboard
+          data={results}
+          loading={busy}
+          // Cada rodada é uma consulta nova: agregar no cliente exigiria trazer
+          // todas as respostas de todas as rodadas para escolher uma.
+          onSelectRound={(round) => openResults(results.form.id, round)}
+        />
       </div>
     );
   }
