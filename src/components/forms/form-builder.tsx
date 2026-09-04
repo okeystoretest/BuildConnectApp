@@ -2,18 +2,20 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, Lock, Plus, Save, Send, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Loader2, Lock, Plus, Save, Send, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Modal } from "@/components/ui/modal";
 import { QuestionEditor } from "./question-editor";
 import { PublishModal } from "./publish-modal";
 import { saveForm } from "@/lib/forms/actions";
 import { useToast } from "@/providers/toast-provider";
 import { FORM_STATUS_LABEL } from "@/types/form";
+import type { RemovalImpact } from "@/lib/forms/rules";
 import type { FormDraft, FormQuestionDraft, FormSectionDraft } from "@/types/form";
 
 export interface FormBuilderProps {
@@ -28,9 +30,14 @@ export interface FormBuilderProps {
  * Google Forms grava a cada tecla; aqui isso seria uma Server Action por
  * caractere.
  *
- * Ids de perguntas e opções novas são locais (`crypto.randomUUID()`) e
- * descartados no `saveForm`, que recria a estrutura — o próximo carregamento
- * traz os ids do banco.
+ * Ids de perguntas e opções novas são locais (`crypto.randomUUID()`) e vão
+ * gravados como estão: é por eles que o servidor reconhece cada linha no
+ * salvamento seguinte, em vez de recriá-la — e é o que preserva as respostas
+ * já dadas.
+ *
+ * Formulário respondido é editável. O que protege não é mais a trava, e sim o
+ * aviso: `saveForm` recusa a primeira tentativa quando a alteração destrói
+ * respostas, devolve o que se perde, e esta tela pergunta antes de reenviar.
  */
 export function FormBuilder({ initial }: FormBuilderProps) {
   const router = useRouter();
@@ -38,11 +45,13 @@ export function FormBuilder({ initial }: FormBuilderProps) {
   const [draft, setDraft] = useState<FormDraft>(initial);
   const [publishing, setPublishing] = useState(false);
   const [saving, startSave] = useTransition();
+  /** O que o salvamento vai destruir, quando o servidor pede confirmação. */
+  const [removals, setRemovals] = useState<RemovalImpact[] | null>(null);
 
-  // A tela só conhece o status; a contagem de respostas mora no servidor, que
-  // é quem recusa de fato (canEditStructure). Travar já no PUBLICADO deixa a
-  // tela um passo mais conservadora que a regra, nunca mais permissiva.
-  const locked = draft.status !== "RASCUNHO";
+  // Só o encerrado trava. É resultado congelado: editá-lo mudaria o significado
+  // de um número que alguém já leu. Para mexer, reabra — a rodada nova é onde
+  // estrutura nova faz sentido.
+  const locked = draft.status === "ENCERRADO";
 
   function patchDraft(patch: Partial<FormDraft>) {
     setDraft((prev) => ({ ...prev, ...patch }));
@@ -170,17 +179,22 @@ export function FormBuilder({ initial }: FormBuilderProps) {
     }));
   }
 
-  function handleSave() {
+  function handleSave(confirmRemovals = false) {
     startSave(async () => {
-      const res = await saveForm({ formId: draft.id, draft });
+      const res = await saveForm({ formId: draft.id, draft, confirmRemovals });
       if (res.ok) {
+        setRemovals(null);
         success("Formulário salvo");
-        // Recarrega para trocar os ids locais pelos do banco — a estrutura foi
-        // recriada no servidor.
         router.refresh();
-      } else {
-        error(res.error ?? "Não foi possível salvar o formulário.");
+        return;
       }
+      // O servidor recusou porque a alteração apaga respostas. Ele não gravou
+      // nada: devolveu o que se perde para esta tela perguntar.
+      if (res.removals && res.removals.length > 0) {
+        setRemovals(res.removals);
+        return;
+      }
+      error(res.error ?? "Não foi possível salvar o formulário.");
     });
   }
 
@@ -204,8 +218,10 @@ export function FormBuilder({ initial }: FormBuilderProps) {
       {locked && (
         <div className="mt-4 flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/10 p-4">
           <Lock className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-          <p className="text-sm text-foreground">
-            Este formulário já recebeu respostas. Só título e descrição podem mudar.
+          <p className="text-sm leading-relaxed text-foreground">
+            Este formulário está encerrado, e o resultado dele está congelado. Para mudar as
+            perguntas, reabra no bloco Formulários do DHO — reabrir começa uma rodada nova, sem
+            apagar as respostas da anterior.
           </p>
         </div>
       )}
@@ -301,7 +317,7 @@ export function FormBuilder({ initial }: FormBuilderProps) {
 
       {/* Barra de ações: fica ao alcance sem obrigar a rolar até o fim. */}
       <div className="sticky bottom-4 z-10 mt-6 flex items-center justify-end gap-3 rounded-xl border border-border bg-surface/95 p-3 shadow-lg backdrop-blur">
-        <Button variant="secondary" onClick={handleSave} disabled={saving}>
+        <Button variant="secondary" onClick={() => handleSave()} disabled={saving}>
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
           {saving ? "Salvando" : "Salvar"}
         </Button>
@@ -312,6 +328,53 @@ export function FormBuilder({ initial }: FormBuilderProps) {
           </Button>
         )}
       </div>
+
+      {/* Confirmação de perda. Só aparece quando o servidor já recusou uma vez
+          e disse exatamente o que sai — a lista não é estimativa da tela. */}
+      <Modal
+        open={removals !== null}
+        onClose={() => setRemovals(null)}
+        title="Esta alteração apaga respostas"
+        description="O que sair leva junto o que já foi respondido. Não tem volta."
+        className="max-w-lg"
+        dismissible={!saving}
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setRemovals(null)} disabled={saving}>
+              Cancelar
+            </Button>
+            <Button variant="danger" onClick={() => handleSave(true)} disabled={saving}>
+              {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+              {saving ? "Salvando" : "Salvar assim mesmo"}
+            </Button>
+          </div>
+        }
+      >
+        <div className="p-6">
+          <div className="mb-3 flex items-center gap-2 text-warning">
+            <AlertTriangle className="h-4 w-4" />
+            <span className="text-sm font-semibold">
+              {removals?.length} item(ns) serão removidos
+            </span>
+          </div>
+          <ul className="space-y-2">
+            {removals?.map((r) => (
+              <li
+                key={`${r.kind}-${r.id}`}
+                className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm"
+              >
+                <span className="min-w-0 truncate text-foreground">
+                  <span className="mr-2 text-xs uppercase tracking-wide text-muted">{r.kind}</span>
+                  {r.label}
+                </span>
+                <span className="shrink-0 text-xs tabular-nums text-danger">
+                  {r.affected} resposta(s)
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </Modal>
 
       <PublishModal
         open={publishing}
