@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
+import { notifyCycleAvailable } from "@/lib/whatsapp/notify";
 import { addBusinessDays, holidaySet } from "@/lib/business-days";
 
 /**
@@ -115,6 +116,8 @@ export async function sweepAvailability(now: Date = new Date()): Promise<number>
       if (!prev || prev.status !== "CONCLUIDO") continue;
     }
 
+    const primeiraLiberacao = !cycle.notifiedAt;
+
     await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.evaluationCycle.update({
         where: { id: cycle.id },
@@ -122,7 +125,7 @@ export async function sweepAvailability(now: Date = new Date()): Promise<number>
       });
 
       // Notifica o Gestor do setor do colaborador (persistido em Notification).
-      if (!cycle.notifiedAt) {
+      if (primeiraLiberacao) {
         await notifyManagerOfCycle(tx, {
           subjectName: cycle.subject.fullName,
           sectorId: cycle.subject.sectorId,
@@ -130,6 +133,13 @@ export async function sweepAvailability(now: Date = new Date()): Promise<number>
         });
       }
     });
+
+    // WhatsApp só na PRIMEIRA liberação, e depois do commit. A varredura roda
+    // a cada cron: sem esta guarda, o mesmo ciclo viraria uma mensagem por
+    // passagem até alguém respondê-lo.
+    if (primeiraLiberacao) {
+      await notifyCycleAvailable(cycle.subject.sectorId);
+    }
 
     released += 1;
   }

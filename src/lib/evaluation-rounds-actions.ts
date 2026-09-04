@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
+import { notifyPendingEvaluation } from "@/lib/whatsapp/notify";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth/require-user";
@@ -163,6 +164,11 @@ export async function assignEvaluation(input: unknown): Promise<RoundResult> {
 
       return round.id;
     });
+
+    // WhatsApp DEPOIS do commit: enfileirar dentro da transação usaria outra
+    // conexão, fora do escopo dela — se ela rolasse para trás, a mensagem
+    // sairia assim mesmo, avisando sobre uma avaliação que não existe.
+    await notifyPendingEvaluation(uniqueRaters);
 
     revalidatePath("/setores/rh");
     revalidatePath("/minhas-avaliacoes");
@@ -548,6 +554,10 @@ export async function updateEvaluationAssignment(input: unknown): Promise<RoundR
         });
       }
     });
+
+    // Só os ACRESCENTADOS. Quem já estava na rodada não recebe de novo: a
+    // pendência dele não mudou, e repetir aviso é como se aprende a ignorá-lo.
+    await notifyPendingEvaluation(added);
 
     revalidatePath("/setores/rh");
     revalidatePath("/minhas-avaliacoes");
