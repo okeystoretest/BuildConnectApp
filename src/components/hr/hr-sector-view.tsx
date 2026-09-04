@@ -12,6 +12,7 @@ import { TrainingResultsPanel } from "@/components/hr/training-results-panel";
 import { IntegrationMapsPanel } from "@/components/hr/integration-maps";
 import { HrDocumentsPanel } from "@/components/hr/hr-documents";
 import { UserManagementPanel } from "@/components/hr/user-management";
+import { WhatsappPanel } from "@/components/hr/whatsapp-panel";
 import { MapUploadModal } from "@/components/hr/map-upload-modal";
 import { ReportBoard } from "@/components/reports/report-board";
 import { FileUploadModal } from "@/components/sector/file-upload-modal";
@@ -100,6 +101,10 @@ export function HrSectorView({
       // A Central de Denúncias é do DHO e só aparece para quem pode tratá-la.
       ...(canReports ? [{ id: "denuncias", label: "Central de Denúncias" }] : []),
       { id: "usuarios", label: "Gestão de Usuários" },
+      // Parear o número e ler o log de envios mexe na credencial da empresa,
+      // não em formulário — por isso fica junto da gestão de usuários e não
+      // do bloco de Formulários.
+      { id: "whatsapp", label: "WhatsApp" },
     ];
   }, [canHrAdmin, canReports]);
 
@@ -162,6 +167,8 @@ export function HrSectorView({
         {active === "denuncias" && canReports && <ReportBoard reports={reports} />}
 
         {active === "usuarios" && canHrAdmin && <UserManagementPanel users={users} />}
+
+        {active === "whatsapp" && canHrAdmin && <WhatsappPanel />}
       </TabPanel>
 
       <MapUploadModal open={mapModalOpen} onClose={() => setMapModalOpen(false)} />
