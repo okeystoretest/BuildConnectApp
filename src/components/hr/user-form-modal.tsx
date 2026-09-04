@@ -23,6 +23,7 @@ import {
   type UserFormErrors,
   type UserFormState,
 } from "@/types/user-form";
+import { formatPhone, isValidPhone, normalizePhone } from "@/lib/phone";
 import type { Role } from "@/types";
 import type { ManagedUser } from "@/types/hr";
 import type { Credentials } from "./credentials-modal";
@@ -39,6 +40,7 @@ function emptyState(): UserFormState {
     fullName: "",
     username: "",
     password: "",
+    phone: "",
     role: "COLABORADOR",
     sector: "",
     unit: "",
@@ -63,6 +65,8 @@ function stateFromUser(user: ManagedUser): UserFormState {
     fullName: user.name,
     username: user.username,
     password: "",
+    // Vem já com máscara da listagem; vazio nos cadastrados antes do campo.
+    phone: user.phone ?? "",
     role: user.role,
     sector: user.sector === "—" ? "" : user.sector,
     unit: "",
@@ -105,6 +109,13 @@ export function UserFormModal({ open, onClose, initial, onSaved }: UserFormModal
     });
   }
 
+  function handlePhoneChange(value: string) {
+    // Mascara enquanto digita, mas só quando o número já está completo — do
+    // contrário os parênteses brigam com o apagar.
+    const digits = normalizePhone(value);
+    patch({ phone: digits.length >= 10 ? formatPhone(digits.slice(0, 11)) : value });
+  }
+
   function handleSectorChange(value: string) {
     // Trocar de setor invalida os subsetores anteriores.
     patch({ sector: value, subsectors: [] });
@@ -118,6 +129,11 @@ export function UserFormModal({ open, onClose, initial, onSaved }: UserFormModal
     else if (!USERNAME_PATTERN.test(form.username.trim())) {
       next.username = "Use o padrão nome#BC, em minúsculas.";
     }
+    // Mesma regra do servidor. A tela adianta o erro; quem recusa é a action.
+    const phone = normalizePhone(form.phone);
+    if (!phone) next.phone = "Informe o telefone.";
+    else if (!isValidPhone(phone)) next.phone = "Telefone inválido. Use DDD + número.";
+
     // Senha só é validada na EDIÇÃO. Na criação, é gerada no servidor.
     if (isEdit && form.password && form.password.length < MIN_PASSWORD_LENGTH) {
       next.password = `A senha precisa de ao menos ${MIN_PASSWORD_LENGTH} caracteres.`;
@@ -152,6 +168,7 @@ export function UserFormModal({ open, onClose, initial, onSaved }: UserFormModal
     // Senha só trafega na edição, quando o admin a informa manualmente.
     if (isEdit && form.password) fd.set("password", form.password);
     fd.set("role", form.role);
+    fd.set("phone", normalizePhone(form.phone));
     fd.set("sector", form.sector);
     fd.set("unit", form.unit);
     for (const sub of form.subsectors) fd.append("subsectors", sub);
@@ -213,6 +230,24 @@ export function UserFormModal({ open, onClose, initial, onSaved }: UserFormModal
               className="h-11 rounded-xl"
             />
             {errors.fullName && <p className="mt-1.5 text-xs text-danger">{errors.fullName}</p>}
+          </div>
+
+          <div>
+            <label htmlFor="phone" className="mb-1.5 block text-xs font-medium text-foreground">
+              Telefone
+            </label>
+            <Input
+              id="phone"
+              type="tel"
+              inputMode="numeric"
+              value={form.phone}
+              placeholder="(11) 98765-4321"
+              autoComplete="off"
+              onChange={(e) => handlePhoneChange(e.target.value)}
+              aria-invalid={Boolean(errors.phone)}
+              className="h-11 rounded-xl"
+            />
+            {errors.phone && <p className="mt-1.5 text-xs text-danger">{errors.phone}</p>}
           </div>
 
           <div>

@@ -86,4 +86,6 @@ export interface ManagedUser {
   subsectors: string;
   /** Caminho público do avatar (.webp) para exibição na lista. */
   avatarPath?: string;
+  /** Telefone já com máscara. Ausente nos cadastrados antes do campo existir. */
+  phone?: string;
 }

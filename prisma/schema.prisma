@@ -35,6 +35,14 @@ model User {
   passwordHash String
   role         Role   @default(COLABORADOR)
 
+  // Só dígitos, sem máscara e sem código de país (ver lib/phone.ts). Opcional
+  // no banco porque os usuários cadastrados antes desta coluna não têm número
+  // — a obrigatoriedade vive na validação do cadastro, que é onde ela pode
+  // existir sem quebrar quem já está lá. Sem @unique de propósito: linha
+  // compartilhada de setor existe, e recusar um cadastro por telefone repetido
+  // seria pior do que permitir.
+  phone String?
+
   // Hierarquia agora relacional. `sector`/`unit` textuais foram promovidos a FK.
   sectorId String?
   sector   Sector? @relation(fields: [sectorId], references: [id], onDelete: SetNull)

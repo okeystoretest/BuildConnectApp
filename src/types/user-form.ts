@@ -5,6 +5,8 @@ export interface UserFormState {
   fullName: string;
   username: string;
   password: string;
+  /** Como o admin digitou, com máscara. Normalizado só no envio. */
+  phone: string;
   role: Role;
   sector: string;
   unit: string;

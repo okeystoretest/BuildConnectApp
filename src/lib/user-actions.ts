@@ -13,6 +13,7 @@ import { processAndStoreImage, ImageProcessingError } from "@/lib/storage/images
 import { removeFile } from "@/lib/storage/files";
 import { ensureCycleSchedule } from "@/lib/evaluation-schedule";
 import { USERNAME_PATTERN, MIN_PASSWORD_LENGTH } from "@/types/user-form";
+import { isValidPhone, normalizePhone } from "@/lib/phone";
 
 
 /** Detecta violação de unicidade do Prisma (P2002) sem depender do tipo gerado. */
@@ -65,6 +66,16 @@ const baseSchema = z.object({
     .trim()
     .regex(USERNAME_PATTERN, "Use o padrão nome#BC, em minúsculas."),
   role: z.enum(["COLABORADOR", "GESTOR", "ADMIN"]),
+  // Obrigatório aqui, e não na coluna: quem já estava cadastrado antes do
+  // campo existir tem `phone` nulo, e um NOT NULL no banco derrubaria a
+  // migration. Vale para criar E para editar — é o que faz os antigos serem
+  // preenchidos conforme passam pela tela, em vez de nunca.
+  phone: z
+    .string()
+    .trim()
+    .min(1, "Informe o telefone.")
+    .transform(normalizePhone)
+    .refine(isValidPhone, "Telefone inválido. Use DDD + número."),
   sector: z.string().trim().min(1, "Selecione o setor."),
   unit: z.string().trim().min(1, "Selecione a unidade."),
   subsectors: z.array(z.string()).default([]),
@@ -82,6 +93,7 @@ export async function createUser(formData: FormData): Promise<UserActionResult> 
     fullName: formData.get("fullName"),
     username: formData.get("username"),
     role: formData.get("role"),
+    phone: formData.get("phone"),
     sector: formData.get("sector"),
     unit: formData.get("unit"),
     subsectors: formData.getAll("subsectors").map(String),
@@ -130,6 +142,7 @@ export async function createUser(formData: FormData): Promise<UserActionResult> 
           fullName: data.fullName,
           passwordHash,
           role: data.role,
+          phone: data.phone,
           sectorId,
           unitId,
           avatarPath,
@@ -182,6 +195,7 @@ export async function updateUser(formData: FormData): Promise<UserActionResult> 
     fullName: formData.get("fullName"),
     username: formData.get("username"),
     role: formData.get("role"),
+    phone: formData.get("phone"),
     sector: formData.get("sector"),
     unit: formData.get("unit"),
     subsectors: formData.getAll("subsectors").map(String),
@@ -241,6 +255,7 @@ export async function updateUser(formData: FormData): Promise<UserActionResult> 
           username: data.username,
           fullName: data.fullName,
           role: data.role,
+          phone: data.phone,
           sectorId,
           unitId,
           ...(passwordHash ? { passwordHash } : {}),

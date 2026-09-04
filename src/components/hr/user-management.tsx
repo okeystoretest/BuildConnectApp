@@ -56,7 +56,7 @@ export function UserManagementPanel({ users }: { users: readonly ManagedUser[] }
     const term = query.trim().toLowerCase();
     if (!term) return users;
     return users.filter((user) =>
-      [user.name, user.username, ROLE_LABEL[user.role], user.sector, user.subsectors]
+      [user.name, user.username, ROLE_LABEL[user.role], user.sector, user.subsectors, user.phone ?? ""]
         .join(" ")
         .toLowerCase()
         .includes(term),
@@ -154,6 +154,17 @@ export function UserManagementPanel({ users }: { users: readonly ManagedUser[] }
                   <td className="px-4 py-3">
                     <p className="text-sm text-foreground">{user.sector}</p>
                     <p className="text-xs text-muted">{user.subsectors}</p>
+                    {/* Telefone virou obrigatório depois que estes cadastros
+                        já existiam. Marcar quem está sem é como se enxerga
+                        quem falta — a coluna aceita nulo, a tela não finge
+                        que está tudo preenchido. */}
+                    <p className="mt-1 text-xs">
+                      {user.phone ? (
+                        <span className="text-muted">{user.phone}</span>
+                      ) : (
+                        <span className="text-warning">Sem telefone</span>
+                      )}
+                    </p>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex gap-1">
@@ -196,7 +207,15 @@ export function UserManagementPanel({ users }: { users: readonly ManagedUser[] }
               </div>
 
               <div className="mt-3 border-t border-border pt-3">
-                <p className="text-[10px] uppercase tracking-wide text-muted">Setor / Subsetores</p>
+                <p className="text-[10px] uppercase tracking-wide text-muted">Telefone</p>
+                <p className="mt-0.5 text-sm">
+                  {user.phone ? (
+                    <span className="text-foreground">{user.phone}</span>
+                  ) : (
+                    <span className="text-warning">Sem telefone</span>
+                  )}
+                </p>
+                <p className="mt-3 text-[10px] uppercase tracking-wide text-muted">Setor / Subsetores</p>
                 <p className="mt-0.5 text-sm text-foreground">{user.sector}</p>
                 <p className="text-xs text-muted">{user.subsectors}</p>
               </div>
