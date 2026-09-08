@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { uploadSectorVideo, uploadSectorDocument, type ActionResult } from "@/lib/sector-actions";
+import { MAX_BYTES, validateUploadSizes } from "@/lib/storage/limits";
 
 /** Configura o modal conforme o tipo de conteúdo enviado. */
 type UploadKind = "video" | "workshop" | "instrucao-video" | "documento";
@@ -18,6 +19,10 @@ interface KindConfig {
   needsTitle: boolean;
   /** Anexos da instrução em vídeo: instrução escrita + transcrição. */
   needsAttachments: boolean;
+  /** Teto do arquivo principal, conferido AQUI antes de subir um byte. */
+  maxBytes: number;
+  /** Como o campo principal é citado na mensagem de erro. */
+  fileLabel: string;
   action: (fd: FormData) => Promise<ActionResult>;
   prepare: (fd: FormData) => void;
 }
@@ -33,6 +38,8 @@ const CONFIG: Record<UploadKind, KindConfig> = {
     accept: VIDEO_ACCEPT,
     needsTitle: true,
     needsAttachments: true,
+    maxBytes: MAX_BYTES.video,
+    fileLabel: "O vídeo",
     action: uploadSectorVideo,
     prepare: (fd) => fd.set("kind", "VIDEO"),
   },
@@ -41,6 +48,8 @@ const CONFIG: Record<UploadKind, KindConfig> = {
     accept: VIDEO_ACCEPT,
     needsTitle: true,
     needsAttachments: true,
+    maxBytes: MAX_BYTES.video,
+    fileLabel: "O vídeo",
     action: uploadSectorVideo,
     prepare: (fd) => fd.set("kind", "WORKSHOP"),
   },
@@ -49,6 +58,8 @@ const CONFIG: Record<UploadKind, KindConfig> = {
     accept: VIDEO_ACCEPT,
     needsTitle: true,
     needsAttachments: true,
+    maxBytes: MAX_BYTES.video,
+    fileLabel: "O vídeo",
     action: uploadSectorVideo,
     prepare: (fd) => fd.set("kind", "INSTRUCAO"),
   },
@@ -58,6 +69,8 @@ const CONFIG: Record<UploadKind, KindConfig> = {
       "application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,image/png",
     needsTitle: false,
     needsAttachments: false,
+    maxBytes: MAX_BYTES.document,
+    fileLabel: "O documento",
     action: uploadSectorDocument,
     prepare: () => {},
   },
@@ -148,6 +161,32 @@ export function FileUploadModal({ slug, kind, open, onClose }: FileUploadModalPr
       setError("Selecione um arquivo.");
       return;
     }
+
+    // Tamanho conferido ANTES de subir. O servidor também confere, e continua
+    // sendo ele quem manda — mas a checagem dele só acontece depois de receber
+    // o arquivo inteiro. Num vídeo de centenas de MB isso são minutos de barra
+    // de progresso terminando em "Algo deu errado", porque a requisição morre
+    // (teto de corpo, memória ou tempo) antes de a Server Action começar.
+    const excedeu = validateUploadSizes([
+      { label: cfg.fileLabel, bytes: file.size, max: cfg.maxBytes },
+      ...(cfg.needsAttachments && instructionFile
+        ? [
+            {
+              label: "A instrução escrita",
+              bytes: instructionFile.size,
+              max: MAX_BYTES.instruction,
+            },
+          ]
+        : []),
+      ...(cfg.needsAttachments && transcriptFile
+        ? [{ label: "A transcrição", bytes: transcriptFile.size, max: MAX_BYTES.transcript }]
+        : []),
+    ]);
+    if (excedeu) {
+      setError(excedeu);
+      return;
+    }
+
     setError(null);
 
     start(async () => {
