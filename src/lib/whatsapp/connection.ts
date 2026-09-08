@@ -1,6 +1,7 @@
 import makeWASocket, { Browsers, DisconnectReason } from "baileys";
 import type { WASocket } from "baileys";
 import QRCode from "qrcode";
+import { describeError } from "@/lib/describe-error";
 import { clearAuthState, hasStoredCredentials, loadDbAuthState } from "./auth-state";
 
 /**
@@ -69,6 +70,24 @@ function delayFor(attempt: number): number {
 }
 
 /**
+ * Registra falha de promessa que roda FORA do ciclo de requisição.
+ *
+ * Tudo neste arquivo que fala com o banco ou com o socket é disparado por
+ * event handler do Baileys ou por `setTimeout` — lugares onde não existe
+ * requisição por cima para pegar a rejeição. E no Node ≥ 15 rejeição sem
+ * tratamento não é aviso: encerra o processo com código 1. Uma escrita de
+ * credencial que falha durante um pico do Postgres derrubaria a intranet
+ * inteira, para quem nem usa WhatsApp.
+ *
+ * O nome do lugar vai no texto porque as quatro origens degradam de formas
+ * diferentes, e o log é a única testemunha: sem ele, sobra um processo vivo
+ * que parou de fazer uma coisa específica, sem dizer qual.
+ */
+function logBackgroundFailure(onde: string, erro: unknown): void {
+  console.error(`[whatsapp] falha em segundo plano — ${onde}: ${describeError(erro)}`);
+}
+
+/**
  * Logger mudo.
  *
  * O padrão do Baileys despeja o tráfego — inclusive material de sessão — no
@@ -93,7 +112,18 @@ function scheduleReconnect(): void {
   attempts += 1;
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
-    void connect();
+    // `connect()` rejeita quando `loadDbAuthState()` não consegue ler o
+    // Postgres. Aqui não há requisição por cima: sem este catch, o banco
+    // piscando durante uma tentativa de reconexão mata o processo.
+    //
+    // Reagendar não vira laço apertado: `scheduleReconnect` incrementa
+    // `attempts` a cada passagem e `delayFor` sobe até o teto de 5 minutos.
+    connect().catch((erro) => {
+      logBackgroundFailure("reconexão agendada", erro);
+      state = "desconectado";
+      lastError = "Falha ao reconectar. Nova tentativa em instantes.";
+      scheduleReconnect();
+    });
   }, wait);
   // Não segura o processo vivo só por causa da espera.
   reconnectTimer.unref?.();
@@ -123,7 +153,14 @@ async function connect(): Promise<void> {
   sock = socket;
 
   socket.ev.on("creds.update", () => {
-    void saveCreds();
+    // A rotação de credencial acontece SOZINHA, várias vezes por sessão, e
+    // grava no Postgres. Era a rejeição mais provável das quatro justamente
+    // por ser a mais frequente — e a que mais chance tinha de coincidir com um
+    // upload longo em curso.
+    //
+    // Perder uma gravação não é fatal: a credencial em memória segue válida e
+    // a próxima rotação tenta de novo. Fatal seria derrubar o processo.
+    saveCreds().catch((erro) => logBackgroundFailure("gravação de credencial", erro));
   });
 
   socket.ev.on("connection.update", (update) => {
@@ -131,9 +168,15 @@ async function connect(): Promise<void> {
 
     if (qr) {
       state = "aguardando_qr";
-      void QRCode.toDataURL(qr).then((url) => {
-        qrDataUrl = url;
-      });
+      // Sem o catch, um QR malformado derrubaria a aplicação inteira por causa
+      // de uma tela de administração. O WhatsApp reemite o QR a cada ~20 s, e
+      // a próxima emissão tenta de novo: o custo real é a tela ficar sem
+      // imagem por uma rodada.
+      QRCode.toDataURL(qr)
+        .then((url) => {
+          qrDataUrl = url;
+        })
+        .catch((erro) => logBackgroundFailure("geração do QR", erro));
     }
 
     if (connection === "open") {
@@ -158,7 +201,10 @@ async function connect(): Promise<void> {
         // igual — apagar é o que devolve o QR.
         lastError = "Sessão encerrada no celular. Escaneie o QR novamente.";
         state = "desconectado";
-        void clearAuthState();
+        // Apagar é o que devolve o QR, mas falhar em apagar não pode derrubar
+        // o processo. Se a limpeza não for, o admin ainda tem o botão de
+        // desvincular (`resetSession`) para forçar de novo.
+        clearAuthState().catch((erro) => logBackgroundFailure("limpeza da credencial", erro));
         return;
       }
 
