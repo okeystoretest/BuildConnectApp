@@ -89,6 +89,17 @@ export class FileStorageError extends Error {
   }
 }
 
+/**
+ * Falha de DISCO, não do arquivo enviado.
+ *
+ * O erro real (EACCES, ENOSPC, volume não montado) vai para o log; o usuário
+ * recebe um texto que aponta para onde o conserto está. A mensagem genérica
+ * anterior fazia procurar defeito no arquivo quando o problema era permissão
+ * na pasta de uploads.
+ */
+const ERRO_DE_DISCO =
+  "Não foi possível gravar o arquivo no servidor. Avise a TI: pode ser permissão na pasta de uploads.";
+
 export interface StoredFile {
   publicPath: string;
   absolutePath: string;
@@ -129,11 +140,17 @@ export async function storeFile(
   }
 
   const dir = resolveUploadDir(category);
-  await mkdir(dir, { recursive: true });
 
   // Nome novo com a extensão JÁ validada acima.
   const filename = `${crypto.randomBytes(16).toString("hex")}${extension}`;
   const absolutePath = path.join(dir, filename);
+
+  try {
+    await mkdir(dir, { recursive: true });
+  } catch (error) {
+    console.error("[storeFile] mkdir", dir, error);
+    throw new FileStorageError(ERRO_DE_DISCO);
+  }
 
   // Streaming, e não `Buffer.from(await file.arrayBuffer())`.
   //
@@ -158,7 +175,8 @@ export async function storeFile(
     // retorna, então aquele rollback nunca veria este arquivo: a limpeza tem
     // de acontecer aqui.
     await unlink(absolutePath).catch(() => {});
-    throw error;
+    console.error("[storeFile] gravação em", absolutePath, error);
+    throw new FileStorageError(ERRO_DE_DISCO);
   }
 
   // O tamanho vem do que foi REALMENTE gravado, e não de file.size: ele é

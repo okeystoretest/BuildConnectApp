@@ -7,6 +7,7 @@ import {
   toPublicPath,
   type UploadCategory,
 } from "./config";
+import { MAX_BYTES, maxMb } from "./limits";
 
 /**
  * Tratamento de imagens antes de gravar no disco.
@@ -26,8 +27,19 @@ const ACCEPTED_MIME = new Set([
   "image/heif",
 ]);
 
-/** Teto de entrada por arquivo. */
-const MAX_INPUT_BYTES = 10 * 1024 * 1024; // 10 MB
+/** Teto de entrada por arquivo. Vem de ./limits, que o navegador também lê. */
+const MAX_INPUT_BYTES = MAX_BYTES.image;
+
+/**
+ * Falha de DISCO, não de imagem.
+ *
+ * Existe porque a mensagem genérica "Não foi possível processar a imagem"
+ * mandou o usuário caçar defeito num JPEG de 44 KB quando o problema era
+ * EACCES no volume — o processo roda como uid 1000 e a pasta pertencia a
+ * outro dono. O texto agora aponta para onde o conserto realmente está.
+ */
+const ERRO_DE_DISCO =
+  "Não foi possível gravar a imagem no servidor. Avise a TI: pode ser permissão na pasta de uploads.";
 
 export interface ProcessOptions {
   /** Maior dimensão permitida (px). Acima disso, redimensiona proporcional. */
@@ -76,7 +88,7 @@ export async function processAndStoreImage(
     );
   }
   if (file.size > MAX_INPUT_BYTES) {
-    throw new ImageProcessingError("Imagem acima de 10 MB.");
+    throw new ImageProcessingError(`Imagem acima de ${maxMb("image")} MB.`);
   }
 
   const { maxDimension, quality } = { ...DEFAULTS, ...options };
@@ -101,10 +113,18 @@ export async function processAndStoreImage(
   }
 
   const dir = resolveUploadDir(category);
-  await mkdir(dir, { recursive: true });
-
   const absolutePath = path.join(dir, `${randomName()}.webp`);
-  await writeFile(absolutePath, output);
+
+  // Gravação separada do processamento: sharp já terminou, e o que falha aqui
+  // é disco (permissão, espaço, volume não montado). Confundir os dois foi o
+  // que produziu "Falha ao processar a foto" para um EACCES.
+  try {
+    await mkdir(dir, { recursive: true });
+    await writeFile(absolutePath, output);
+  } catch (error) {
+    console.error("[processAndStoreImage] gravação em", dir, error);
+    throw new ImageProcessingError(ERRO_DE_DISCO);
+  }
 
   return {
     publicPath: toPublicPath(absolutePath),
