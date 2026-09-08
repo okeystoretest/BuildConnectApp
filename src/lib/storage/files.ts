@@ -1,7 +1,11 @@
-import { mkdir, writeFile, unlink } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import { mkdir, stat, unlink } from "node:fs/promises";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import path from "node:path";
 import crypto from "node:crypto";
 import { resolveUploadDir, toPublicPath, type UploadCategory } from "./config";
+import { MAX_BYTES } from "./limits";
 
 /**
  * Armazenamento de arquivos que NÃO são imagem (vídeos, PDFs, planilhas,
@@ -13,13 +17,15 @@ import { resolveUploadDir, toPublicPath, type UploadCategory } from "./config";
 
 // Tipos aceitos por categoria de conteúdo, com teto de tamanho.
 // `extensions` cobre formatos cujo MIME o navegador não envia (.srt/.vtt).
+// Os tetos vêm de ./limits, que o navegador também importa: conferir antes de
+// enviar é o que evita minutos de espera terminando em erro genérico.
 const RULES: Record<
   "video" | "document" | "pdf" | "instruction" | "transcript",
   { mimes: Set<string>; extensions?: Set<string>; maxBytes: number; label: string }
 > = {
   video: {
     mimes: new Set(["video/mp4", "video/webm", "video/quicktime", "video/x-matroska"]),
-    maxBytes: 500 * 1024 * 1024, // 500 MB
+    maxBytes: MAX_BYTES.video,
     label: "Vídeo",
   },
   document: {
@@ -31,12 +37,12 @@ const RULES: Record<
       "application/vnd.ms-excel",
       "image/png",
     ]),
-    maxBytes: 50 * 1024 * 1024, // 50 MB
+    maxBytes: MAX_BYTES.document,
     label: "Documento",
   },
   pdf: {
     mimes: new Set(["application/pdf"]),
-    maxBytes: 30 * 1024 * 1024, // 30 MB
+    maxBytes: MAX_BYTES.pdf,
     label: "PDF",
   },
   // Documento anexo "Instrução Escrita" de um vídeo — abre em nova aba.
@@ -47,14 +53,14 @@ const RULES: Record<
       "application/msword",
     ]),
     extensions: new Set([".pdf", ".doc", ".docx"]),
-    maxBytes: 30 * 1024 * 1024, // 30 MB
+    maxBytes: MAX_BYTES.instruction,
     label: "Instrução escrita",
   },
   // Transcrição do vídeo — texto puro, legendas .vtt ou .srt.
   transcript: {
     mimes: new Set(["text/plain", "text/vtt", "text/markdown", "application/x-subrip"]),
     extensions: new Set([".txt", ".vtt", ".srt", ".md"]),
-    maxBytes: 2 * 1024 * 1024, // 2 MB
+    maxBytes: MAX_BYTES.transcript,
     label: "Transcrição",
   },
 };
@@ -128,13 +134,41 @@ export async function storeFile(
   // Nome novo com a extensão JÁ validada acima.
   const filename = `${crypto.randomBytes(16).toString("hex")}${extension}`;
   const absolutePath = path.join(dir, filename);
-  const buffer = Buffer.from(await file.arrayBuffer());
-  await writeFile(absolutePath, buffer);
+
+  // Streaming, e não `Buffer.from(await file.arrayBuffer())`.
+  //
+  // O arrayBuffer materializava o arquivo INTEIRO numa segunda cópia: um vídeo
+  // de 500 MB pedia perto de 1 GB de RSS, somado ao corpo que o Next já
+  // bufferizou para montar o FormData. Num contêiner pequeno isso basta para o
+  // kernel matar o processo — e processo morto derruba a aplicação para todo
+  // mundo, não só para quem estava enviando.
+  //
+  // O corpo bufferizado pelo Next continua existindo; o que sai daqui é a
+  // segunda cópia. Eliminar o resto exige tirar o upload de Server Action.
+  try {
+    await pipeline(
+      // Os tipos web do DOM e os de node:stream/web descrevem o mesmo objeto
+      // em runtime; o cast é o mesmo que app/uploads faz no sentido oposto.
+      Readable.fromWeb(file.stream() as Parameters<typeof Readable.fromWeb>[0]),
+      createWriteStream(absolutePath),
+    );
+  } catch (error) {
+    // Escrita interrompida no meio deixa um arquivo parcial no volume. Quem
+    // chama só registra o caminho para rollback DEPOIS que esta função
+    // retorna, então aquele rollback nunca veria este arquivo: a limpeza tem
+    // de acontecer aqui.
+    await unlink(absolutePath).catch(() => {});
+    throw error;
+  }
+
+  // O tamanho vem do que foi REALMENTE gravado, e não de file.size: ele é
+  // persistido e exibido ("2.4 MB") nas telas de documentos e de progresso.
+  const { size } = await stat(absolutePath);
 
   return {
     publicPath: toPublicPath(absolutePath),
     absolutePath,
-    sizeBytes: buffer.length,
+    sizeBytes: size,
     originalName: file.name,
   };
 }
