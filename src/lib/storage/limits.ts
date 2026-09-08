@@ -9,31 +9,63 @@ import { formatBytes } from "@/lib/utils";
  * para terminar num erro. A conferência no cliente é a que o usuário sente; a
  * do servidor continua valendo, porque cliente não é lugar de guardar regra.
  *
- * Nada de `node:` aqui — este módulo é importado por um Client Component.
+ * Nada de `node:` aqui — este módulo é importado por Client Components.
  */
 
 export const MAX_BYTES = {
-  video: 500 * 1024 * 1024,
+  /**
+   * ATENÇÃO: 50 MB, e não os 400 MB pedidos.
+   *
+   * Hoje TODO upload passa por Server Action, e o corpo de uma action é
+   * bufferizado DUAS vezes antes de o código do projeto ver um byte: uma pelo
+   * middleware (experimental.middlewareClientMaxBodySize) e outra para montar
+   * o FormData (experimental.serverActions.bodySizeLimit). Um vídeo de 400 MB
+   * por esse caminho pede quase 1 GB de memória — e contêiner sem memória é
+   * processo morto, que derruba a aplicação para todo mundo.
+   *
+   * Os 400 MB chegam quando o envio de vídeo sair da Server Action para uma
+   * rota que escreve em fluxo, fora do matcher do middleware. Até lá, este
+   * número é o que de fato funciona, e é melhor recusar com mensagem clara do
+   * que aceitar e cair.
+   */
+  video: 50 * 1024 * 1024,
+  image: 50 * 1024 * 1024,
   document: 50 * 1024 * 1024,
-  pdf: 30 * 1024 * 1024,
-  instruction: 30 * 1024 * 1024,
-  transcript: 2 * 1024 * 1024,
+  pdf: 50 * 1024 * 1024,
+  instruction: 50 * 1024 * 1024,
+  /**
+   * Transcrição é a exceção deliberada aos 50 MB dos demais documentos.
+   *
+   * O conteúdo dela não fica só no disco: `extractTranscriptText` lê o arquivo
+   * inteiro para uma string e ela é gravada na coluna `transcriptText`. Um
+   * arquivo de 50 MB viraria uma linha de 50 MB no Postgres, carregada toda
+   * vez que a tela do vídeo abrir. Cinco MB já são cerca de 2,5 milhões de
+   * caracteres — muito além de qualquer transcrição real.
+   */
+  transcript: 5 * 1024 * 1024,
 } as const;
 
 export type UploadRule = keyof typeof MAX_BYTES;
 
 /**
- * Teto do corpo inteiro de uma Server Action.
+ * Teto do corpo inteiro de uma requisição de envio.
  *
- * ATENÇÃO: precisa acompanhar `experimental.serverActions.bodySizeLimit` no
- * next.config.mjs. O arquivo de config é ESM puro e não importa TypeScript,
- * então os dois números vivem separados — mexeu em um, mexa no outro.
+ * ATENÇÃO: precisa acompanhar DOIS valores no next.config.mjs —
+ * `experimental.serverActions.bodySizeLimit` e
+ * `experimental.middlewareClientMaxBodySize`. O arquivo de config é ESM puro e
+ * não importa TypeScript, então os números vivem separados: mexeu aqui, mexa
+ * lá.
  *
- * Existe porque o envio de vídeo manda TRÊS arquivos no mesmo FormData (vídeo,
- * instrução escrita e transcrição). O limite do Next vale para a soma, não
- * para o maior deles.
+ * O middleware é o portão mais baixo e o menos óbvio: como o Server Action
+ * posta na URL da própria página, e o matcher cobre `/setores/*`, o Next
+ * bufferiza o corpo para o middleware ANTES de qualquer outra coisa. O padrão
+ * dele são 10 MB, e era o que abortava os envios com ECONNRESET muito antes de
+ * o bodySizeLimit de 520 MB ter qualquer efeito.
+ *
+ * A folga sobre os 50 MB cobre o overhead do multipart e os anexos que viajam
+ * junto no mesmo FormData.
  */
-export const MAX_REQUEST_BYTES = 520 * 1024 * 1024;
+export const MAX_REQUEST_BYTES = 55 * 1024 * 1024;
 
 export interface UploadItem {
   /** Como o campo aparece na tela, para a mensagem citar o certo. */
@@ -63,4 +95,9 @@ export function validateUploadSizes(items: UploadItem[]): string | null {
   }
 
   return null;
+}
+
+/** Teto em MB inteiros, para os rótulos da interface ("até 50 MB"). */
+export function maxMb(rule: UploadRule): number {
+  return Math.round(MAX_BYTES[rule] / (1024 * 1024));
 }

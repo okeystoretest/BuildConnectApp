@@ -94,17 +94,35 @@ const nextConfig = {
     return [{ source: "/:path*", headers }];
   },
   experimental: {
+    // O PORTÃO MAIS BAIXO, e o menos óbvio dos dois.
+    //
+    // O Server Action posta na URL da própria página, e o matcher do
+    // middleware cobre /setores/*. Então o Next bufferiza o corpo para o
+    // middleware ANTES de qualquer outra coisa — e o padrão dele são 10 MB.
+    // Acima disso a requisição é abortada com ECONNRESET, e o navegador recebe
+    // uma resposta que o cliente do Next não consegue interpretar: a tela cai
+    // no boundary genérico "Algo deu errado".
+    //
+    // Era isto que derrubava o envio de vídeo. O bodySizeLimit de 520 MB
+    // abaixo nunca chegou a valer: este portão fecha primeiro.
+    //
+    // ACOMPANHA MAX_REQUEST_BYTES em src/lib/storage/limits.ts. Este arquivo é
+    // ESM puro e não importa TypeScript, então os dois números vivem
+    // separados: mexeu em um, mexa no outro.
+    middlewareClientMaxBodySize: "55mb",
     serverActions: {
-      // BLOQUEADOR DE PRODUÇÃO: o limite padrão de corpo de Server Action é
-      // 1 MB. Todo upload do sistema (foto, vídeo, documento, avatar) passa
-      // por Server Action com FormData — sem este ajuste, qualquer arquivo
-      // acima de 1 MB falha com "Body exceeded 1 MB limit", mesmo com o proxy
-      // liberado e o volume montado. Em dev ninguém percebe: as fotos de teste
+      // O limite padrão de corpo de Server Action é 1 MB. Todo upload do
+      // sistema (foto, vídeo, documento, avatar) passa por Server Action com
+      // FormData — sem este ajuste, qualquer arquivo acima de 1 MB falha com
+      // "Body exceeded 1 MB limit". Em dev ninguém percebe: as fotos de teste
       // são pequenas.
       //
-      // O valor acompanha o maior limite de src/lib/storage/files.ts
-      // (vídeo = 500 MB), com folga para o overhead do multipart.
-      bodySizeLimit: "520mb",
+      // Baixou de 520 MB para 55 MB de propósito. Aquele número prometia o que
+      // o middleware não deixava acontecer, e o corpo de uma action é
+      // bufferizado INTEIRO na memória: 520 MB era autorização para o kernel
+      // matar o processo. Vídeo grande sai deste caminho quando ganhar a rota
+      // de envio em fluxo, fora do matcher do middleware.
+      bodySizeLimit: "55mb",
     },
   },
 };
