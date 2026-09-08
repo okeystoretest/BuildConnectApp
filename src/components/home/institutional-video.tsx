@@ -6,8 +6,11 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { useRole } from "@/providers/role-provider";
+import { maxMb } from "@/lib/storage/limits";
 
-const MAX_SIZE_MB = 500;
+// Teto vem de storage/limits, o mesmo que o servidor aplica. Os 500 daqui
+// prometiam o que o middleware nunca deixou passar.
+const MAX_SIZE_MB = maxMb("video");
 const ACCEPTED = ["video/mp4", "video/webm", "video/quicktime"];
 
 /**

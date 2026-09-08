@@ -3,9 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { maxMb } from "@/lib/storage/limits";
 
 const ACCEPTED = ["image/jpeg", "image/png", "image/webp", "image/heic"];
-const MAX_SIZE_MB = 10;
+// Teto vem de storage/limits, o mesmo que o servidor aplica.
+const MAX_SIZE_MB = maxMb("image");
 
 export interface ImageUploaderProps {
   files: readonly File[];

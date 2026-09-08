@@ -3,9 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Camera } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { maxMb } from "@/lib/storage/limits";
 
 const ACCEPTED = ["image/jpeg", "image/png"];
-const MAX_SIZE_MB = 2;
+// Teto vem de storage/limits, o mesmo que o servidor aplica. Antes era um
+// número solto por componente, e nenhum batia com a regra real.
+const MAX_SIZE_MB = maxMb("image");
 
 export interface AvatarPickerProps {
   file: File | null;

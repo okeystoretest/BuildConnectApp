@@ -10,8 +10,11 @@ import { useToast } from "@/providers/toast-provider";
 import { useRole } from "@/providers/role-provider";
 import { cn } from "@/lib/utils";
 import { uploadWelcomeVideo, removeWelcomeVideo } from "@/lib/welcome-video-actions";
+import { maxMb } from "@/lib/storage/limits";
 
-const MAX_SIZE_MB = 500;
+// Teto vem de storage/limits, o mesmo que o servidor aplica. Os 500 daqui
+// prometiam o que o middleware nunca deixou passar.
+const MAX_SIZE_MB = maxMb("video");
 const ACCEPTED = ["video/mp4", "video/webm", "video/quicktime", "video/x-matroska"];
 
 export interface WelcomeVideoCardProps {

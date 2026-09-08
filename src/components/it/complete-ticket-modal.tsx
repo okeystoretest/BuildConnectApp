@@ -8,9 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { ItTicket } from "@/types/it";
+import { maxMb } from "@/lib/storage/limits";
 
 const ACCEPTED = ["image/jpeg", "image/png", "image/webp", "image/heic"];
-const MAX_SIZE_MB = 10;
+// Teto vem de storage/limits, o mesmo que o servidor aplica.
+const MAX_SIZE_MB = maxMb("image");
 
 export interface CompletionData {
   proof: File | null;
