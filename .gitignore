@@ -5,6 +5,8 @@ node_modules
 /.next
 /out
 next-env.d.ts
+# Cache incremental do tsc: artefato de build, muda a cada compilação.
+tsconfig.tsbuildinfo
 
 # Ambiente — NUNCA commitar credenciais
 .env
