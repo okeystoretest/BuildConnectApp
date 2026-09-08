@@ -14,21 +14,25 @@ import { formatBytes } from "@/lib/utils";
 
 export const MAX_BYTES = {
   /**
-   * ATENÇÃO: 50 MB, e não os 400 MB pedidos.
+   * 100 MB — o tamanho real dos vídeos do projeto, não os 400 MB do pedido
+   * original.
    *
-   * Hoje TODO upload passa por Server Action, e o corpo de uma action é
-   * bufferizado DUAS vezes antes de o código do projeto ver um byte: uma pelo
-   * middleware (experimental.middlewareClientMaxBodySize) e outra para montar
-   * o FormData (experimental.serverActions.bodySizeLimit). Um vídeo de 400 MB
-   * por esse caminho pede quase 1 GB de memória — e contêiner sem memória é
-   * processo morto, que derruba a aplicação para todo mundo.
+   * O teto está preso à memória, não à vontade. TODO upload ainda passa por
+   * Server Action, e o corpo de uma action é bufferizado DUAS vezes antes de o
+   * código do projeto ver um byte: uma pelo middleware
+   * (experimental.middlewareClientMaxBodySize) e outra para montar o FormData
+   * (experimental.serverActions.bodySizeLimit). O que se envia custa o dobro
+   * em RSS, e contêiner sem memória é processo morto — que derruba a aplicação
+   * para todo mundo, não só para quem enviava.
    *
-   * Os 400 MB chegam quando o envio de vídeo sair da Server Action para uma
-   * rota que escreve em fluxo, fora do matcher do middleware. Até lá, este
-   * número é o que de fato funciona, e é melhor recusar com mensagem clara do
-   * que aceitar e cair.
+   * A 400 MB isso passava de 1 GB só de corpo, e não valia arriscar. A 100 MB
+   * o pico fica na casa das centenas de MB, que um contêiner de 1 GB aguenta.
+   *
+   * Acima disso, o caminho não é subir o número: é tirar o vídeo da Server
+   * Action para uma rota que escreve em fluxo, fora do matcher do middleware.
+   * Aí a memória deixa de acompanhar o tamanho do arquivo.
    */
-  video: 50 * 1024 * 1024,
+  video: 100 * 1024 * 1024,
   image: 50 * 1024 * 1024,
   document: 50 * 1024 * 1024,
   pdf: 50 * 1024 * 1024,
@@ -62,10 +66,15 @@ export type UploadRule = keyof typeof MAX_BYTES;
  * dele são 10 MB, e era o que abortava os envios com ECONNRESET muito antes de
  * o bodySizeLimit de 520 MB ter qualquer efeito.
  *
- * A folga sobre os 50 MB cobre o overhead do multipart e os anexos que viajam
- * junto no mesmo FormData.
+ * O número precisa caber o PIOR envio legítimo, não o maior arquivo: o modal
+ * de vídeo manda vídeo, instrução escrita e transcrição no mesmo FormData.
+ * 100 + 50 + 5 = 155 MB, e o resto é folga para o overhead do multipart.
+ *
+ * Custo em memória: o corpo é bufferizado duas vezes (middleware + FormData),
+ * então este teto vale o DOBRO em RSS no pico. Subi-lo sem olhar a memória do
+ * contêiner é como pedir para o kernel matar o processo.
  */
-export const MAX_REQUEST_BYTES = 55 * 1024 * 1024;
+export const MAX_REQUEST_BYTES = 165 * 1024 * 1024;
 
 export interface UploadItem {
   /** Como o campo aparece na tela, para a mensagem citar o certo. */
