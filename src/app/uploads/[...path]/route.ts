@@ -3,7 +3,7 @@ import { stat } from "node:fs/promises";
 import { Readable } from "node:stream";
 import path from "node:path";
 import { UPLOADS_ROOT } from "@/lib/storage/config";
-import { getSession } from "@/lib/auth/session";
+import { getCurrentUser } from "@/lib/auth/require-user";
 import { can } from "@/lib/permissions";
 import type { Role } from "@/types";
 
@@ -25,6 +25,11 @@ import type { Role } from "@/types";
  * documentos do DHO e evidências de denúncia — ficava acessível a quem tivesse
  * o link, sem login. Nome aleatório não é controle de acesso: URL vaza por
  * histórico, Referer, encaminhamento e cache de proxy.
+ *
+ * A conferência é getCurrentUser, e não getSession: o cookie é a fotografia do
+ * login, e é o sessionVersion do banco que faz desligamento e rebaixamento
+ * valerem na hora. Com o cookie apenas assinado, quem foi desligado seguiria
+ * baixando o acervo inteiro até o token vencer — oito horas depois.
  */
 
 export const runtime = "nodejs";
@@ -80,14 +85,15 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ path: string[] }> },
 ) {
-  const session = await getSession();
-  if (!session) return new Response("Não autenticado", { status: 401 });
+  const user = await getCurrentUser();
+  if (!user) return new Response("Não autenticado", { status: 401 });
 
   // Evidências da Central de Denúncias seguem a mesma régua da tela que as
-  // exibe: só quem trata as denúncias abre o anexo.
+  // exibe: só quem trata as denúncias abre o anexo. O papel sai do BANCO, e
+  // não do cookie: admin rebaixado perde o anexo na requisição seguinte.
   const { path: segments } = await params;
   const category = segments?.[0];
-  if (category === "denuncias" && !can(session.role as Role, "reports.manage")) {
+  if (category === "denuncias" && !can(user.role as Role, "reports.manage")) {
     return new Response("Sem permissão", { status: 403 });
   }
 
