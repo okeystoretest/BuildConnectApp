@@ -7,6 +7,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth/require-user";
 import { can } from "@/lib/permissions";
+import { canReachSector } from "@/lib/auth/scope";
 import { getRoundType, getRoundConsolidated } from "@/lib/evaluation-rounds";
 import { MAX_TOTAL_RATERS, MIN_TOTAL_RATERS } from "@/lib/evaluation-rounds-config";
 import type { Role } from "@/types";
@@ -339,18 +340,26 @@ export async function submitRoundEvaluation(input: unknown): Promise<SubmitResul
 
 /**
  * Consolidação de uma rodada: médias por competência + coluna de
- * autoavaliação, com o nome de cada avaliador. Restrita a `evaluations.view`
- * (DHO/Gestor/Admin) — junta as respostas de várias pessoas numa tela só.
+ * autoavaliação, com o nome de cada avaliador. Junta as respostas de várias
+ * pessoas numa tela só.
+ *
+ * Passa pelo MESMO requireRoundScope da edição e da exclusão: `evaluations.view`
+ * abre a tela, mas o Gestor só alcança o próprio setor. A leitura precisa da
+ * régua tanto quanto a escrita — quem é designado avaliador numa rodada de
+ * outro setor recebe o roundId por getMyEvaluationTasks, e só a checagem de
+ * escopo impede que ele troque o próprio formulário pelo consolidado inteiro:
+ * o nome de cada avaliador e a nota que cada um deu.
  */
 export async function fetchRoundConsolidated(
   roundId: string,
 ): Promise<{ ok: boolean; data?: EfficacyConsolidated; error?: string }> {
   const actor = await getCurrentUser();
   if (!actor) return { ok: false, error: "Sessão expirada." };
-  if (!can(actor.role as Role, "evaluations.view")) {
-    return { ok: false, error: "Sem permissão." };
-  }
-  const data = await getRoundConsolidated(roundId);
+
+  const { round, error: scopeError } = await requireRoundScope(roundId, actor);
+  if (!round) return { ok: false, error: scopeError ?? undefined };
+
+  const data = await getRoundConsolidated(round.id);
   if (!data) return { ok: false, error: "Rodada não encontrada." };
   return { ok: true, data };
 }
@@ -388,18 +397,26 @@ async function requireRoundScope(
   const round = await loadRoundForManagement(roundId);
   if (!round) return { round: null, error: "Atribuição não encontrada." };
 
-  if (!can(actor.role as Role, "sector.hr")) {
-    const actorSector = await prisma.user.findUnique({
-      where: { id: actor.id },
-      select: { sector: { select: { label: true } } },
-    });
-    const subjectSector = round.subject.sector?.label ?? null;
-    if (!actorSector?.sector || actorSector.sector.label !== subjectSector) {
-      return {
-        round: null,
-        error: "Gestor só gerencia avaliações de colaboradores do próprio setor.",
-      };
-    }
+  // A consulta ao setor do ator só faz sentido para quem não é DHO/Admin:
+  // canReachSector libera esses antes de olhar setor algum.
+  const ehHr = can(actor.role as Role, "sector.hr");
+  const ator = ehHr
+    ? null
+    : await prisma.user.findUnique({
+        where: { id: actor.id },
+        select: { sector: { select: { label: true } } },
+      });
+
+  const alcanca = canReachSector({
+    role: actor.role as Role,
+    actorSector: ator?.sector?.label ?? null,
+    subjectSector: round.subject.sector?.label ?? null,
+  });
+  if (!alcanca) {
+    return {
+      round: null,
+      error: "Gestor só gerencia avaliações de colaboradores do próprio setor.",
+    };
   }
 
   return { round, error: null };
