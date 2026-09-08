@@ -14,8 +14,8 @@ import { formatBytes } from "@/lib/utils";
 
 export const MAX_BYTES = {
   /**
-   * 100 MB — o tamanho real dos vídeos do projeto, não os 400 MB do pedido
-   * original.
+   * 150 MB — o teto de precaução, escolhido contra a memória e não contra os
+   * 400 MB do pedido original.
    *
    * O teto está preso à memória, não à vontade. TODO upload ainda passa por
    * Server Action, e o corpo de uma action é bufferizado DUAS vezes antes de o
@@ -25,14 +25,15 @@ export const MAX_BYTES = {
    * em RSS, e contêiner sem memória é processo morto — que derruba a aplicação
    * para todo mundo, não só para quem enviava.
    *
-   * A 400 MB isso passava de 1 GB só de corpo, e não valia arriscar. A 100 MB
-   * o pico fica na casa das centenas de MB, que um contêiner de 1 GB aguenta.
+   * A 400 MB o corpo passava de 1 GB, e não valia arriscar. A 150 MB o pior
+   * envio custa ~430 MB de pico contra os ~11 GB livres medidos no host em
+   * 08/09/2026 — folga de mais de vinte vezes, sem limite por contêiner.
    *
    * Acima disso, o caminho não é subir o número: é tirar o vídeo da Server
    * Action para uma rota que escreve em fluxo, fora do matcher do middleware.
    * Aí a memória deixa de acompanhar o tamanho do arquivo.
    */
-  video: 100 * 1024 * 1024,
+  video: 150 * 1024 * 1024,
   image: 50 * 1024 * 1024,
   document: 50 * 1024 * 1024,
   pdf: 50 * 1024 * 1024,
@@ -68,13 +69,13 @@ export type UploadRule = keyof typeof MAX_BYTES;
  *
  * O número precisa caber o PIOR envio legítimo, não o maior arquivo: o modal
  * de vídeo manda vídeo, instrução escrita e transcrição no mesmo FormData.
- * 100 + 50 + 5 = 155 MB, e o resto é folga para o overhead do multipart.
+ * 150 + 50 + 5 = 205 MB, e o resto é folga para o overhead do multipart.
  *
  * Custo em memória: o corpo é bufferizado duas vezes (middleware + FormData),
- * então este teto vale o DOBRO em RSS no pico. Subi-lo sem olhar a memória do
- * contêiner é como pedir para o kernel matar o processo.
+ * então este teto vale o DOBRO em RSS no pico — ~430 MB aqui. Subi-lo sem
+ * olhar a memória do contêiner é como pedir para o kernel matar o processo.
  */
-export const MAX_REQUEST_BYTES = 165 * 1024 * 1024;
+export const MAX_REQUEST_BYTES = 215 * 1024 * 1024;
 
 export interface UploadItem {
   /** Como o campo aparece na tela, para a mensagem citar o certo. */
