@@ -109,7 +109,7 @@ const nextConfig = {
     // ACOMPANHA MAX_REQUEST_BYTES em src/lib/storage/limits.ts. Este arquivo é
     // ESM puro e não importa TypeScript, então os dois números vivem
     // separados: mexeu em um, mexa no outro.
-    middlewareClientMaxBodySize: "215mb",
+    middlewareClientMaxBodySize: "145mb",
     serverActions: {
       // O limite padrão de corpo de Server Action é 1 MB. Todo upload do
       // sistema (foto, vídeo, documento, avatar) passa por Server Action com
@@ -117,18 +117,19 @@ const nextConfig = {
       // "Body exceeded 1 MB limit". Em dev ninguém percebe: as fotos de teste
       // são pequenas.
       //
-      // Baixou de 520 MB de propósito. Aquele número prometia o que o
-      // middleware não deixava acontecer, e o corpo de uma action é
-      // bufferizado INTEIRO na memória: 520 MB era autorização para o kernel
-      // matar o processo.
+      // 145 MB cobre o pior envio legítimo do modal de vídeo — vídeo (110) +
+      // instrução escrita (25) + transcrição (5) = 140, mais folga para o
+      // overhead do multipart.
       //
-      // 215 MB cobre o pior envio legítimo do modal de vídeo — vídeo (150) +
-      // instrução escrita (50) + transcrição (5), no mesmo FormData. Como o
-      // corpo é bufferizado duas vezes, aqui e no middleware acima, este
-      // número vale o DOBRO em RSS no pico: ~430 MB contra os ~11 GB livres
-      // medidos no host. Vídeo maior sai deste caminho quando ganhar a rota de
-      // envio em fluxo, fora do matcher do middleware.
-      bodySizeLimit: "215mb",
+      // O NÚMERO É DITADO POR TEMPO, não por memória. O `requestTimeout` do
+      // Node vale 300 s e o `next start` não deixa mexer nele; a 4,8 Mbps
+      // medidos em produção, 145 MB levam ~243 s. O teto anterior de 215 MB
+      // permitia um envio de ~344 s, que morria em 502 com um ECONNRESET mudo
+      // depois de o usuário esperar quase seis minutos.
+      //
+      // A memória, que já foi o critério, hoje sobra: mesmo bufferizado duas
+      // vezes (aqui e no middleware acima), dá ~290 MB contra ~11 GB livres.
+      bodySizeLimit: "145mb",
     },
   },
 };

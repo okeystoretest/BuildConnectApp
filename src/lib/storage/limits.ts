@@ -14,30 +14,45 @@ import { formatBytes } from "@/lib/utils";
 
 export const MAX_BYTES = {
   /**
-   * 150 MB — o teto de precaução, escolhido contra a memória e não contra os
-   * 400 MB do pedido original.
+   * 110 MB — e o que limita este número é TEMPO, não memória.
    *
-   * O teto está preso à memória, não à vontade. TODO upload ainda passa por
-   * Server Action, e o corpo de uma action é bufferizado DUAS vezes antes de o
-   * código do projeto ver um byte: uma pelo middleware
-   * (experimental.middlewareClientMaxBodySize) e outra para montar o FormData
-   * (experimental.serverActions.bodySizeLimit). O que se envia custa o dobro
-   * em RSS, e contêiner sem memória é processo morto — que derruba a aplicação
-   * para todo mundo, não só para quem enviava.
+   * A restrição de verdade não está em byte nenhum: está no `requestTimeout` do
+   * Node, que vale **300 segundos** e que o `next start` não deixa configurar
+   * (ele só mexe em `keepAliveTimeout`). Passou disso, o Node destrói o socket,
+   * o proxy responde 502 e o log fica com um `ECONNRESET` mudo. O teto real de
+   * upload é, portanto, **banda de subida × 300 s** — e muda de usuário para
+   * usuário.
    *
-   * A 400 MB o corpo passava de 1 GB, e não valia arriscar. A 150 MB o pior
-   * envio custa ~430 MB de pico contra os ~11 GB livres medidos no host em
-   * 08/09/2026 — folga de mais de vinte vezes, sem limite por contêiner.
+   * Medido em produção em 09/09/2026: 71,6 MB subiram em ~120 s, ou ~4,8 Mbps.
+   * A medição vale porque `welcomeVideo.manage` é permissão só de Admin: quem
+   * envia vídeo é sempre a mesma pessoa, e é a banda dela que decide.
    *
-   * Acima disso, o caminho não é subir o número: é tirar o vídeo da Server
-   * Action para uma rota que escreve em fluxo, fora do matcher do middleware.
-   * Aí a memória deixa de acompanhar o tamanho do arquivo.
+   * A 4,8 Mbps, 110 MB levam ~184 s — 61% do limite, com folga para a variação
+   * normal da rede. Os 150 MB anteriores levariam ~251 s, e o pior envio que a
+   * interface permitia (150 + 50 + 5) levava ~344 s: passava em toda a
+   * conferência de tamanho e morria por tempo, que é exatamente o defeito que
+   * estes tetos existem para evitar.
+   *
+   * Memória continua confortável e deixou de ser o critério: ~290 MB de pico
+   * contra os ~11 GB livres do host, sem limite por contêiner.
+   *
+   * Para subir este número, o caminho NÃO é editar aqui: é levantar o
+   * `requestTimeout` com servidor próprio, ou fatiar o envio em pedaços.
    */
-  video: 150 * 1024 * 1024,
+  video: 110 * 1024 * 1024,
   image: 50 * 1024 * 1024,
   document: 50 * 1024 * 1024,
   pdf: 50 * 1024 * 1024,
-  instruction: 50 * 1024 * 1024,
+  /**
+   * 25 MB, metade dos demais documentos — e a razão não é o arquivo, é a
+   * companhia.
+   *
+   * A instrução escrita é o único documento que viaja no MESMO FormData de um
+   * vídeo. O que precisa caber em 300 s é a SOMA, então cada MB aqui é um MB a
+   * menos disponível para o vídeo. 25 MB é generoso para um PDF ou DOCX de
+   * instrução, e devolve 25 MB de orçamento para o que de fato é grande.
+   */
+  instruction: 25 * 1024 * 1024,
   /**
    * Transcrição é a exceção deliberada aos 50 MB dos demais documentos.
    *
@@ -69,13 +84,21 @@ export type UploadRule = keyof typeof MAX_BYTES;
  *
  * O número precisa caber o PIOR envio legítimo, não o maior arquivo: o modal
  * de vídeo manda vídeo, instrução escrita e transcrição no mesmo FormData.
- * 150 + 50 + 5 = 205 MB, e o resto é folga para o overhead do multipart.
+ * 110 + 25 + 5 = 140 MB, e os 5 MB restantes são folga para o overhead do
+ * multipart — o cliente soma bytes de ARQUIVO, mas o corpo HTTP carrega
+ * fronteiras e cabeçalhos por cima. Sem essa folga, um envio aprovado no
+ * navegador seria recusado no servidor por alguns KB.
  *
- * Custo em memória: o corpo é bufferizado duas vezes (middleware + FormData),
- * então este teto vale o DOBRO em RSS no pico — ~430 MB aqui. Subi-lo sem
- * olhar a memória do contêiner é como pedir para o kernel matar o processo.
+ * O QUE DECIDE ESTE NÚMERO É TEMPO. A 4,8 Mbps medidos em produção, 145 MB
+ * levam ~243 s, contra os 300 s do `requestTimeout` do Node — 81% do limite.
+ * Memória deixou de ser o critério: mesmo dobrada pela bufferização (middleware
+ * + FormData), a conta dá ~290 MB contra ~11 GB livres no host.
+ *
+ * Antes de subir isto, refaça a conta de tempo: um envio que não termina em
+ * 300 s morre em 502 com um `ECONNRESET` mudo no log, e nenhuma conferência de
+ * tamanho — nem aqui, nem no navegador — vai avisar o usuário.
  */
-export const MAX_REQUEST_BYTES = 215 * 1024 * 1024;
+export const MAX_REQUEST_BYTES = 145 * 1024 * 1024;
 
 export interface UploadItem {
   /** Como o campo aparece na tela, para a mensagem citar o certo. */

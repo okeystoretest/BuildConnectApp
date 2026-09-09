@@ -64,6 +64,20 @@ test("o pior envio LEGÍTIMO do modal de vídeo cabe no corpo da requisição", 
   );
 });
 
+test("o pior envio deixa FOLGA, não empate, para o overhead do multipart", () => {
+  // Quase escorreguei nisto ao recalcular os tetos: 110 + 25 + 5 = 140 com o
+  // corpo em 140 fecha a conta no papel e quebra na prática. O cliente soma
+  // bytes de ARQUIVO; o corpo HTTP leva fronteiras e cabeçalhos de parte por
+  // cima. No empate, um envio aprovado no navegador é recusado no servidor por
+  // alguns KB — e o usuário recebe um "não" que nenhuma tela consegue explicar.
+  const pior = MAX_BYTES.video + MAX_BYTES.instruction + MAX_BYTES.transcript;
+  const folga = MAX_REQUEST_BYTES - pior;
+  assert.ok(
+    folga >= 1024 * 1024,
+    `folga de ${folga} bytes entre o pior envio (${pior}) e o corpo (${MAX_REQUEST_BYTES}) — precisa de pelo menos 1 MB`,
+  );
+});
+
 test("o erro do arquivo vem antes do erro da soma", () => {
   // Quando os dois falham, "o vídeo passa do limite" é acionável; "a soma
   // passou" só diz que algo está grande.
