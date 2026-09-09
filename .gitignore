@@ -34,5 +34,10 @@ npm-debug.log*
 .claude/
 
 # Anotações de trabalho — não fazem parte do código.
+#
+# Resumo de sessão fica NA MÁQUINA, nunca no repositório. Era uma entrada
+# nominal por arquivo e virou padrão depois que um resumo novo foi commitado por
+# falta de regra: o `RESUMO-CORRECAO-CRONOGRAMA.md` que estava aqui sozinho
+# dependia de alguém lembrar de repetir a linha.
 Instruções_BCA.md
-RESUMO-CORRECAO-CRONOGRAMA.md
+RESUMO-*.md
