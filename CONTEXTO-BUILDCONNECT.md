@@ -1,7 +1,8 @@
 # Build.Connect — contexto completo para continuar o trabalho
 
-> Passagem de contexto para uma nova sessão. Estado em **08/09/2026**,
-> `main` em **`2c39f4a`**, working tree limpa, tudo empurrado para o GitHub.
+> Passagem de contexto para uma nova sessão. Estado em **09/09/2026**. Último
+> commit de **código**: `2c39f4a` — a correção que destravou o upload de vídeo em
+> 09/09 foi no **proxy**, não no repositório (seção 6). Working tree limpa.
 >
 > Leia a seção 10 primeiro se quiser saber apenas **o que fazer agora**.
 
@@ -181,10 +182,42 @@ src/lib/whatsapp/notify.dbtest.ts      src/lib/whatsapp/outbox.dbtest.ts
 | Contêiner | `producao_build-connect` |
 | Volume de uploads | `/var/lib/docker/volumes/producao_build-connect_uploads/_data` |
 | Usuário do processo | `uid 1000 (node)` — Dockerfile faz `USER node` |
-| Proxy | Traefik via EasyPanel — **limites NUNCA inspecionados** |
+| Proxy | **Traefik 3.6.7** via EasyPanel — inspecionado em 09/09, ver abaixo |
 
 Env em produção: `WHATSAPP_ENABLED=true`, `NODE_ENV=production`,
 `UPLOADS_DIR=/var/www/app/uploads`, `CRON_SECRET` definida.
+
+### O Traefik — inspecionado em 09/09/2026
+
+Serviço `easypanel-traefik`, imagem `traefik:3.6.7`.
+
+- **Não existe configuração estática nenhuma.** Sem `/etc/traefik`, sem
+  `traefik.yml` em lugar algum, e `Cmd: ["traefik"]` sem um único argumento.
+  Ele é configurado **inteiramente por variáveis de ambiente `TRAEFIK_*`** no
+  serviço do Swarm. Antes de procurar arquivo, rode
+  `docker exec $TC sh -c 'env | grep ^TRAEFIK'`.
+- **Os entrypoints se chamam `http` (:80) e `https` (:443)** — não
+  `web`/`websecure`, que é o nome do exemplo padrão da documentação.
+- `TRAEFIK_PROVIDERS_FILE_DIRECTORY=/data/config` com `WATCH=true`, montado do
+  host em `/etc/easypanel/traefik/config`. É o provider **dinâmico**: serve para
+  routers, services e middlewares. **Timeout de entrypoint NÃO funciona lá** —
+  `respondingTimeouts` é configuração estática.
+- O EasyPanel **regenera o `main.yaml`** a cada alteração pelo painel; o
+  `buildboard.yaml` ao lado existe justamente para sobreviver a isso, e o
+  comentário dentro dele explica o arranjo.
+
+**Alteração aplicada em 09/09** (`docker service update --env-add`):
+
+```
+TRAEFIK_ENTRYPOINTS_HTTPS_TRANSPORT_RESPONDINGTIMEOUTS_READTIMEOUT=600s
+TRAEFIK_ENTRYPOINTS_HTTP_TRANSPORT_RESPONDINGTIMEOUTS_READTIMEOUT=600s
+```
+
+> **FRÁGIL:** isso foi adicionado **por fora do painel**. Se o EasyPanel recriar
+> o serviço do Traefik numa atualização dele, as variáveis somem e o teto de
+> **60 s** volta — e o sintoma volta com ele: vídeo grande morrendo em 502.
+> Quando alguém reportar "o upload de vídeo parou de novo", **confira estas duas
+> variáveis antes de qualquer outra coisa.**
 
 ### Acesso do dono à VPS
 
@@ -257,7 +290,13 @@ tema, segredos fora do Git (`.env` nunca commitado), `clientIp()` lendo o últim
 
 ---
 
-## 6. A causa raiz das falhas de upload — leia antes de investigar qualquer coisa
+## 6. As DUAS causas das falhas de upload — leia antes de investigar qualquer coisa
+
+> Havia **dois portões em série**, e o de tamanho estava na frente escondendo o
+> de tempo. Corrigir só o primeiro não destravou nada, e isso custou uma sessão
+> inteira. Se o upload voltar a falhar, verifique **os dois**.
+
+### O PRIMEIRO portão: 10 MB do middleware (corrigido em `e71deeb`)
 
 Sintoma: envio de vídeo rodava o spinner por minutos e caía em
 `An unexpected response was received from the server`, com a tela genérica
@@ -286,6 +325,52 @@ experimental: {
   serverActions: { bodySizeLimit: "215mb" },
 }
 ```
+
+**Detalhe que só apareceu depois, lendo o código do Next:** estourar esse limite
+**não aborta** a requisição. Em `next/dist/server/body-streams.js`, o Next imprime
+`Request body exceeded ...` e **trunca o corpo** (`p1.push(null); p2.push(null)`);
+o ECONNRESET vinha do multipart quebrando depois da truncagem. Consequência
+prática para diagnóstico: **esse caminho SEMPRE deixa a linha de aviso no log.**
+ECONNRESET *sem* ela é outro problema — foi assim que o segundo portão apareceu.
+
+### O SEGUNDO portão: 60 s do Traefik (corrigido em 09/09, fora do repositório)
+
+Sintoma depois da primeira correção: vídeo de 71,6 MB rodava o spinner e caía em
+**502 Bad Gateway**, com o log do contêiner mostrando só
+
+```
+[Error: aborted] { code: 'ECONNRESET' }
+```
+
+sem nenhuma linha de `Request body exceeded`, e **com o processo continuando
+vivo** (a task não reiniciava).
+
+**Mecanismo:** o Traefik 3.6.7 traz `respondingTimeouts.readTimeout: 60s` de
+fábrica — tempo máximo para ele **ler a requisição inteira, corpo incluído**.
+Estourado, ele corta a conexão com o backend; o Next vê a requisição abortada e
+o navegador recebe 502. O teto real de upload nunca foi medido em MB: era **a
+banda de subida do usuário multiplicada por 60 segundos**. É por isso que a foto
+de 44 KB sempre funcionou e o vídeo nunca.
+
+**Correção:** as duas variáveis de ambiente do Traefik na seção 4. Não há
+mudança de código — o repositório não participa desta correção.
+
+**Como foi confirmado, e é o método a repetir:** o envio falhou em **60 s
+exatos, duas vezes**. Tempo redondo e repetível é timeout; estouro de recurso dá
+tempos irregulares. Foi esse único número que separou as hipóteses.
+
+### O TERCEIRO portão, ainda intacto: 300 s do Node
+
+`next start` só configura `keepAliveTimeout`
+(`next/dist/server/lib/start-server.js`). O **`requestTimeout` fica no padrão do
+Node: 300 000 ms**. Ou seja, mesmo com o Traefik em 600 s, nenhuma requisição
+pode passar de **5 minutos** — e o sintoma seria idêntico ao do Traefik: 502 com
+ECONNRESET e processo vivo, só que aos 300 s em vez de 60.
+
+Isso define o teto honesto de vídeo: **banda de subida × 300 s**. Se algum dia
+for preciso passar disso, as saídas são um servidor próprio que ajuste
+`server.requestTimeout`, ou fatiar o envio em pedaços — subir o número em
+`limits.ts` não resolve.
 
 ### Hipóteses investigadas e DESCARTADAS — não refaça este caminho
 
@@ -357,6 +442,11 @@ lugar.
   importa TypeScript. Mexeu em um, mexa nos outros.
 - `limits.ts` **não pode importar nada de `node:`** — é lido por Client
   Components.
+- **O teto que o usuário sente não é este.** Nenhum destes números importa se a
+  transferência não terminar dentro dos **300 s** do `requestTimeout` do Node
+  (seção 6). O limite real é **banda de subida × 300 s**, e ele muda de usuário
+  para usuário. Prometer 150 MB para quem sobe a 2 Mbps é prometer o que a rede
+  não entrega — a conferência do navegador aprova e o envio morre em 502.
 
 ---
 
@@ -420,6 +510,40 @@ Testar um nível a menos era testar outra coisa.
 0 e não deixa a sonda para trás; volume com subpasta impossível sai 1 com a
 mensagem, num caso em que `[ -w ]` na raiz respondia SIM.
 
+### 9.6 Os tetos de tamanho ignoram o teto de tempo — ABERTA
+
+Ver a tabela na seção 10. A interface permite hoje um envio de 205 MB que não
+termina dentro dos 300 s do Node na banda medida. Três saídas, e elas se
+excluem:
+
+1. **Baixar os tetos** em `limits.ts` até o pior envio caber com folga. Um
+   orçamento de 240 s (80% dos 300) a 4,8 Mbps dá ~140 MB de requisição inteira.
+   Barato, honesto, e reduz o vídeo de 150 para ~85 MB.
+2. **Levantar o `requestTimeout` do Node**, o que exige servidor próprio — o
+   `next start` não expõe essa opção. Mantém os 150 MB. Casa bem com o defeito
+   do `output: "standalone"` (9.7), porque os dois moram no mesmo lugar.
+3. **Aceitar** e documentar que o caso extremo falha.
+
+### 9.7 `output: "standalone"` com `next start` — ABERTA
+
+O `next.config.mjs` declara `output: "standalone"`, mas o Dockerfile roda
+`npm run start` → `next start`. O próprio Next avisa a cada subida:
+
+```
+⚠ "next start" does not work with "output: standalone" configuration.
+```
+
+Verificado em `next/dist/server/next.js`: é **só aviso** — ali ao lado,
+`output: "export"` lança erro, e `standalone` não. A config é lida e aplicada
+normalmente, então **isto não causou nenhum dos bugs de upload**. Mas é
+combinação que o fornecedor declara não suportada, e polui o log de subida com
+um alarme falso — que atrapalhou o diagnóstico desta sessão.
+
+Duas saídas: remover `output: "standalone"` (o Dockerfile é de etapa única e
+mantém o `node_modules` inteiro de propósito, então standalone não traz ganho
+nenhum aqui), ou trocar o `CMD` para `node .next/standalone/server.js`. A
+segunda é a que abre caminho para 9.6, item 2.
+
 ### 9.3 Vídeo acima de ~200 MB exige sair da Server Action
 
 Enquanto o upload for Server Action, o corpo é bufferizado **duas vezes** (uma
@@ -462,36 +586,41 @@ defesa completa.
 
 ## 10. O que fazer agora — pendências abertas
 
-### Validação em produção — é o gargalo de agora
+### Validado em produção em 09/09 — não refazer
 
-Todo o trabalho de upload está no `main`, e **nada disso foi confirmado rodando
-em produção.** Enquanto não for, é teoria.
+1. ~~Rebuild no EasyPanel~~ — feito. Confirmado por
+   `docker exec $C grep middlewareClientMaxBodySize /app/next.config.mjs`, que
+   devolveu os 215 MB. **Esse comando é a forma rápida de saber se um deploy
+   pegou**: ele lê o arquivo dentro do contêiner que está servindo.
+2. ~~Upload de vídeo~~ — **funcionou** depois da correção do Traefik: 71,6 MB em
+   ~120 s.
+3. ~~Foto do usuário~~ — funcionou, o `chown` destravou.
+4. ~~Limites do proxy~~ — inspecionados e corrigidos. Seções 4 e 6.
 
-1. **Forçar rebuild no EasyPanel.** `next.config.mjs` só vale com **imagem
-   nova**; restart não adianta. E o entrypoint novo agora pode **impedir a
-   subida** se o volume tiver problema de permissão — é o comportamento
-   desejado, mas olhe o log de deploy.
-2. **Subir um vídeo de 20–30 MB** em `/setores/<algum>`. Antes da correção do
-   portão de 10 MB, qualquer coisa acima disso morria com ECONNRESET. É o teste
-   que fecha o caso da seção 6.
-3. **Confirmar a foto do usuário**, que o `chown` destravou.
-4. **Limites do proxy Traefik/EasyPanel** — o único portão nunca inspecionado, e
-   o candidato restante a "corrigi tudo e continua falhando". Teste que isola o
-   proxy do app, porque `/api/health` está fora do matcher:
+### Medição de banda — e o buraco que ela abre
 
-   ```sh
-   head -c 220000000 /dev/urandom > /tmp/big.bin
-   curl -s -o /dev/null -w '%{http_code} %{time_total}\n' \
-     -X POST --data-binary @/tmp/big.bin https://buildconnectapp.com.br/api/health
-   ```
+**71,6 MB em ~120 s = ~4,8 Mbps de subida** na conexão do Admin. Isso importa
+mais do que parece: `welcomeVideo.manage` é **só do Admin**, então quem sobe
+vídeo é sempre ele, e essa é a banda que vale.
 
-   **405** (Method Not Allowed) = os 220 MB atravessaram o proxy e chegaram no
-   Next, caminho livre. **413** ou conexão cortada = o Traefik é um segundo
-   portão e precisa de label de configuração. O `time_total` denuncia timeout
-   curto.
-5. **Teste do IDOR corrigido:** como **GESTOR**, abrir Resultados no RH e
-   expandir uma submissão e um consolidado **do próprio setor** — deve
-   funcionar. Como ADMIN, de qualquer setor — deve funcionar.
+Com os 300 s do `requestTimeout` do Node (seção 6):
+
+| Envio | Tempo estimado a 4,8 Mbps | Cabe em 300 s? |
+|---|---|---|
+| Vídeo de 150 MB sozinho | ~251 s | Sim, com ~20% de folga |
+| **Pior envio que a interface PERMITE hoje** (150 + 50 + 5 = 205 MB) | **~344 s** | **NÃO** |
+
+Ou seja: existe hoje uma combinação que passa em toda a conferência de tamanho —
+cliente e servidor — e **morre em 502 aos 300 s**, sem nada no log além do
+ECONNRESET. É o mesmo tipo de defeito que os tetos existiam para evitar, só que
+medido em segundos. **Pendência aberta**, com as saídas na seção 9.6.
+
+### Ainda por validar em produção
+
+- **Teste do IDOR corrigido** (`993f6b4`): como **GESTOR**, abrir Resultados no
+  RH e expandir uma submissão e um consolidado **do próprio setor** — deve
+  funcionar. Como ADMIN, de qualquer setor — deve funcionar. É o único item da
+  auditoria de segurança que nunca foi exercitado com usuário real.
 
 ### Aguardando resposta do dono
 
@@ -545,6 +674,21 @@ em produção.** Enquanto não for, é teoria.
   `RestartCount` e `OOMKilled` só valem para a instância atual. Histórico de
   incidentes anteriores não está lá.
 - **`${VAR:+sim}${VAR:-nao}` vaza o valor** da variável. Use `if [ -n "$VAR" ]`.
+- **`curl -X POST` contra rota GET não testa corpo nenhum.** Escrevi um teste
+  que mandava 100 MB para `/api/health` para saber se o proxy deixava passar; ele
+  voltou `405` em 0,26 s e eu quase concluí "caminho livre". O Next responde
+  **405 antes de ler o corpo**, o curl recebe a resposta e para de enviar. O que
+  denunciou foi o teste de controle: 5 MB a 50 KB/s deveriam levar ~100 s e
+  levaram 1,0 s. **Sempre inclua um caso cujo tempo você sabe prever** — foi só
+  ele que expôs o instrumento quebrado.
+- **Timeout tem cara de número redondo e repetível.** Foi o que separou "o
+  processo está morrendo" de "alguém está cortando a conexão": 60 s exatos, duas
+  vezes seguidas. Antes de teorizar sobre memória ou queda, **peça o número**.
+- **`docker service logs` mistura TODAS as tasks**, inclusive as mortas em
+  deploys antigos. O prefixo de cada linha é o ID da task — sem separar por ele,
+  os `SIGTERM` dos deploys passados parecem falha do contêiner atual. Foi
+  exatamente esse erro de leitura que me fez perseguir "o processo morreu"
+  durante uma rodada inteira.
 - Verificar mudanças de comportamento com **script descartável executando o
   código de verdade**, não só com o compilador. Foi assim que confirmei o
   streaming (5 MB byte a byte), as mensagens de erro de disco, a sonda do
