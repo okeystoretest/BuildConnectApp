@@ -208,6 +208,54 @@ export function formatLabel(format: ContentFormat, formatOther?: string): string
   return custom && custom.length > 0 ? custom : FORMAT_LABEL.OUTRO;
 }
 
+/**
+ * Formatos de um post na ORDEM canônica, sem repetição.
+ *
+ * O post guarda uma lista, e a lista chega na ordem em que a pessoa clicou.
+ * Duas peças com os mesmos formatos apareceriam em ordens diferentes no
+ * calendário, o que faz a mesma informação parecer duas informações. A ordem
+ * passa a ser sempre a de `FORMAT_ORDER`, como já acontece com as redes
+ * sociais.
+ */
+export function resolveFormats(
+  formats: readonly ContentFormat[] | null | undefined,
+): ContentFormat[] {
+  if (!formats || formats.length === 0) return [];
+  return FORMAT_ORDER.filter((option) => formats.includes(option));
+}
+
+/**
+ * Formato que representa o post onde só cabe UM: a bolinha colorida da célula
+ * do calendário. É o primeiro da ordem canônica.
+ *
+ * Devolve null para post sem formato — possível porque a coluna é uma lista e
+ * lista pode estar vazia, coisa que a coluna única não permitia.
+ */
+export function primaryFormat(
+  formats: readonly ContentFormat[] | null | undefined,
+): ContentFormat | null {
+  return resolveFormats(formats)[0] ?? null;
+}
+
+/**
+ * Rótulos de todos os formatos do post, prontos para virar tags.
+ * "Outro" continua exibindo o texto livre em vez da palavra "Outro".
+ */
+export function formatLabels(
+  formats: readonly ContentFormat[] | null | undefined,
+  formatOther?: string,
+): string[] {
+  return resolveFormats(formats).map((format) => formatLabel(format, formatOther));
+}
+
+/** Formatos em uma linha só — para o CSV e para atributos `title`. */
+export function formatsLabel(
+  formats: readonly ContentFormat[] | null | undefined,
+  formatOther?: string,
+): string {
+  return formatLabels(formats, formatOther).join(" + ");
+}
+
 /** Selo do formato sobre a própria cor — mesma receita do `platformStyle`. */
 export function formatStyle(format: ContentFormat): CSSProperties {
   const { color } = FORMAT[format];

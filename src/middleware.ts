@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { isRevokedSessionLogin } from "@/lib/auth/login-redirect";
 
 /**
  * Proteção de rotas.
@@ -62,12 +63,30 @@ async function isValidToken(token: string, secret: string): Promise<boolean> {
 }
 
 export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
+  const { pathname, searchParams } = request.nextUrl;
   const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
   const token = request.cookies.get(COOKIE_NAME)?.value;
   const secret = process.env.SESSION_SECRET ?? "";
   const authed = token && secret ? await isValidToken(token, secret) : false;
+
+  /**
+   * Sessão REVOGADA: a página, que alcança o banco, viu que o
+   * `sessionVersion` do cookie não bate mais e mandou para cá. Daqui o cookie
+   * morto é apagado e o login é servido.
+   *
+   * Esta conferência vem ANTES da devolução para a home logo abaixo, e é o
+   * que impede o laço: sem ela, a assinatura ainda válida deste cookie faz o
+   * `authed` dar verdadeiro, a home devolve para o login, o login devolve
+   * para a home — ERR_TOO_MANY_REDIRECTS. O Edge não tem como conferir o
+   * `sessionVersion` por conta própria (não alcança o Prisma), então quem
+   * sabe da revogação é a página, e ela avisa pela URL.
+   */
+  if (isRevokedSessionLogin(pathname, searchParams)) {
+    const response = NextResponse.next();
+    response.cookies.delete(COOKIE_NAME);
+    return response;
+  }
 
   // Logado tentando ver o login → manda pra home.
   if (authed && isPublic) {
@@ -90,8 +109,14 @@ export async function middleware(request: NextRequest) {
 // receberia 302 para /login e marcaria o container como saudável pelo motivo
 // errado; a rota de cron já se autentica sozinha pelo CRON_SECRET e hoje nunca
 // chega a executar — o middleware a redireciona antes.
+//
+// `api/uploads` fica de fora por MEMÓRIA e TEMPO, não por acesso. Rota coberta
+// pelo matcher tem o corpo inteiro bufferizado ANTES de o middleware rodar —
+// é o portão que derrubava os envios de vídeo (ver RESUMO-UPLOAD.md), hoje
+// aberto até 145 MB no next.config.mjs. Pagar essa cópia só para conferir um
+// cookie é desperdício: a própria rota confere a sessão na primeira linha.
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|api/health|api/cron|uploads|favicon.png|favicon.ico).*)",
+    "/((?!_next/static|_next/image|api/health|api/cron|api/uploads|uploads|favicon.png|favicon.ico).*)",
   ],
 };

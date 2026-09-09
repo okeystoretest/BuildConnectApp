@@ -10,9 +10,11 @@ import { NotificationProvider } from "@/providers/notification-provider";
 import { PendingEvaluationsProvider } from "@/providers/pending-evaluations-provider";
 import { ToastProvider } from "@/providers/toast-provider";
 import { countMyPendingEvaluations } from "@/lib/evaluation-rounds";
+import { getPlatformWelcomeVideo } from "@/lib/platform-welcome-data";
 import { OnboardingGate } from "@/components/onboarding/onboarding-gate";
 import { TicketModalHost } from "@/components/tickets/ticket-modal-host";
 import { getVerifiedSession } from "@/lib/auth/require-user";
+import { canUseDhoTools } from "@/lib/auth/access";
 import type { CurrentUser, Role } from "@/types";
 
 const outfit = Outfit({
@@ -51,6 +53,16 @@ const GUEST_USER: CurrentUser = {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const session = await getVerifiedSession();
+
+  // Vínculo com o DHO: decide se o setor aparece na barra lateral. Resolvido a
+  // cada requisição, e não guardado no cookie — mover alguém de setor não
+  // invalida a sessão, então o token continuaria afirmando a lotação antiga.
+  // A página do DHO e as actions conferem de novo por conta própria; esconder
+  // o menu não é tranca.
+  const dhoMember = session
+    ? await canUseDhoTools(session.userId, session.role as Role)
+    : false;
+
   const user: CurrentUser = session
     ? {
         id: session.userId,
@@ -61,6 +73,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         avatarPath: session.avatarPath ?? undefined,
         // `null` = ADMIN (acesso total). Preserva a distinção no client.
         accessSlugs: session.accessSlugs ?? null,
+        dhoMember,
       }
     : GUEST_USER;
 
@@ -68,6 +81,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // número aparece certo na primeira pintura, sem piscar de zero. Sem sessão
   // (tela de login) não há o que contar e nem consulta é feita.
   const pendingEvaluations = session ? await countMyPendingEvaluations(session.userId) : 0;
+
+  // Vídeo obrigatório da plataforma. A resposta vem pronta do servidor para o
+  // modal não piscar na primeira pintura — e, principalmente, para a marca de
+  // "já assistiu" ser do USUÁRIO, e não do navegador como era no localStorage.
+  const platformWelcome = await getPlatformWelcomeVideo(session?.userId ?? null);
 
   return (
     <html lang="pt-BR" suppressHydrationWarning>
@@ -86,7 +104,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                       <TicketModalProvider>
                         {children}
                         {/* Vídeo obrigatório: bloqueia toda a plataforma até a conclusão. */}
-                        <OnboardingGate />
+                        <OnboardingGate
+                          path={platformWelcome.path}
+                          title={platformWelcome.title}
+                          pending={platformWelcome.pending}
+                        />
                         <TicketModalHost />
                       </TicketModalProvider>
                     </NavigationProvider>

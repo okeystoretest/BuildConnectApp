@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Pause, Play, TriangleAlert } from "lucide-react";
+import { useState } from "react";
+import { TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Progress } from "@/components/ui/progress";
+import { GatedVideo } from "@/components/onboarding/gated-video";
 import { markWelcomeVideoWatched } from "@/lib/welcome-video-actions";
 
 export interface WelcomeVideoGateProps {
@@ -32,35 +33,11 @@ export interface WelcomeVideoGateProps {
  * visita, quando o arquivo estiver de pé.
  */
 export function WelcomeVideoGate({ slug, sectorLabel, path, title }: WelcomeVideoGateProps) {
-  const videoRef = useRef<HTMLVideoElement>(null);
   const [open, setOpen] = useState(true);
-  const [playing, setPlaying] = useState(false);
   const [progress, setProgress] = useState(0);
   const [finished, setFinished] = useState(false);
   const [failed, setFailed] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  const toggle = useCallback(() => {
-    const video = videoRef.current;
-    if (!video || finished) return;
-    if (video.paused) {
-      void video.play().catch(() => setFailed(true));
-    } else {
-      video.pause();
-    }
-  }, [finished]);
-
-  // Enquanto o vídeo obrigatório está aberto, a barra de espaço não deve
-  // rolar a página atrás do modal — ela dá play/pause.
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key !== " " && e.key !== "Spacebar") return;
-      e.preventDefault();
-      toggle();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [toggle]);
 
   async function enter() {
     setSaving(true);
@@ -75,7 +52,9 @@ export function WelcomeVideoGate({ slug, sectorLabel, path, title }: WelcomeVide
     <Modal
       open={open}
       dismissible={false}
-      className="max-w-3xl"
+      // Mais largo: o vídeo é o conteúdo da tela, não um detalhe dela. O teto
+      // de altura e a rolagem interna vêm do próprio Modal.
+      className="max-w-5xl"
       title={`Boas-vindas · ${sectorLabel}`}
       description={
         title ??
@@ -100,52 +79,13 @@ export function WelcomeVideoGate({ slug, sectorLabel, path, title }: WelcomeVide
       }
     >
       <div className="space-y-4 p-6">
-        <div className="relative overflow-hidden rounded-xl border border-border bg-black">
-          <video
-            ref={videoRef}
-            src={path}
-            className="aspect-video w-full"
-            playsInline
-            preload="metadata"
-            onPlay={() => setPlaying(true)}
-            onPause={() => setPlaying(false)}
-            onTimeUpdate={(e) => {
-              const video = e.currentTarget;
-              if (!video.duration || !Number.isFinite(video.duration)) return;
-              setProgress(Math.min(100, (video.currentTime / video.duration) * 100));
-            }}
-            onEnded={() => {
-              setProgress(100);
-              setFinished(true);
-              setPlaying(false);
-            }}
-            onError={() => setFailed(true)}
-          />
-
-          {!playing && !finished && !failed && (
-            <button
-              type="button"
-              onClick={toggle}
-              aria-label="Reproduzir vídeo"
-              className="focus-ring absolute inset-0 flex items-center justify-center bg-black/40 transition-colors hover:bg-black/30"
-            >
-              <span className="flex h-16 w-16 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                <Play className="ml-1 h-7 w-7 fill-current" />
-              </span>
-            </button>
-          )}
-
-          {playing && (
-            <button
-              type="button"
-              onClick={toggle}
-              aria-label="Pausar vídeo"
-              className="focus-ring absolute bottom-3 left-3 flex h-10 w-10 items-center justify-center rounded-full bg-background/80 text-foreground backdrop-blur"
-            >
-              <Pause className="h-4 w-4" />
-            </button>
-          )}
-        </div>
+        <GatedVideo
+          src={path}
+          finished={finished}
+          onProgress={setProgress}
+          onFinished={() => setFinished(true)}
+          onFailed={() => setFailed(true)}
+        />
 
         {failed && (
           <div className="flex gap-2.5 rounded-lg border border-warning/30 bg-warning/10 p-3">

@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { LOGIN_EXPIRED_PATH } from "@/lib/auth/login-redirect";
 import { getVerifiedSession } from "@/lib/auth/require-user";
 import { resolveAccessibleSlugs, canAccessSlug } from "@/lib/auth/access";
 import { getSectorContent } from "@/lib/sector-data";
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 export default async function ItSectorPage() {
   const session = await getVerifiedSession();
-  if (!session) redirect("/login");
+  if (!session) redirect(LOGIN_EXPIRED_PATH);
 
   // RBAC por subsetor, igual a Motoristas: entra quem está lotado na
   // Retaguarda (o setor tem um único subsetor homônimo, de slug "ti"), em

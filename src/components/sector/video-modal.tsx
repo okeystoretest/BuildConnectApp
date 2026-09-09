@@ -47,21 +47,34 @@ export function VideoModal({ video, open, onClose }: VideoModalProps) {
   const hasTranscript = Boolean(video.transcriptText?.trim());
   const hasInstruction = Boolean(video.instructionPath);
 
+  /*
+   * `items-center` junto com `overflow-y-auto` NO MESMO elemento era o que
+   * cortava a tela: quando o conteúdo passa da altura da janela, a
+   * centralização empurra o topo para FORA da área rolável, e a barra não
+   * alcança o que ficou acima — cabeçalho e começo do player ficavam
+   * inacessíveis. Por isso o corte só aparecia em tela baixa ou com a
+   * transcrição aberta, que é o que torna o conteúdo alto.
+   *
+   * A rolagem ficou no elemento de fora; a centralização foi para o invólucro
+   * de dentro, com `min-h-full`: centraliza quando cabe, e vira topo-alinhado
+   * com rolagem quando não cabe.
+   */
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-label={`Vídeo: ${video.title}`}
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-background/80 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 overflow-y-auto bg-background/80 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className={cn(
-          "w-full rounded-2xl border border-border bg-surface shadow-2xl transition-[max-width]",
-          showTranscript ? "max-w-6xl" : "max-w-3xl",
-        )}
-      >
+      <div className="flex min-h-full items-center justify-center">
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className={cn(
+            "w-full rounded-2xl border border-border bg-surface shadow-2xl transition-[max-width]",
+            showTranscript ? "max-w-6xl" : "max-w-3xl",
+          )}
+        >
         <header className="flex items-start justify-between gap-4 border-b border-border p-5">
           <div className="min-w-0">
             <h2 className="truncate text-base font-semibold text-foreground">{video.title}</h2>
@@ -91,7 +104,9 @@ export function VideoModal({ video, open, onClose }: VideoModalProps) {
                 controls
                 autoPlay
                 playsInline
-                className="aspect-video w-full rounded-xl bg-black"
+                // `max-h-[70vh]` para o player não empurrar os botões de
+                // transcrição e instrução escrita para fora em tela baixa.
+                className="aspect-video max-h-[70vh] w-full rounded-xl bg-black"
               />
             ) : (
               <div className="bc-stripes flex aspect-video w-full flex-col items-center justify-center gap-2 rounded-xl bg-surface-2 text-muted">
@@ -144,6 +159,7 @@ export function VideoModal({ video, open, onClose }: VideoModalProps) {
               </div>
             </aside>
           )}
+        </div>
         </div>
       </div>
     </div>

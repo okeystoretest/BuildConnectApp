@@ -24,6 +24,7 @@ import {
   STATUS_LABEL,
   STATUS_TONE,
   formatLabel,
+  resolveFormats,
   formatStyle,
   platformStyle,
   resolveBrand,
@@ -138,12 +139,16 @@ export function PostDetailsModal({ slug, open, post, onClose, onEdit }: PostDeta
           >
             {FUNNEL[post.funnel].label}
           </span>
-          <span
-            className="rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
-            style={formatStyle(post.format)}
-          >
-            {formatLabel(post.format, post.formatOther)}
-          </span>
+          {/* Um selo por formato: aqui há espaço para a lista inteira. */}
+          {resolveFormats(post.formats).map((format) => (
+            <span
+              key={format}
+              className="rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+              style={formatStyle(format)}
+            >
+              {formatLabel(format, post.formatOther)}
+            </span>
+          ))}
           {platformKeys.map((key) => (
             <span
               key={key}

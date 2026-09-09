@@ -77,7 +77,10 @@ export const STANDALONE_SECTORS: readonly SectorGroup[] = [
     label: "DHO",
     icon: "Users",
     items: [{ label: "DHO", href: "/setores/rh", icon: "Users" }],
-    permission: "evaluations.view",
+    // Só quem é do DHO — e o Admin. Antes exigia "evaluations.view", que todo
+    // GESTOR tem: o gestor de qualquer setor enxergava e usava as ferramentas
+    // do DHO (avaliações, formulários, gestão de usuários, denúncias).
+    dhoOnly: true,
   },
 ];
 

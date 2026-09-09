@@ -2,6 +2,7 @@
 
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/require-user";
+import { canUseDhoTools } from "@/lib/auth/access";
 import { can } from "@/lib/permissions";
 import type { Role } from "@/types";
 import { getEmployeeHistory } from "@/lib/hr-history-data";
@@ -23,7 +24,12 @@ export async function fetchEmployeeHistory(input: {
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "Sessão expirada." };
   if (!can(user.role as Role, "sector.hr")) {
-    return { ok: false, error: "Acesso restrito ao RH." };
+    return { ok: false, error: "Acesso restrito ao DHO." };
+  }
+  // `sector.hr` é permissão de papel (só ADMIN a tem). A lotação é outra
+  // pergunta, e é ela que decide desde a restrição do setor.
+  if (!(await canUseDhoTools(user.id, user.role as Role))) {
+    return { ok: false, error: "Acesso restrito ao DHO." };
   }
 
   const parsed = z.object({ userId: z.string().min(1) }).safeParse(input);

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth/require-user";
+import { canUseDhoTools } from "@/lib/auth/access";
 import { can } from "@/lib/permissions";
 import type { Role } from "@/types";
 import { storeFile, removeFile, FileStorageError } from "@/lib/storage/files";
@@ -27,6 +28,11 @@ export async function uploadIntegrationMap(formData: FormData): Promise<ActionRe
   if (!user) return { ok: false, error: "Sessão expirada. Faça login novamente." };
   if (!can(user.role as Role, "content.upload")) {
     return { ok: false, error: "Você não tem permissão para enviar mapas." };
+  }
+  // O mapa de integração mora na tela do DHO; `content.upload` sozinho abriria
+  // o envio para o gestor de qualquer setor.
+  if (!(await canUseDhoTools(user.id, user.role as Role))) {
+    return { ok: false, error: "As ferramentas do DHO são exclusivas do setor DHO." };
   }
 
   const parsed = schema.safeParse({

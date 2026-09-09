@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { getVerifiedSession } from "@/lib/auth/require-user";
+import { canUseDhoTools } from "@/lib/auth/access";
 import { can } from "@/lib/permissions";
 import {
   closeFormFor,
@@ -45,6 +46,9 @@ async function actor(): Promise<FormActor | null> {
   if (!session) return null;
   const role = session.role as Role;
   if (!can(role, "forms.manage")) return null;
+  // Criar e publicar formulário é do DHO. `forms.manage` também é do GESTOR,
+  // que antes montava formulário a partir de qualquer setor.
+  if (!(await canUseDhoTools(session.userId, role))) return null;
   const user = await prisma.user.findUnique({
     where: { id: session.userId },
     select: { sectorId: true },

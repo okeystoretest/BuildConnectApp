@@ -1,46 +1,42 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { OnboardingModal } from "./onboarding-modal";
-
-const STORAGE_KEY = "bc-onboarding-done";
 
 /** Rotas que nunca exibem o vídeo obrigatório. */
 const EXEMPT_PREFIXES = ["/login"];
 
+export interface OnboardingGateProps {
+  /** Caminho público do vídeo publicado. Ausente = nada a exibir. */
+  path: string | null;
+  title: string | null;
+  /** Resolvido no servidor: existe vídeo e este usuário ainda não assistiu. */
+  pending: boolean;
+}
+
 /**
- * Vídeo obrigatório de boas-vindas. Montado no layout raiz: bloqueia
- * qualquer rota da plataforma até a conclusão.
- * Nesta fase o estado mora no localStorage; depois vira flag do usuário no banco.
+ * Vídeo obrigatório de boas-vindas da plataforma. Montado no layout raiz:
+ * bloqueia qualquer rota até a conclusão.
+ *
+ * O estado deixou de morar no `localStorage`. Ele valia por DISPOSITIVO —
+ * trocar de navegador, limpar o site ou abrir uma janela anônima fazia o vídeo
+ * voltar, e assistir num aparelho não valia no outro. Agora quem responde é o
+ * servidor, pela coluna `User.platformWelcomeWatchedAt`, e a validação
+ * acompanha a PESSOA.
+ *
+ * Some com isso o estado `null` de "ainda lendo o storage": o servidor já
+ * entrega a resposta pronta na primeira pintura, sem piscar.
  */
-export function OnboardingGate() {
+export function OnboardingGate({ path, title, pending }: OnboardingGateProps) {
   const pathname = usePathname();
-  const [done, setDone] = useState<boolean | null>(null);
+  const [done, setDone] = useState(false);
 
   const exempt = EXEMPT_PREFIXES.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
 
-  useEffect(() => {
-    try {
-      setDone(window.localStorage.getItem(STORAGE_KEY) === "1");
-    } catch {
-      setDone(false);
-    }
-  }, []);
+  if (exempt || done || !pending || !path) return null;
 
-  function handleComplete() {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, "1");
-    } catch {
-      // Sem persistência disponível; segue liberando a sessão atual.
-    }
-    setDone(true);
-  }
-
-  // `null` = ainda lendo o storage; não pisca o modal antes de saber.
-  if (exempt || done === null || done) return null;
-
-  return <OnboardingModal open onComplete={handleComplete} />;
+  return <OnboardingModal open path={path} title={title} onComplete={() => setDone(true)} />;
 }

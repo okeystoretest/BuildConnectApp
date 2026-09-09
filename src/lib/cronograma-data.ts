@@ -4,6 +4,7 @@ import { FUNNEL_ORDER, MONTH_LABEL, WEEKDAY_SHORT } from "@/lib/funnel";
 import { visibilityForSlug } from "@/lib/cronograma-visibility";
 import type { Role } from "@/types";
 import type {
+  ContentFormat,
   ContentPlatform,
   ContentPostItem,
   ContentVisibility,
@@ -11,7 +12,6 @@ import type {
   FunnelBalanceSlice,
   FunnelStage,
   FunnelVolumePoint,
-  PostOwner,
 } from "@/types/cronograma";
 
 /**
@@ -68,7 +68,7 @@ interface PostRow {
   title: string;
   scheduledAt: Date;
   funnel: FunnelStage;
-  format: ContentPostItem["format"];
+  formats: ContentFormat[];
   status: ContentPostItem["status"];
   brand: ContentPostItem["brand"] | null;
   platforms: ContentPlatform[];
@@ -128,7 +128,7 @@ function toItem(row: PostRow, userId: string, role: Role): ContentPostItem {
     date: isoDate(row.scheduledAt),
     time: isoTime(row.scheduledAt),
     funnel: row.funnel,
-    format: row.format,
+    formats: row.formats ?? [],
     status: row.status,
     brand: row.brand ?? undefined,
     platforms: row.platforms ?? [],
@@ -175,45 +175,33 @@ export async function getCronogramaData(
       ? {}
       : { OR: [{ visibility: "SHARED" as const }, { createdById: userId }] };
 
-  const [rows, people] = await Promise.all([
-    prisma.contentPost.findMany({
-      where: {
-        subsectorId: scope.id,
-        scheduledAt: { gte: rangeStart, lt: rangeEnd },
-        ...visibilityWhere,
-      },
-      orderBy: { scheduledAt: "asc" },
-      select: {
-        id: true,
-        title: true,
-        scheduledAt: true,
-        funnel: true,
-        format: true,
-        status: true,
-        brand: true,
-        platforms: true,
-        formatOther: true,
-        notes: true,
-        visibility: true,
-        originSlug: true,
-        createdById: true,
-        createdBy: { select: { fullName: true } },
-        owner: { select: { id: true, fullName: true, avatarPath: true } },
-      },
-    }),
-    // Responsáveis: membros do subsetor de escopo; sem membros, todos ativos.
-    prisma.user.findMany({
-      where: {
-        active: true,
-        OR: [
-          { subsectors: { some: { subsectorId: scope.id } } },
-          { role: { in: ["GESTOR", "ADMIN"] } },
-        ],
-      },
-      orderBy: { fullName: "asc" },
-      select: { id: true, fullName: true, avatarPath: true },
-    }),
-  ]);
+  // A lista de responsáveis selecionáveis deixou de ser consultada: o
+  // formulário não pergunta mais quem é o responsável — é sempre quem criou.
+  const rows = await prisma.contentPost.findMany({
+    where: {
+      subsectorId: scope.id,
+      scheduledAt: { gte: rangeStart, lt: rangeEnd },
+      ...visibilityWhere,
+    },
+    orderBy: { scheduledAt: "asc" },
+    select: {
+      id: true,
+      title: true,
+      scheduledAt: true,
+      funnel: true,
+      formats: true,
+      status: true,
+      brand: true,
+      platforms: true,
+      formatOther: true,
+      notes: true,
+      visibility: true,
+      originSlug: true,
+      createdById: true,
+      createdBy: { select: { fullName: true } },
+      owner: { select: { id: true, fullName: true, avatarPath: true } },
+    },
+  });
 
   const posts = (rows as PostRow[]).map((row) => toItem(row, userId, role));
 
@@ -262,12 +250,5 @@ export async function getCronogramaData(
     balance,
     posts,
     backlog,
-    people: people.map(
-      (person: { id: string; fullName: string; avatarPath: string | null }): PostOwner => ({
-        id: person.id,
-        name: person.fullName,
-        avatarPath: person.avatarPath ?? undefined,
-      }),
-    ),
   };
 }

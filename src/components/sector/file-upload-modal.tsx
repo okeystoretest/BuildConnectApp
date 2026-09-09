@@ -1,14 +1,15 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Upload } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { uploadSectorVideo, uploadSectorDocument, type ActionResult } from "@/lib/sector-actions";
+import { Progress } from "@/components/ui/progress";
 import { MAX_BYTES, validateUploadSizes } from "@/lib/storage/limits";
+import { useUploadProgress, uploadPhaseLabel } from "@/lib/use-upload-progress";
 
 /** Configura o modal conforme o tipo de conteúdo enviado. */
 type UploadKind = "video" | "workshop" | "instrucao-video" | "documento";
@@ -23,7 +24,8 @@ interface KindConfig {
   maxBytes: number;
   /** Como o campo principal é citado na mensagem de erro. */
   fileLabel: string;
-  action: (fd: FormData) => Promise<ActionResult>;
+  /** Qual função a rota /api/uploads executa para este tipo. */
+  uploadKind: string;
   prepare: (fd: FormData) => void;
 }
 
@@ -40,7 +42,7 @@ const CONFIG: Record<UploadKind, KindConfig> = {
     needsAttachments: true,
     maxBytes: MAX_BYTES.video,
     fileLabel: "O vídeo",
-    action: uploadSectorVideo,
+    uploadKind: "setor-video",
     prepare: (fd) => fd.set("kind", "VIDEO"),
   },
   workshop: {
@@ -50,7 +52,7 @@ const CONFIG: Record<UploadKind, KindConfig> = {
     needsAttachments: true,
     maxBytes: MAX_BYTES.video,
     fileLabel: "O vídeo",
-    action: uploadSectorVideo,
+    uploadKind: "setor-video",
     prepare: (fd) => fd.set("kind", "WORKSHOP"),
   },
   "instrucao-video": {
@@ -60,7 +62,7 @@ const CONFIG: Record<UploadKind, KindConfig> = {
     needsAttachments: true,
     maxBytes: MAX_BYTES.video,
     fileLabel: "O vídeo",
-    action: uploadSectorVideo,
+    uploadKind: "setor-video",
     prepare: (fd) => fd.set("kind", "INSTRUCAO"),
   },
   documento: {
@@ -71,7 +73,7 @@ const CONFIG: Record<UploadKind, KindConfig> = {
     needsAttachments: false,
     maxBytes: MAX_BYTES.document,
     fileLabel: "O documento",
-    action: uploadSectorDocument,
+    uploadKind: "setor-documento",
     prepare: () => {},
   },
 };
@@ -136,7 +138,8 @@ export function FileUploadModal({ slug, kind, open, onClose }: FileUploadModalPr
   const [instructionFile, setInstructionFile] = useState<File | null>(null);
   const [transcriptFile, setTranscriptFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [pending, start] = useTransition();
+  const upload = useUploadProgress();
+  const pending = upload.busy;
 
   function reset() {
     setTitle("");
@@ -149,6 +152,7 @@ export function FileUploadModal({ slug, kind, open, onClose }: FileUploadModalPr
   function handleClose() {
     if (pending) return;
     reset();
+    upload.reset();
     onClose();
   }
 
@@ -189,7 +193,7 @@ export function FileUploadModal({ slug, kind, open, onClose }: FileUploadModalPr
 
     setError(null);
 
-    start(async () => {
+    void (async () => {
       const fd = new FormData();
       fd.set("slug", slug);
       if (cfg.needsTitle) fd.set("title", title.trim());
@@ -201,15 +205,16 @@ export function FileUploadModal({ slug, kind, open, onClose }: FileUploadModalPr
       if (kind === "documento") fd.set("name", file.name);
       cfg.prepare(fd);
 
-      const res = await cfg.action(fd);
+      const res = await upload.send(cfg.uploadKind, fd);
       if (res.ok) {
         reset();
+        upload.reset();
         onClose();
         router.refresh();
       } else {
         setError(res.error ?? "Falha no envio.");
       }
-    });
+    })();
   }
 
   return (
@@ -272,6 +277,22 @@ export function FileUploadModal({ slug, kind, open, onClose }: FileUploadModalPr
           )}
 
           {error && <p className="text-xs text-danger">{error}</p>}
+
+          {/* Progresso REAL de envio. Os 100% marcam os bytes entregues, não o
+              fim do trabalho: o servidor ainda grava em disco, e por isso o
+              rótulo passa a "Processando…" em vez de dizer que acabou. */}
+          {pending && (
+            <div>
+              <Progress
+                value={upload.phase === "processing" ? 100 : upload.percent}
+                tone="primary"
+                label="Progresso do envio"
+              />
+              <p className="mt-1.5 text-xs text-muted">
+                {uploadPhaseLabel(upload.phase, upload.percent)}
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="mt-6 grid grid-cols-2 gap-3">
@@ -280,7 +301,7 @@ export function FileUploadModal({ slug, kind, open, onClose }: FileUploadModalPr
           </Button>
           <Button onClick={submit} disabled={pending} className="h-11">
             {pending && <Loader2 className="h-4 w-4 animate-spin" />}
-            {pending ? "Enviando" : "Enviar"}
+            {pending ? uploadPhaseLabel(upload.phase, upload.percent) : "Enviar"}
           </Button>
         </div>
       </div>

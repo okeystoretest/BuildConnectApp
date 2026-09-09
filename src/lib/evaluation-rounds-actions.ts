@@ -6,6 +6,7 @@ import { notifyPendingEvaluation } from "@/lib/whatsapp/notify";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth/require-user";
+import { canUseDhoTools } from "@/lib/auth/access";
 import { can } from "@/lib/permissions";
 import { canReachSector } from "@/lib/auth/scope";
 import { getRoundType, getRoundConsolidated } from "@/lib/evaluation-rounds";
@@ -63,6 +64,9 @@ export async function assignEvaluation(input: unknown): Promise<RoundResult> {
   if (!actor) return { ok: false, error: "Sessão expirada. Faça login novamente." };
   if (!can(actor.role as Role, "evaluations.view")) {
     return { ok: false, error: "Você não tem permissão para atribuir avaliações." };
+  }
+  if (!(await canUseDhoTools(actor.id, actor.role as Role))) {
+    return { ok: false, error: "As ferramentas do DHO são exclusivas do setor DHO." };
   }
 
   const parsed = assignSchema.safeParse(input);
@@ -392,6 +396,9 @@ async function requireRoundScope(
 ): Promise<{ round: ManagedRound | null; error: string | null }> {
   if (!can(actor.role as Role, "evaluations.view")) {
     return { round: null, error: "Você não tem permissão para gerenciar avaliações atribuídas." };
+  }
+  if (!(await canUseDhoTools(actor.id, actor.role as Role))) {
+    return { round: null, error: "As ferramentas do DHO são exclusivas do setor DHO." };
   }
 
   const round = await loadRoundForManagement(roundId);

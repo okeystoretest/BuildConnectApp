@@ -1,6 +1,8 @@
 import { notFound, redirect } from "next/navigation";
+import { LOGIN_EXPIRED_PATH } from "@/lib/auth/login-redirect";
 import { getVerifiedSession } from "@/lib/auth/require-user";
 import { can } from "@/lib/permissions";
+import { canUseDhoTools } from "@/lib/auth/access";
 import { getManagedUsers } from "@/lib/users-data";
 import { getHrDocuments, getIntegrationMaps } from "@/lib/hr-content-data";
 import { getEmployeeRoster } from "@/lib/hr-history-data";
@@ -20,10 +22,21 @@ export const dynamic = "force-dynamic";
 
 export default async function HrSectorPage() {
   const session = await getVerifiedSession();
-  if (!session) redirect("/login");
+  if (!session) redirect(LOGIN_EXPIRED_PATH);
 
   const role = session.role as Role;
   const isAdmin = role === "ADMIN";
+
+  /**
+   * O DHO é do DHO. Quem não é lotado nele não entra, em papel nenhum — nem o
+   * Gestor de outro setor, que tem `evaluations.view` e `forms.manage` e até
+   * aqui enxergava e usava as ferramentas daqui.
+   *
+   * `notFound()` e não `redirect()`: para quem não é do DHO, a rota não
+   * existe. Um desvio para a home confirmaria que ela existe e que a pessoa
+   * não tem acesso — informação que ela não precisa ter.
+   */
+  if (!(await canUseDhoTools(session.userId, role))) notFound();
 
   // O RH concentra apenas os RESULTADOS das avaliações (o preenchimento fica na
   // aba Avaliações de cada setor). Admin gerencia tudo; Gestor vê só os

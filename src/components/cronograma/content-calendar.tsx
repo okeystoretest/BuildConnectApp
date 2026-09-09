@@ -6,16 +6,42 @@ import { cn } from "@/lib/utils";
 import {
   BRAND,
   FORMAT,
+  FORMAT_LABEL,
   FUNNEL,
   PLATFORM,
   STATUS_LABEL,
   WEEKDAY_LONG,
   formatLabel,
+  formatLabels,
+  primaryFormat,
   resolveBrand,
+  resolveFormats,
   resolvePlatforms,
 } from "@/lib/funnel";
 import { PlatformIcon } from "@/components/cronograma/platform-icon";
-import type { ContentPostItem } from "@/types/cronograma";
+import type { ContentFormat, ContentPostItem } from "@/types/cronograma";
+
+/**
+ * Cor do selo de formato da célula. O post tem uma LISTA de formatos e o selo
+ * é um só, então manda o primeiro da ordem canônica. Post sem formato (a
+ * coluna virou lista, e lista aceita vazio) cai no cinza de "Outro".
+ */
+function badgeFormat(post: ContentPostItem): ContentFormat {
+  return primaryFormat(post.formats) ?? "OUTRO";
+}
+
+/**
+ * Texto do selo: o primeiro formato e a CONTAGEM dos demais — "Reel +2".
+ *
+ * A célula do calendário é apertada; enfileirar "Reel + Story + Feed" empurra
+ * título e redes para fora. A lista inteira aparece nos detalhes e no backlog,
+ * que têm largura para ela.
+ */
+function badgeLabel(post: ContentPostItem): string {
+  const [first, ...rest] = formatLabels(post.formats, post.formatOther);
+  if (!first) return FORMAT_LABEL.OUTRO;
+  return rest.length === 0 ? first : `${first} +${rest.length}`;
+}
 
 export type CalendarView = "month" | "week" | "day";
 
@@ -182,9 +208,10 @@ function PostChip({
           <>
             <span
               className="rounded px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-white"
-              style={{ backgroundColor: FORMAT[post.format].color }}
+              style={{ backgroundColor: FORMAT[badgeFormat(post)].color }}
+              title={formatLabels(post.formats, post.formatOther).join(" + ")}
             >
-              {formatLabel(post.format, post.formatOther)}
+              {badgeLabel(post)}
             </span>
             <span
               className="rounded px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-white"
@@ -206,9 +233,10 @@ function PostChip({
           <>
             <span
               className="rounded px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-white"
-              style={{ backgroundColor: FORMAT[post.format].color }}
+              style={{ backgroundColor: FORMAT[badgeFormat(post)].color }}
+              title={formatLabels(post.formats, post.formatOther).join(" + ")}
             >
-              {formatLabel(post.format, post.formatOther)}
+              {badgeLabel(post)}
             </span>
             <span
               className={cn(
@@ -389,9 +417,12 @@ function ExpandedPostCard({
 
       <div className="mt-1 flex shrink-0 flex-wrap items-center gap-1">
         <Tag solid={FUNNEL[post.funnel].color}>{FUNNEL[post.funnel].short}</Tag>
-        <Tag solid={FORMAT[post.format].color}>
-          {formatLabel(post.format, post.formatOther)}
-        </Tag>
+        {/* Aqui cabe a lista inteira: um selo por formato, cada um na sua cor. */}
+        {resolveFormats(post.formats).map((format) => (
+          <Tag key={format} solid={FORMAT[format].color}>
+            {formatLabel(format, post.formatOther)}
+          </Tag>
+        ))}
         {platformKeys.map((key) => (
           <Tag key={key}>
             <span className="inline-flex items-center gap-1">

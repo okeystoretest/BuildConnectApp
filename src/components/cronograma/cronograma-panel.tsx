@@ -22,7 +22,7 @@ import {
   FUNNEL_ORDER,
   MONTH_LABEL,
   STATUS_LABEL,
-  formatLabel,
+  formatsLabel,
   resolveBrand,
   resolvePlatforms,
 } from "@/lib/funnel";
@@ -224,7 +224,7 @@ export function CronogramaPanel({ slug, data }: CronogramaPanelProps) {
       post.date,
       post.time,
       post.funnel,
-      formatLabel(post.format, post.formatOther),
+      formatsLabel(post.formats, post.formatOther),
       resolvePlatforms(post.platforms)
         .map((key) => PLATFORM[key].label)
         .join(", "),
@@ -562,7 +562,6 @@ export function CronogramaPanel({ slug, data }: CronogramaPanelProps) {
         onClose={() => setModalOpen(false)}
         post={editing}
         defaultDate={draftDate}
-        people={data.people}
       />
     </div>
   );

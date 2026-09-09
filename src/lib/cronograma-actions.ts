@@ -37,18 +37,23 @@ const postSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida."),
   time: z.string().regex(/^\d{2}:\d{2}$/, "Horário inválido."),
   funnel: z.enum(["TOFU", "MOFU", "BOFU"]),
-  format: z.enum(["REEL", "STORY", "FEED", "CARROSSEL", "LIVE", "OUTRO"]),
-  // Texto livre do formato "Outro". Ignorado (e limpo) nos demais formatos.
+  // Seleção múltipla: a mesma peça costuma sair em mais de um formato.
+  // `.min(1)` porque a lista, ao contrário da coluna única que existia antes,
+  // pode chegar vazia — e post sem formato nenhum não tem tag no calendário.
+  formats: z
+    .array(z.enum(["REEL", "STORY", "FEED", "CARROSSEL", "LIVE", "OUTRO"]))
+    .min(1, "Escolha ao menos um formato.")
+    .max(6),
+  // Texto livre do formato "Outro". Ignorado (e limpo) quando OUTRO não está
+  // entre os escolhidos.
   formatOther: z.string().trim().max(60, "Descrição do formato muito longa.").optional(),
-  status: z.enum(["IDEIA", "EM_PRODUCAO", "AGENDADO", "PUBLICADO"]),
   brand: z.enum(["OKEY", "LOV_CLUB"]).optional(),
   // Seleção múltipla: o post pode ir ao ar em mais de uma rede.
   platforms: z.array(z.enum(["INSTAGRAM", "TIKTOK", "YOUTUBE"])).max(3).optional(),
-  ownerId: z.string().optional(),
   notes: z.string().trim().max(500, "Observação muito longa.").optional(),
 }).superRefine((data, ctx) => {
   // "Outro" sem descrição é um formato sem nome — o card sairia ilegível.
-  if (data.format === "OUTRO" && !data.formatOther) {
+  if (data.formats.includes("OUTRO") && !data.formatOther) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["formatOther"],
@@ -57,12 +62,13 @@ const postSchema = z.object({
   }
 });
 
-/** Redes e texto do formato normalizados para o banco. */
+/** Formatos, redes e texto do formato normalizados para o banco. */
 function contentFields(data: ContentPostInput) {
   return {
-    // Sem duplicatas: a lista é um conjunto, não uma sequência.
+    // Sem duplicatas: as duas listas são conjuntos, não sequências.
+    formats: Array.from(new Set(data.formats)),
     platforms: Array.from(new Set(data.platforms ?? [])),
-    formatOther: data.format === "OUTRO" ? (data.formatOther ?? null) : null,
+    formatOther: data.formats.includes("OUTRO") ? (data.formatOther ?? null) : null,
   };
 }
 
@@ -159,12 +165,14 @@ export async function createContentPost(input: ContentPostInput): Promise<Action
         title: data.title,
         scheduledAt,
         funnel: data.funnel,
-        format: data.format,
-        status: data.status,
+        // `status` não vem do formulário: o campo saiu de lá e o banco tem
+        // @default(IDEIA). Quem muda o status é o seletor do backlog.
         brand: data.brand ?? null,
         ...contentFields(data),
         notes: data.notes || null,
-        ownerId: data.ownerId || null,
+        // Responsável é quem criou. Deixou de ser escolhido a dedo — o
+        // formulário não pergunta mais.
+        ownerId: user.id,
         createdById: user.id,
         // Alcance derivado da aba de origem — nunca vem do cliente.
         visibility: visibilityForSlug(data.slug),
@@ -203,19 +211,22 @@ export async function updateContentPost(
 
   try {
     // O filtro por subsectorId impede editar post de outro escopo pela action.
-    // `visibility` e `originSlug` ficam de fora: alcance não se edita.
+    //
+    // Ficam DE FORA, e cada um por um motivo:
+    //  - `visibility` e `originSlug`: alcance não se edita;
+    //  - `status`: o campo saiu do formulário. Se ele continuasse sendo
+    //    gravado a partir daqui, corrigir o título de um post PUBLICADO o
+    //    devolveria para "Ideia";
+    //  - `ownerId`: editar não rouba a autoria de quem criou.
     const result = await prisma.contentPost.updateMany({
       where: { id: input.id, subsectorId: scope.id },
       data: {
         title: data.title,
         scheduledAt,
         funnel: data.funnel,
-        format: data.format,
-        status: data.status,
         brand: data.brand ?? null,
         ...contentFields(data),
         notes: data.notes || null,
-        ownerId: data.ownerId || null,
       },
     });
     if (result.count === 0) return { ok: false, error: "Post não encontrado." };

@@ -9,7 +9,9 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/providers/toast-provider";
 import { useRole } from "@/providers/role-provider";
 import { cn } from "@/lib/utils";
-import { uploadWelcomeVideo, removeWelcomeVideo } from "@/lib/welcome-video-actions";
+import { Progress } from "@/components/ui/progress";
+import { removeWelcomeVideo } from "@/lib/welcome-video-actions";
+import { useUploadProgress, uploadPhaseLabel } from "@/lib/use-upload-progress";
 import { maxMb } from "@/lib/storage/limits";
 
 // Teto vem de storage/limits, o mesmo que o servidor aplica. Os 500 daqui
@@ -51,7 +53,8 @@ export function WelcomeVideoCard({
   const [file, setFile] = useState<File | null>(null);
   const [videoTitle, setVideoTitle] = useState(title ?? "");
   const [error, setError] = useState<string | null>(null);
-  const [saving, startSave] = useTransition();
+  const upload = useUploadProgress();
+  const saving = upload.busy;
   const [removing, startRemove] = useTransition();
 
   if (!can("welcomeVideo.manage")) return null;
@@ -91,16 +94,17 @@ export function WelcomeVideoCard({
     data.set("title", videoTitle.trim());
     data.set("file", file);
 
-    startSave(async () => {
-      const res = await uploadWelcomeVideo(data);
+    void (async () => {
+      const res = await upload.send("boas-vindas-setor", data);
       if (res.ok) {
         success("Vídeo de boas-vindas publicado. Todos do setor vão assisti-lo.");
+        upload.reset();
         closeModal();
         router.refresh();
       } else {
         setError(res.error ?? "Falha ao enviar o vídeo.");
       }
-    });
+    })();
   }
 
   function remove() {
@@ -175,7 +179,11 @@ export function WelcomeVideoCard({
             </Button>
             <Button onClick={submit} disabled={saving}>
               {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-              {saving ? "Enviando" : path ? "Substituir vídeo" : "Publicar vídeo"}
+              {saving
+                ? uploadPhaseLabel(upload.phase, upload.percent)
+                : path
+                  ? "Substituir vídeo"
+                  : "Publicar vídeo"}
             </Button>
           </div>
         }
@@ -219,6 +227,21 @@ export function WelcomeVideoCard({
           </label>
 
           {error && <p className="text-xs text-danger">{error}</p>}
+
+          {/* Progresso REAL: o vídeo de boas-vindas é o maior envio do sistema
+              (até 110 MB), e é onde uma barra sem número mais dói. */}
+          {saving && (
+            <div>
+              <Progress
+                value={upload.phase === "processing" ? 100 : upload.percent}
+                tone="primary"
+                label="Progresso do envio"
+              />
+              <p className="mt-1.5 text-xs text-muted">
+                {uploadPhaseLabel(upload.phase, upload.percent)}
+              </p>
+            </div>
+          )}
 
           <div className="flex gap-2.5 rounded-lg border border-warning/30 bg-warning/10 p-3">
             <TriangleAlert className="h-4 w-4 shrink-0 text-warning" />

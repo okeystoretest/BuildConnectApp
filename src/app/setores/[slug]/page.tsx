@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { LOGIN_EXPIRED_PATH } from "@/lib/auth/login-redirect";
 import type { Metadata } from "next";
 import { SectorPage } from "@/components/sector/sector-page";
 import { getSectorContent } from "@/lib/sector-data";
@@ -52,7 +53,7 @@ export default async function Page({ params, searchParams }: PageProps) {
   const { slug } = await params;
   const query = await searchParams;
   const session = await getVerifiedSession();
-  if (!session) redirect("/login");
+  if (!session) redirect(LOGIN_EXPIRED_PATH);
 
   const role = session.role as Role;
 

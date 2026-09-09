@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { LOGIN_EXPIRED_PATH } from "@/lib/auth/login-redirect";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { StatCard } from "@/components/ui/stat-card";
@@ -14,7 +15,7 @@ import { getProgressPageData } from "@/lib/progress-page-data";
 
 export default async function ProgressPage() {
   const session = await getVerifiedSession();
-  if (!session) redirect("/login");
+  if (!session) redirect(LOGIN_EXPIRED_PATH);
 
   const data = await getProgressPageData(session.userId);
 

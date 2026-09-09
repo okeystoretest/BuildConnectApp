@@ -1,13 +1,14 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Upload } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { uploadIntegrationMap } from "@/lib/hr-actions";
+import { Progress } from "@/components/ui/progress";
+import { useUploadProgress, uploadPhaseLabel } from "@/lib/use-upload-progress";
 
 export interface MapUploadModalProps {
   open: boolean;
@@ -22,7 +23,8 @@ export function MapUploadModal({ open, onClose }: MapUploadModalProps) {
   const [progress, setProgress] = useState("0");
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [pending, start] = useTransition();
+  const upload = useUploadProgress();
+  const pending = upload.busy;
 
   function reset() {
     setTitle("");
@@ -30,6 +32,7 @@ export function MapUploadModal({ open, onClose }: MapUploadModalProps) {
     setProgress("0");
     setFile(null);
     setError(null);
+    upload.reset();
     if (inputRef.current) inputRef.current.value = "";
   }
 
@@ -44,7 +47,7 @@ export function MapUploadModal({ open, onClose }: MapUploadModalProps) {
     if (!scope.trim()) return setError("Informe a abrangência.");
     setError(null);
 
-    start(async () => {
+    void (async () => {
       const fd = new FormData();
       fd.set("title", title.trim());
       fd.set("scope", scope.trim());
@@ -52,7 +55,7 @@ export function MapUploadModal({ open, onClose }: MapUploadModalProps) {
       fd.set("status", Number(progress) >= 100 ? "CONCLUIDO" : "EM_ANDAMENTO");
       if (file) fd.set("file", file);
 
-      const res = await uploadIntegrationMap(fd);
+      const res = await upload.send("mapa-integracao", fd);
       if (res.ok) {
         reset();
         onClose();
@@ -60,7 +63,7 @@ export function MapUploadModal({ open, onClose }: MapUploadModalProps) {
       } else {
         setError(res.error ?? "Falha ao salvar o mapa.");
       }
-    });
+    })();
   }
 
   return (
@@ -121,6 +124,21 @@ export function MapUploadModal({ open, onClose }: MapUploadModalProps) {
           />
 
           {error && <p className="text-xs text-danger">{error}</p>}
+
+          {/* Progresso REAL de envio: os 100% marcam os bytes entregues, e o
+              rótulo vira "Processando…" enquanto o servidor grava. */}
+          {pending && (
+            <div>
+              <Progress
+                value={upload.phase === "processing" ? 100 : upload.percent}
+                tone="primary"
+                label="Progresso do envio"
+              />
+              <p className="mt-1.5 text-xs text-muted">
+                {uploadPhaseLabel(upload.phase, upload.percent)}
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="mt-6 grid grid-cols-2 gap-3">
@@ -129,7 +147,7 @@ export function MapUploadModal({ open, onClose }: MapUploadModalProps) {
           </Button>
           <Button onClick={submit} disabled={pending} className="h-11">
             {pending && <Loader2 className="h-4 w-4 animate-spin" />}
-            {pending ? "Salvando" : "Salvar"}
+            {pending ? uploadPhaseLabel(upload.phase, upload.percent) : "Salvar"}
           </Button>
         </div>
       </div>

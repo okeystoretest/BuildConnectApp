@@ -14,6 +14,7 @@ import {
   STATUS_ORDER,
   STATUS_TONE,
   formatLabel,
+  resolveFormats,
   formatStyle,
   resolveBrand,
   resolvePlatforms,
@@ -132,11 +133,16 @@ export function ProductionBacklog({ slug, items, onSelect }: ProductionBacklogPr
                   {post.date.slice(8, 10)}/{post.date.slice(5, 7)} · {post.time}
                 </td>
                 <td className="py-3 pr-3">
-                  <span
-                    className="rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase"
-                    style={formatStyle(post.format)}
-                  >
-                    {formatLabel(post.format, post.formatOther)}
+                  <span className="flex flex-wrap gap-1">
+                    {resolveFormats(post.formats).map((format) => (
+                      <span
+                        key={format}
+                        className="rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase"
+                        style={formatStyle(format)}
+                      >
+                        {formatLabel(format, post.formatOther)}
+                      </span>
+                    ))}
                   </span>
                 </td>
                 <td className="py-3 pr-3">

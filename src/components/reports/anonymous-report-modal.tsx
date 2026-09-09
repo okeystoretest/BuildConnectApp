@@ -9,13 +9,25 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ImageUploader } from "@/components/ui/image-uploader";
 import { cn, initials } from "@/lib/utils";
+import { Progress } from "@/components/ui/progress";
 import {
   openReportSession,
   searchReportTargets,
-  submitAnonymousReport,
   type ReportTargetOption,
 } from "@/lib/reports/actions";
+import { useUploadProgress, uploadPhaseLabel } from "@/lib/use-upload-progress";
 import { MAX_REPORT_ATTACHMENTS, REPORT_TARGET_MIN_QUERY } from "@/types/report";
+
+/**
+ * O que a rota `/api/uploads` devolve para a denúncia — o mesmo objeto que a
+ * Server Action devolvia, só que atravessando JSON.
+ */
+interface AnonymousReportPayload {
+  ok: boolean;
+  code?: string;
+  error?: string;
+  fieldErrors?: Record<string, string>;
+}
 
 export interface AnonymousReportModalProps {
   open: boolean;
@@ -49,6 +61,7 @@ export function AnonymousReportModal({ open, onClose }: AnonymousReportModalProp
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const upload = useUploadProgress<AnonymousReportPayload>();
   const [sentCode, setSentCode] = useState<string | null>(null);
 
   // Descarta respostas de buscas antigas que chegarem fora de ordem.
@@ -145,15 +158,16 @@ export function AnonymousReportModal({ open, onClose }: AnonymousReportModalProp
     data.set("ticket", ticket.current ?? "");
     for (const file of files) data.append("attachments", file);
 
-    const result = await submitAnonymousReport(data);
+    const sent = await upload.send("denuncia", data);
     setSubmitting(false);
 
-    if (!result.ok) {
-      if (result.fieldErrors) setErrors(result.fieldErrors);
-      setFormError(result.error ?? "Não foi possível registrar a denúncia.");
+    if (!sent.ok) {
+      const payload = sent.data;
+      if (payload?.fieldErrors) setErrors(payload.fieldErrors);
+      setFormError(sent.error ?? "Não foi possível registrar a denúncia.");
       return;
     }
-    setSentCode(result.code ?? null);
+    setSentCode(sent.data?.code ?? null);
   }
 
   return (
@@ -341,6 +355,22 @@ export function AnonymousReportModal({ open, onClose }: AnonymousReportModalProp
               </p>
             )}
 
+            {/* Anexos de denúncia são imagens, e o envio pode demorar em rede
+                ruim. Os 100% marcam os bytes entregues; o rótulo vira
+                "Processando…" enquanto o servidor trata e grava. */}
+            {submitting && (
+              <div>
+                <Progress
+                  value={upload.phase === "processing" ? 100 : upload.percent}
+                  tone="primary"
+                  label="Progresso do envio"
+                />
+                <p className="mt-1.5 text-xs text-muted">
+                  {uploadPhaseLabel(upload.phase, upload.percent)}
+                </p>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               <Button
                 variant="secondary"
@@ -352,7 +382,7 @@ export function AnonymousReportModal({ open, onClose }: AnonymousReportModalProp
               </Button>
               <Button onClick={handleSubmit} disabled={submitting} className="h-11">
                 {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-                {submitting ? "Enviando" : "Enviar denúncia"}
+                {submitting ? uploadPhaseLabel(upload.phase, upload.percent) : "Enviar denúncia"}
               </Button>
             </div>
           </div>

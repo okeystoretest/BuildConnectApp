@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth/require-user";
+import { canUseDhoTools } from "@/lib/auth/access";
 import { hashPassword } from "@/lib/auth/password";
 import { generatePassword } from "@/lib/auth/generate-password";
 import { can } from "@/lib/permissions";
@@ -43,6 +44,11 @@ async function requireManager() {
   if (!actor) return { actor: null, error: "Sessão expirada. Faça login novamente." };
   if (!can(actor.role as Role, "users.manage")) {
     return { actor: null, error: "Você não tem permissão para gerenciar usuários." };
+  }
+  // A gestão de usuários é uma ferramenta do DHO, e o DHO é do DHO. Esconder o
+  // menu não bastaria: sem esta linha, um POST direto continuaria passando.
+  if (!(await canUseDhoTools(actor.id, actor.role as Role))) {
+    return { actor: null, error: "As ferramentas do DHO são exclusivas do setor DHO." };
   }
   return { actor, error: null };
 }

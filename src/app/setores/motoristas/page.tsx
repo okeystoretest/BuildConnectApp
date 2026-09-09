@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { LOGIN_EXPIRED_PATH } from "@/lib/auth/login-redirect";
 import { getVerifiedSession } from "@/lib/auth/require-user";
 import { resolveAccessibleSlugs, canAccessSlug } from "@/lib/auth/access";
 import { getSectorContent } from "@/lib/sector-data";
@@ -16,7 +17,7 @@ export const dynamic = "force-dynamic";
 
 export default async function DriversSectorPage() {
   const session = await getVerifiedSession();
-  if (!session) redirect("/login");
+  if (!session) redirect(LOGIN_EXPIRED_PATH);
 
   // RBAC: barra acesso direto por URL a quem não tem o subsetor "motoristas".
   const slugs = await resolveAccessibleSlugs(session.userId, session.role as Role);

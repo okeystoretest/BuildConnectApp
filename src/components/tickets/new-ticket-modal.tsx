@@ -8,7 +8,9 @@ import { Segmented } from "@/components/ui/segmented";
 import { ItTicketFields } from "./it-ticket-fields";
 import { DriverTicketFields } from "./driver-ticket-fields";
 import { OTHER_OPTION, UNITS } from "@/lib/units";
-import { createDriverTicket, createItTicket, listDrivers } from "@/lib/tickets/actions";
+import { createDriverTicket, listDrivers } from "@/lib/tickets/actions";
+import { Progress } from "@/components/ui/progress";
+import { useUploadProgress, uploadPhaseLabel } from "@/lib/use-upload-progress";
 import type { DriverOption } from "@/lib/tickets/actions";
 import { useToast } from "@/providers/toast-provider";
 import {
@@ -40,6 +42,17 @@ const EMPTY_DRIVER: DriverTicketForm = {
   contact: "",
 };
 
+/**
+ * O que a rota `/api/uploads` devolve ao abrir chamado de Retaguarda — o mesmo
+ * objeto da Server Action, atravessando JSON.
+ */
+interface ItTicketPayload {
+  ok: boolean;
+  code?: string;
+  error?: string;
+  fieldErrors?: Record<string, string>;
+}
+
 export interface NewTicketModalProps {
   open: boolean;
   onClose: () => void;
@@ -55,6 +68,7 @@ export function NewTicketModal({ open, onClose }: NewTicketModalProps) {
     Partial<Record<keyof DriverTicketForm, string>>
   >({});
   const [submitting, setSubmitting] = useState(false);
+  const upload = useUploadProgress<ItTicketPayload>();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [drivers, setDrivers] = useState<readonly DriverOption[] | null>(null);
   const [driversLoading, setDriversLoading] = useState(false);
@@ -146,18 +160,18 @@ export function NewTicketModal({ open, onClose }: NewTicketModalProps) {
       itFd.set("description", itForm.description);
       for (const image of itForm.images) itFd.append("images", image);
 
-      const itResult = await createItTicket(itFd);
+      const sent = await upload.send("chamado", itFd);
       setSubmitting(false);
 
-      if (!itResult.ok) {
-        if (itResult.fieldErrors) {
-          setItErrors(itResult.fieldErrors as typeof itErrors);
+      if (!sent.ok) {
+        if (sent.data?.fieldErrors) {
+          setItErrors(sent.data.fieldErrors as typeof itErrors);
         }
-        setSubmitError(itResult.error ?? "Não foi possível abrir o chamado.");
+        setSubmitError(sent.error ?? "Não foi possível abrir o chamado.");
         return;
       }
 
-      confirmSent(itResult.code, "a Retaguarda");
+      confirmSent(sent.data?.code, "a Retaguarda");
       reset();
       onClose();
       return;
@@ -251,13 +265,32 @@ export function NewTicketModal({ open, onClose }: NewTicketModalProps) {
           </p>
         )}
 
+        {/* Só a Retaguarda envia arquivo (as imagens do chamado); o chamado de
+            motorista é texto e não tem o que acompanhar. */}
+        {submitting && destination === "TI" && (
+          <div className="mt-4">
+            <Progress
+              value={upload.phase === "processing" ? 100 : upload.percent}
+              tone="primary"
+              label="Progresso do envio"
+            />
+            <p className="mt-1.5 text-xs text-muted">
+              {uploadPhaseLabel(upload.phase, upload.percent)}
+            </p>
+          </div>
+        )}
+
         <div className="mt-6 grid grid-cols-2 gap-3">
           <Button variant="secondary" onClick={handleClose} disabled={submitting} className="h-11">
             Cancelar
           </Button>
           <Button onClick={handleSubmit} disabled={submitting} className="h-11">
             {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            {submitting ? "Enviando" : "Enviar chamado"}
+            {submitting && destination === "TI"
+              ? uploadPhaseLabel(upload.phase, upload.percent)
+              : submitting
+                ? "Enviando"
+                : "Enviar chamado"}
           </Button>
         </div>
       </div>

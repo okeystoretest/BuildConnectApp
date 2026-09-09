@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { LOGIN_EXPIRED_PATH } from "@/lib/auth/login-redirect";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
@@ -13,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 export default async function MyEvaluationsPage() {
   const session = await getVerifiedSession();
-  if (!session) redirect("/login");
+  if (!session) redirect(LOGIN_EXPIRED_PATH);
 
   // Cada rodada pode ser de um instrumento diferente (Matriz de Decisão,
   // Eficácia 360°) — carrega os formulários por slug e o painel escolhe o certo.

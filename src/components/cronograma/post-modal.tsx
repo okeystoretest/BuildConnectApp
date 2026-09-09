@@ -19,8 +19,6 @@ import {
   FUNNEL_ORDER,
   PLATFORM,
   PLATFORM_ORDER,
-  STATUS_LABEL,
-  STATUS_ORDER,
   formatStyle,
   platformStyle,
 } from "@/lib/funnel";
@@ -31,9 +29,7 @@ import type {
   ContentFormat,
   ContentPlatform,
   ContentPostItem,
-  ContentStatus,
   FunnelStage,
-  PostOwner,
 } from "@/types/cronograma";
 
 export interface PostModalProps {
@@ -44,7 +40,6 @@ export interface PostModalProps {
   post?: ContentPostItem | null;
   /** Data pré-selecionada ao criar a partir de uma célula do calendário. */
   defaultDate?: string;
-  people: readonly PostOwner[];
 }
 
 /**
@@ -57,6 +52,14 @@ export interface PostModalProps {
  * Criar é liberado para qualquer usuário. Editar exige autoria: se o post não
  * for do usuário (rota alternativa, link direto), o formulário abre travado,
  * em leitura.
+ *
+ * Dois campos saíram daqui de propósito:
+ *
+ *  - STATUS. Todo conteúdo nasce como "Ideia", e quem move a fila é o seletor
+ *    da aba Backlog, onde o status é de fato acompanhado. Perguntá-lo na
+ *    criação só produzia post nascendo "Publicado" por engano.
+ *  - RESPONSÁVEL. É sempre quem cria. A lista de escolha, além de um passo a
+ *    mais, trazia gente de outros setores.
  */
 export function PostModal({
   slug,
@@ -64,7 +67,6 @@ export function PostModal({
   onClose,
   post = null,
   defaultDate,
-  people,
 }: PostModalProps) {
   const router = useRouter();
   const editing = Boolean(post);
@@ -75,12 +77,10 @@ export function PostModal({
   const [date, setDate] = useState("");
   const [time, setTime] = useState("09:00");
   const [funnel, setFunnel] = useState<FunnelStage>("TOFU");
-  const [format, setFormat] = useState<ContentFormat>("REEL");
-  const [status, setStatus] = useState<ContentStatus>("IDEIA");
+  const [formats, setFormats] = useState<readonly ContentFormat[]>(["REEL"]);
   const [brand, setBrand] = useState<ContentBrand | null>(null);
   const [platforms, setPlatforms] = useState<readonly ContentPlatform[]>([]);
   const [formatOther, setFormatOther] = useState("");
-  const [ownerId, setOwnerId] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -91,12 +91,12 @@ export function PostModal({
     setDate(post?.date ?? defaultDate ?? "");
     setTime(post?.time ?? "09:00");
     setFunnel(post?.funnel ?? "TOFU");
-    setFormat(post?.format ?? "REEL");
-    setStatus(post?.status ?? "IDEIA");
+    // Post antigo pode ter chegado sem formato: a coluna virou lista, e lista
+    // aceita vazio. Cai no padrão para o formulário nunca abrir sem seleção.
+    setFormats(post?.formats?.length ? post.formats : ["REEL"]);
     setBrand(post?.brand ?? null);
     setPlatforms(post?.platforms ?? []);
     setFormatOther(post?.formatOther ?? "");
-    setOwnerId(post?.owner?.id ?? "");
     setNotes(post?.notes ?? "");
     setError(null);
   }, [open, post, defaultDate]);
@@ -115,13 +115,11 @@ export function PostModal({
         date,
         time,
         funnel,
-        format,
-        status,
+        // Ordem canonica em ambas as listas; o formulario so define quais.
+        formats: FORMAT_ORDER.filter((option) => formats.includes(option)),
         brand: brand ?? undefined,
-        // Ordem canonica das redes; o formulario so define quais.
         platforms: PLATFORM_ORDER.filter((option) => platforms.includes(option)),
-        formatOther: format === "OUTRO" ? formatOther.trim() : undefined,
-        ownerId: ownerId || undefined,
+        formatOther: formats.includes("OUTRO") ? formatOther.trim() : undefined,
         notes: notes.trim() || undefined,
       };
 
@@ -167,7 +165,7 @@ export function PostModal({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <Label htmlFor="post-date">Data</Label>
               <Input
@@ -214,18 +212,30 @@ export function PostModal({
 
           <div>
             <Label>Formato</Label>
-            {/* Cada formato tem cor propria — a mesma que identifica a tag no
+            {/* Selecao MULTIPLA: a mesma peca costuma sair em mais de um
+                formato (um Reel que tambem vira Story). Antes era escolha
+                unica, e registrar isso exigia duplicar o post — que entao
+                contava duas vezes no volume do funil.
+
+                Cada formato tem cor propria — a mesma que identifica a tag no
                 calendario, no backlog e nos detalhes. */}
             <div className="flex flex-wrap gap-2">
               {FORMAT_ORDER.map((option) => {
-                const active = format === option;
+                const active = formats.includes(option);
                 return (
                   <button
                     key={option}
                     type="button"
+                    role="checkbox"
                     disabled={readOnly}
-                    aria-pressed={active}
-                    onClick={() => setFormat(option)}
+                    aria-checked={active}
+                    onClick={() =>
+                      setFormats((prev) =>
+                        prev.includes(option)
+                          ? prev.filter((value) => value !== option)
+                          : [...prev, option],
+                      )
+                    }
                     style={active ? formatStyle(option) : undefined}
                     className={cn(
                       "focus-ring inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors disabled:opacity-60",
@@ -243,7 +253,7 @@ export function PostModal({
             </div>
 
             {/* "Outro" so existe com o nome que a pessoa der. */}
-            {format === "OUTRO" && (
+            {formats.includes("OUTRO") && (
               <div className="mt-2">
                 <Label htmlFor="post-format-other">Qual formato?</Label>
                 <Input
@@ -258,47 +268,11 @@ export function PostModal({
             )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label htmlFor="post-status">Status</Label>
-              <select
-                id="post-status"
-                value={status}
-                disabled={readOnly}
-                onChange={(e) => setStatus(e.target.value as ContentStatus)}
-                className="focus-ring h-11 w-full rounded-xl border border-border bg-surface-2 px-3 text-sm text-foreground"
-              >
-                {STATUS_ORDER.map((option) => (
-                  <option key={option} value={option}>
-                    {STATUS_LABEL[option]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label htmlFor="post-owner">Responsável</Label>
-              <select
-                id="post-owner"
-                value={ownerId}
-                disabled={readOnly}
-                onChange={(e) => setOwnerId(e.target.value)}
-                className="focus-ring h-11 w-full rounded-xl border border-border bg-surface-2 px-3 text-sm text-foreground"
-              >
-                <option value="">Sem responsável</option>
-                {people.map((person) => (
-                  <option key={person.id} value={person.id}>
-                    {person.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
           <div>
             <Label>Redes sociais (opcional)</Label>
             {/* Selecao MULTIPLA: a mesma peca costuma ir ao ar em mais de uma
                 rede. Cada botao veste a cor institucional da plataforma. */}
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {PLATFORM_ORDER.map((option) => {
                 const active = platforms.includes(option);
                 return (
@@ -340,7 +314,7 @@ export function PostModal({
 
           <div>
             <Label>Marca (opcional)</Label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {BRAND_ORDER.map((option) => {
                 const active = brand === option;
                 return (

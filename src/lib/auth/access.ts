@@ -1,5 +1,12 @@
+import { cache } from "react";
 import { prisma } from "@/lib/db/prisma";
 import type { Role } from "@/types";
+
+/**
+ * Slug do setor DHO. Mantém o "rh" original — a renomeação foi só de rótulo, e
+ * o slug é a chave da rota (/setores/rh), do vínculo já gravado e do RBAC.
+ */
+export const DHO_SLUG = "rh";
 
 /**
  * Regras de visibilidade por setor/subsetor (RBAC de conteúdo).
@@ -55,4 +62,49 @@ export async function resolveAccessibleSlugs(
 export function canAccessSlug(slugs: string[] | null, slug: string): boolean {
   // `null` = ADMIN (acesso total).
   return slugs === null || slugs.includes(slug);
+}
+
+/**
+ * O usuário é do DHO?
+ *
+ * Verdadeiro quando o setor de lotação é o DHO, ou quando o subsetor `rh` está
+ * marcado no cadastro. As duas formas valem porque o DHO é um setor transversal
+ * — ele aparece nos dois lugares dependendo de como a pessoa foi cadastrada.
+ *
+ * Consulta ao BANCO, e não ao cookie. `session.sector` é um rótulo e é uma
+ * fotografia do login: mover alguém de setor não invalida a sessão, então o
+ * cookie continuaria afirmando a lotação antiga até o próximo login — e esta
+ * resposta decide acesso.
+ *
+ * `cache` do React memoiza por requisição: o layout (que monta a barra
+ * lateral) e a página do DHO perguntam a mesma coisa e pagam uma consulta só.
+ */
+export const isDhoMember = cache(async (userId: string): Promise<boolean> => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      sector: { select: { slug: true } },
+      subsectors: { select: { subsector: { select: { slug: true } } } },
+    },
+  });
+  if (!user) return false;
+
+  if (user.sector?.slug === DHO_SLUG) return true;
+  return user.subsectors.some(
+    (s: { subsector: { slug: string } }) => s.subsector.slug === DHO_SLUG,
+  );
+});
+
+/**
+ * Quem alcança as ferramentas do DHO: avaliações, formulários, gestão de
+ * usuários, denúncias, documentos e mapas de integração.
+ *
+ * Só quem é do DHO — em qualquer papel — e o ADMIN, que mantém passe livre
+ * como em todo o resto do sistema. Um Gestor de outro setor NÃO entra, mesmo
+ * tendo `evaluations.view` ou `forms.manage`: a permissão diz o que o papel
+ * sabe fazer, este predicado diz de quem é a ferramenta.
+ */
+export async function canUseDhoTools(userId: string, role: Role): Promise<boolean> {
+  if (role === "ADMIN") return true;
+  return isDhoMember(userId);
 }

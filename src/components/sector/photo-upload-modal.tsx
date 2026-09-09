@@ -1,13 +1,14 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Upload } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { uploadSectorPhoto } from "@/lib/sector-actions";
+import { Progress } from "@/components/ui/progress";
+import { useUploadProgress, uploadPhaseLabel } from "@/lib/use-upload-progress";
 
 const ACCEPTED = ["image/jpeg", "image/png", "image/webp", "image/heic"];
 
@@ -24,13 +25,15 @@ export function PhotoUploadModal({ slug, open, onClose }: PhotoUploadModalProps)
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [pending, start] = useTransition();
+  const upload = useUploadProgress();
+  const pending = upload.busy;
 
   function reset() {
     setTitle("");
     setFile(null);
     setPreview(null);
     setError(null);
+    upload.reset();
     if (inputRef.current) inputRef.current.value = "";
   }
 
@@ -57,20 +60,21 @@ export function PhotoUploadModal({ slug, open, onClose }: PhotoUploadModalProps)
       return;
     }
     setError(null);
-    start(async () => {
+    void (async () => {
       const fd = new FormData();
       fd.set("slug", slug);
       fd.set("title", title.trim() || "Foto");
       fd.set("file", file);
-      const res = await uploadSectorPhoto(fd);
+      const res = await upload.send("setor-foto", fd);
       if (res.ok) {
         reset();
+        upload.reset();
         onClose();
         router.refresh();
       } else {
         setError(res.error ?? "Falha ao enviar a foto.");
       }
-    });
+    })();
   }
 
   return (
@@ -117,6 +121,21 @@ export function PhotoUploadModal({ slug, open, onClose }: PhotoUploadModalProps)
           />
 
           {error && <p className="text-xs text-danger">{error}</p>}
+
+          {/* Progresso REAL de envio: os 100% marcam os bytes entregues, e o
+              rótulo vira "Processando…" enquanto o servidor grava. */}
+          {pending && (
+            <div>
+              <Progress
+                value={upload.phase === "processing" ? 100 : upload.percent}
+                tone="primary"
+                label="Progresso do envio"
+              />
+              <p className="mt-1.5 text-xs text-muted">
+                {uploadPhaseLabel(upload.phase, upload.percent)}
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="mt-6 grid grid-cols-2 gap-3">
@@ -125,7 +144,7 @@ export function PhotoUploadModal({ slug, open, onClose }: PhotoUploadModalProps)
           </Button>
           <Button onClick={submit} disabled={pending} className="h-11">
             {pending && <Loader2 className="h-4 w-4 animate-spin" />}
-            {pending ? "Enviando" : "Enviar"}
+            {pending ? uploadPhaseLabel(upload.phase, upload.percent) : "Enviar"}
           </Button>
         </div>
       </div>

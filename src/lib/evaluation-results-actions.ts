@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth/require-user";
+import { canUseDhoTools } from "@/lib/auth/access";
 import { canReachSector } from "@/lib/auth/scope";
 import { can } from "@/lib/permissions";
 import { getEvaluationDetail } from "@/lib/evaluation-data";
@@ -26,6 +27,9 @@ export async function fetchEvaluationDetail(
   // Resultados são do RH (sector.hr = Admin) e do Gestor (evaluations.view).
   if (!can(actor.role as Role, "evaluations.view")) {
     return { ok: false, error: "Sem permissão." };
+  }
+  if (!(await canUseDhoTools(actor.id, actor.role as Role))) {
+    return { ok: false, error: "As ferramentas do DHO são exclusivas do setor DHO." };
   }
 
   const detail = await getEvaluationDetail(id);

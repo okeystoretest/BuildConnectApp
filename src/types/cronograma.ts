@@ -37,12 +37,13 @@ export interface ContentPostItem {
   /** Horário local hh:mm. */
   time: string;
   funnel: FunnelStage;
-  format: ContentFormat;
+  /** Formatos da peça (seleção múltipla). Pode vir vazio em post antigo. */
+  formats: readonly ContentFormat[];
   status: ContentStatus;
   brand?: ContentBrand;
   /** Redes sociais do post. Vazio = atividade sem plataforma definida. */
   platforms: readonly ContentPlatform[];
-  /** Texto livre do formato quando `format` é OUTRO. */
+  /** Texto livre do formato quando OUTRO está entre os escolhidos. */
   formatOther?: string;
   owner: PostOwner | null;
   notes?: string;
@@ -98,6 +99,4 @@ export interface CronogramaData {
   balance: readonly FunnelBalanceSlice[];
   posts: readonly ContentPostItem[];
   backlog: readonly ContentPostItem[];
-  /** Pessoas selecionáveis como responsáveis. */
-  people: readonly PostOwner[];
 }

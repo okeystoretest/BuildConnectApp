@@ -107,17 +107,23 @@ export function Sidebar() {
   }, [canAccessSlug]);
 
   // Standalone (Retaguarda/DHO) são setores transversais, não
-  // subsetores de conteúdo. A visibilidade depende só da permissão do papel —
-  // não passam pelo filtro de accessSlugs (que é para conteúdo de setor).
+  // subsetores de conteúdo — não passam pelo filtro de accessSlugs (que é
+  // para conteúdo de setor).
+  //
+  // O DHO é o caso especial: quem entra é quem É do DHO, mais o Admin. Antes
+  // bastava a permissão `evaluations.view`, que todo Gestor tem — e isso
+  // abria as ferramentas do DHO (avaliações, formulários, gestão de usuários,
+  // denúncias) para o gestor de qualquer setor.
   const visibleStandalone = useMemo(() => {
     return STANDALONE_SECTORS.filter((sector) => {
       const href = sector.items[0]?.href;
       if (!href) return false;
+      if (sector.dhoOnly) return Boolean(user.dhoMember);
       // Sem permissão declarada, cai no filtro de conteúdo por slug.
       if (!sector.permission) return canAccessSlug(slugFromHref(href));
       return can(sector.permission);
     });
-  }, [can, canAccessSlug]);
+  }, [can, canAccessSlug, user.dhoMember]);
 
   const hasAnySector = visibleGroups.length > 0 || visibleStandalone.length > 0;
 

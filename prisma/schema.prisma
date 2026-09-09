@@ -57,6 +57,17 @@ model User {
   // Caminho do avatar já tratado (.webp). Nunca o binário.
   avatarPath String?
 
+  // Quando este usuário terminou de assistir ao vídeo de boas-vindas da
+  // PLATAFORMA. Nulo = ainda não assistiu, e o modal obrigatório aparece.
+  //
+  // Coluna no usuário, e não tabela de junção como a do setor
+  // (SubsectorWelcomeView), porque o vídeo da plataforma é um só: a junção
+  // teria cardinalidade 1 e existiria só para guardar uma data.
+  //
+  // Publicar um vídeo novo zera esta coluna para TODOS — é o equivalente a
+  // apagar as linhas de visualização do setor.
+  platformWelcomeWatchedAt DateTime?
+
   active    Boolean  @default(true)
 
   // Versão da sessão. Vai assinada dentro do cookie e é conferida a cada
@@ -182,6 +193,28 @@ model SubsectorWelcomeView {
   @@unique([userId, subsectorId])
   @@index([subsectorId])
   @@index([userId])
+}
+
+/**
+ * Vídeo de boas-vindas da PLATAFORMA — o obrigatório da primeira entrada.
+ *
+ * Linha única: `id` tem default fixo "singleton", então todo upsert escreve na
+ * mesma linha e não há como existirem dois vídeos concorrendo pelo mesmo papel.
+ *
+ * Como todo arquivo do sistema, guarda só o caminho público
+ * (/uploads/conteudo/ano/mes/arquivo.mp4) — nunca o binário.
+ *
+ * Quem já assistiu está em User.platformWelcomeWatchedAt, não aqui.
+ */
+model PlatformWelcomeVideo {
+  id    String @id @default("singleton")
+  path  String
+  title String?
+
+  // Quando o vídeo atual foi publicado. Trocar o vídeo zera as visualizações:
+  // quem já tinha visto o anterior assiste ao novo.
+  publishedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 /**
@@ -384,13 +417,16 @@ model ContentPost {
   title       String
   scheduledAt DateTime
   funnel      FunnelStage
-  format      ContentFormat
+  // Formatos da peça (seleção múltipla). Era uma coluna única: o mesmo
+  // conteúdo costuma sair em mais de um formato, e duplicar o post só para
+  // registrar isso quebrava a contagem do funil.
+  formats     ContentFormat[] @default([])
   status      ContentStatus @default(IDEIA)
   brand       ContentBrand?
   // Redes sociais do post (seleção múltipla). Lista vazia = atividade sem
   // plataforma definida.
   platforms   ContentPlatform[] @default([])
-  // Descrição livre do formato quando `format` = OUTRO. Nulo nos demais.
+  // Descrição livre do formato quando OUTRO está entre os escolhidos.
   formatOther String?
   notes       String?
 

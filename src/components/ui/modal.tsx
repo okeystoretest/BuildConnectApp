@@ -81,23 +81,33 @@ export function Modal({
         onClick={() => dismissible && onClose?.()}
         aria-hidden
       />
+      {/* O teto de altura e a rolagem interna moram AQUI, e não em cada modal.
+          Sem `max-h`, um formulário mais alto que a janela não ganha barra: ele
+          simplesmente sai da tela, e os campos de baixo ficam inalcançáveis.
+          `dvh` e não `vh` porque no celular a barra de endereço entra e sai, e
+          `vh` mede a janela sem ela — o rodapé, onde fica o botão de salvar,
+          acabaria escondido sob o navegador. */}
       <div
         role="dialog"
         aria-modal="true"
         aria-label={title}
         className={cn(
-          "animate-scale-in relative z-10 w-full max-w-2xl overflow-hidden rounded-xl border border-border bg-surface shadow-2xl",
+          "animate-scale-in relative z-10 flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl",
           className,
         )}
       >
         {(title || description) && (
-          <div className="border-b border-border bg-surface-2/60 px-6 py-4">
+          <div className="shrink-0 border-b border-border bg-surface-2/60 px-6 py-4">
             {title && <h2 className="text-base font-semibold text-foreground">{title}</h2>}
             {description && <p className="mt-0.5 text-sm text-muted">{description}</p>}
           </div>
         )}
-        {children}
-        {footer && <div className="border-t border-border px-6 py-4">{footer}</div>}
+        {/* `min-h-0` é obrigatório: sem ele um filho flex recusa encolher
+            abaixo do próprio conteúdo, e a rolagem nunca chega a aparecer. */}
+        <div className="scrollbar-slim min-h-0 flex-1 overflow-y-auto">{children}</div>
+        {footer && (
+          <div className="shrink-0 border-t border-border px-6 py-4">{footer}</div>
+        )}
       </div>
     </div>,
     target,
