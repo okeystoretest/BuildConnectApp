@@ -200,16 +200,20 @@ async function seedAppInheritance() {
     data: { scheduleEnabled: true, appsSourceId: null },
   });
 
-  const marketing = await prisma.subsector.findUnique({
-    where: { slug: "marketing" },
-    select: { id: true },
-  });
-  if (marketing) {
+  // Quem herda a base de Vendas. Marketing é o caso original; Criação entrou
+  // depois, com exatamente a mesma ligação — ela recebe a pauta que o
+  // Marketing publica e trabalha sobre a mesma agenda.
+  for (const slug of ["marketing", "criacao"]) {
+    const herdeiro = await prisma.subsector.findUnique({
+      where: { slug },
+      select: { id: true, label: true },
+    });
+    if (!herdeiro) continue;
     await prisma.subsector.update({
-      where: { id: marketing.id },
+      where: { id: herdeiro.id },
       data: { appsSourceId: vendas.id, scheduleEnabled: true },
     });
-    console.log("  ✓ Marketing herda os aplicativos e o cronograma de Vendas");
+    console.log(`  ✓ ${herdeiro.label} herda os aplicativos e o cronograma de Vendas`);
   }
 
   await seedDemoSchedule(vendas.id);

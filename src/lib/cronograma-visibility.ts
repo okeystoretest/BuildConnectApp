@@ -3,14 +3,14 @@ import type { ContentVisibility } from "@/types/cronograma";
 /**
  * Regra de alcance do Cronograma — ponto único.
  *
- * Marketing e Vendas compartilham a MESMA base (`appsSource`), então quem
- * define a natureza do registro é a aba em que ele foi criado:
+ * Marketing, Vendas e Criação compartilham a MESMA base (`appsSource`), então
+ * quem define a natureza do registro é a aba em que ele foi criado:
  *
  * - Criado na aba do Marketing  → SHARED: entra na agenda de todo mundo.
- *   Vendas enxerga, filtra e exporta, mas não edita nem exclui — só o autor
- *   (e o Admin) alteram.
+ *   Vendas e Criação enxergam, filtram e exportam, mas não editam nem excluem
+ *   — só o autor (e o Admin) alteram.
  * - Criado em qualquer outra aba → PRIVATE: é a agenda pessoal de quem criou.
- *   Ninguém mais vê, nem outro usuário de Vendas.
+ *   Ninguém mais vê, nem outro usuário do mesmo subsetor.
  *
  * Trocar essa política é trocar esta função — nem a action nem a leitura
  * decidem alcance por conta própria.

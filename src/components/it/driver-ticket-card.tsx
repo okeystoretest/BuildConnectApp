@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { itCategoryTone } from "@/lib/it-data";
 import { useArchiveCountdown } from "@/lib/use-archive-countdown";
 import { DriverTripController } from "@/components/tracking/driver-trip-controller";
+import { Progress } from "@/components/ui/progress";
+import { uploadPhaseLabel, type UploadPhase } from "@/lib/use-upload-progress";
 import type { ItTicket } from "@/types/it";
 
 export interface DriverTicketCardProps {
@@ -36,6 +38,16 @@ export interface DriverTicketCardProps {
   onStarted: (ticket: ItTicket) => void;
   onComplete: (ticket: ItTicket) => void;
   onDelete: (ticket: ItTicket) => void;
+  /**
+   * Envio do comprovante em curso PARA ESTE card. Ausente quando não há
+   * nenhum.
+   *
+   * O envio acontece em segundo plano — o card já está em "Concluído" quando
+   * ele começa, e o motorista não fica esperando. O selo existe só para que
+   * ninguém feche o aplicativo achando que acabou: sem ele, a foto se perdia
+   * em silêncio num chamado que já constava concluído.
+   */
+  proofUpload?: { percent: number; phase: UploadPhase };
 }
 
 /**
@@ -65,6 +77,7 @@ export function DriverTicketCard({
   onStarted,
   onComplete,
   onDelete,
+  proofUpload,
 }: DriverTicketCardProps) {
   const isMine = ticket.assigneeId === currentUserId;
   const status = ticket.status;
@@ -203,6 +216,22 @@ export function DriverTicketCard({
             <p className="text-center text-[11px] text-muted">
               Concluído{ticket.distanceKm ? ` · ${ticket.distanceKm} km` : ""}
             </p>
+
+            {proofUpload && (
+              <div className="rounded-lg bg-surface-2 px-2 py-1.5">
+                <p className="mb-1 flex items-center gap-1.5 text-[10px] text-muted">
+                  <Paperclip className="h-3 w-3 shrink-0" />
+                  {proofUpload.phase === "processing"
+                    ? "Comprovante enviado · processando…"
+                    : `Enviando comprovante · ${proofUpload.percent}%`}
+                </p>
+                <Progress
+                  value={proofUpload.phase === "processing" ? 100 : proofUpload.percent}
+                  tone="primary"
+                  label={uploadPhaseLabel(proofUpload.phase, proofUpload.percent)}
+                />
+              </div>
+            )}
             {/* Janela de 30 minutos: o card avisa que vai sair do quadro. */}
             {countdown && (
               <p className="flex items-center justify-center gap-1.5 rounded-lg bg-surface-2 px-2 py-1.5 text-[10px] text-muted">

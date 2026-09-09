@@ -8,7 +8,8 @@ import { useRole } from "@/providers/role-provider";
 import type { ItTicket, ItTicketStatus } from "@/types/it";
 import { IT_STATUS_ORDER, IT_STATUS_LABEL, IT_STATUS_DOT } from "@/lib/it-data";
 import { cn } from "@/lib/utils";
-import { completeTicketWithProof, hardDeleteTicket } from "@/lib/ticket-actions";
+import { hardDeleteTicket } from "@/lib/ticket-actions";
+import { useUploadProgress } from "@/lib/use-upload-progress";
 import { useTicketsPoll } from "@/lib/use-tickets-poll";
 import { assignTicket, unassignTicket, listAssignableUsers } from "@/lib/tickets/assign-actions";
 import { DriverTicketCard } from "./driver-ticket-card";
@@ -60,6 +61,11 @@ export function DriverKanbanBoard({ tickets: source }: DriverKanbanBoardProps) {
   const [drivers, setDrivers] = useState<{ id: string; name: string }[]>([]);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [, startTransition] = useTransition();
+
+  // Envio do comprovante em curso. Um por vez: o motorista conclui uma corrida
+  // de cada vez, e o id diz a qual card o progresso pertence.
+  const proofUpload = useUploadProgress();
+  const [proofUploadId, setProofUploadId] = useState<string | null>(null);
 
   const byStatus = useMemo(() => {
     const map: Record<ItTicketStatus, ItTicket[]> = {
@@ -136,10 +142,25 @@ export function DriverKanbanBoard({ tickets: source }: DriverKanbanBoardProps) {
       fd.set("ticketId", id);
       fd.set("proof", data.proof);
       if (data.distanceKm !== null) fd.set("distanceKm", String(data.distanceKm));
-      startTransition(async () => {
-        const res = await completeTicketWithProof(fd);
+
+      /**
+       * O envio segue em SEGUNDO PLANO, de propósito: o modal já fechou e o
+       * card já está em "Concluído". Prender o motorista numa barra até a foto
+       * subir é o oposto do que este fluxo otimista existe para fazer — ele
+       * está na rua, no celular, muitas vezes com sinal ruim.
+       *
+       * O que faltava era o AVISO. Sem ele, ninguém sabia que ainda havia
+       * arquivo subindo, e fechar o app nesses segundos perdia o comprovante
+       * de um chamado que já constava concluído. Agora o próprio card mostra o
+       * progresso enquanto o envio acontece — sem exigir espera de ninguém.
+       */
+      setProofUploadId(id);
+      void (async () => {
+        const res = await proofUpload.send("chamado-comprovante", fd);
+        setProofUploadId(null);
+        proofUpload.reset();
         if (!res.ok) refresh();
-      });
+      })();
     }
   }
 
@@ -202,6 +223,11 @@ export function DriverKanbanBoard({ tickets: source }: DriverKanbanBoardProps) {
                   onClaim={handleClaim}
                   onAssignOther={handleOpenAssignOther}
                   onUnassign={handleUnassign}
+                  proofUpload={
+                    proofUploadId === ticket.id
+                      ? { percent: proofUpload.percent, phase: proofUpload.phase }
+                      : undefined
+                  }
                   onStarted={handleStarted}
                   onComplete={setCompleting}
                   onDelete={setDeleting}

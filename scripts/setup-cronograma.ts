@@ -1,10 +1,11 @@
 /**
  * Build.Connect — provisiona a estrutura do Cronograma sem rodar o seed.
  *
- * Faz exatamente três coisas, todas idempotentes:
+ * Faz exatamente quatro coisas, todas idempotentes:
  *   1. Garante o subsetor "Marketing" dentro do setor Comercial.
  *   2. Habilita o Cronograma em Vendas (dono da base).
  *   3. Liga Marketing a Vendas (herança de aplicativos + cronograma).
+ *   4. Liga Criação (Produção) a Vendas, com a mesma herança.
  *
  * Não toca em usuários, chamados, conteúdos ou avaliações — é o caminho
  * seguro para um banco de produção já em uso, onde `prisma db seed` não deve
@@ -21,6 +22,7 @@ const prisma = new PrismaClient();
 const COMERCIAL_SLUG = "comercial";
 const VENDAS_SLUG = "vendas";
 const MARKETING_SLUG = "marketing";
+const CRIACAO_SLUG = "criacao";
 
 async function main() {
   console.log("Build.Connect — setup do Cronograma\n");
@@ -74,16 +76,33 @@ async function main() {
   });
   console.log(`  ✓ subsetor ${marketing.label} vinculado a ${vendas.label}`);
 
-  // 4) Cronograma habilitado na origem. Marketing herda por consequência.
+  // 4) Criação (Produção) herda a mesma base. Ao contrário do Marketing, ela
+  //    NÃO é criada aqui: já existe no seed base, dentro do setor Produção.
+  //    Mexer só no vínculo evita mover o subsetor de setor por engano.
+  const criacao = await prisma.subsector.findUnique({
+    where: { slug: CRIACAO_SLUG },
+    select: { id: true, label: true },
+  });
+  if (criacao) {
+    await prisma.subsector.update({
+      where: { id: criacao.id },
+      data: { appsSourceId: vendas.id, scheduleEnabled: true },
+    });
+    console.log(`  ✓ subsetor ${criacao.label} vinculado a ${vendas.label}`);
+  } else {
+    console.log(`  ! subsetor "${CRIACAO_SLUG}" não encontrado — vínculo ignorado`);
+  }
+
+  // 5) Cronograma habilitado na origem. Quem herda recebe por consequência.
   await prisma.subsector.update({
     where: { id: vendas.id },
     data: { scheduleEnabled: true, appsSourceId: null },
   });
   console.log(`  ✓ Cronograma habilitado em ${vendas.label}`);
 
-  // 5) Conferência final — é isso que a aplicação lê para montar a aba.
+  // 6) Conferência final — é isso que a aplicação lê para montar a aba.
   const check = await prisma.subsector.findMany({
-    where: { slug: { in: [VENDAS_SLUG, MARKETING_SLUG] } },
+    where: { slug: { in: [VENDAS_SLUG, MARKETING_SLUG, CRIACAO_SLUG] } },
     select: {
       slug: true,
       label: true,
