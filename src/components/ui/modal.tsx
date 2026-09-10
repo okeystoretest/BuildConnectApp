@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
+import { resolvePortalTarget } from "@/lib/portal-target";
 
 export interface ModalProps {
   open: boolean;
@@ -23,8 +24,16 @@ export interface ModalProps {
  * elemento em tela cheia — um modal ancorado no body existiria no DOM e
  * ficaria invisível. Por isso o alvo acompanha `document.fullscreenElement`,
  * reavaliado a cada `fullscreenchange`.
+ *
+ * A exceção mora em `resolvePortalTarget`: quando quem está em tela cheia é um
+ * elemento DE DENTRO do próprio modal (o player dos vídeos de boas-vindas), o
+ * portal fica onde está. Segui-lo arrancaria o modal do documento e derrubaria
+ * o fullscreen no mesmo instante.
  */
-function usePortalTarget(open: boolean): HTMLElement | null {
+function usePortalTarget(
+  open: boolean,
+  rootRef: React.RefObject<HTMLDivElement | null>,
+): HTMLElement | null {
   const [target, setTarget] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -34,12 +43,18 @@ function usePortalTarget(open: boolean): HTMLElement | null {
     }
     const resolve = () => {
       const active = document.fullscreenElement;
-      setTarget(active instanceof HTMLElement ? active : document.body);
+      setTarget(
+        resolvePortalTarget(
+          active instanceof HTMLElement ? active : null,
+          rootRef.current,
+          document.body,
+        ),
+      );
     };
     resolve();
     document.addEventListener("fullscreenchange", resolve);
     return () => document.removeEventListener("fullscreenchange", resolve);
-  }, [open]);
+  }, [open, rootRef]);
 
   return target;
 }
@@ -54,7 +69,8 @@ export function Modal({
   children,
   footer,
 }: ModalProps) {
-  const target = usePortalTarget(open);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const target = usePortalTarget(open, rootRef);
 
   useEffect(() => {
     if (!open) return;
@@ -75,7 +91,7 @@ export function Modal({
   return createPortal(
     // z-[60] fica acima do calendário/dashboard em tela cheia (z-50) — a ordem
     // de empilhamento é explícita, não dependente da ordem no DOM.
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+    <div ref={rootRef} className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div
         className="absolute inset-0 bg-background/80 backdrop-blur-sm"
         onClick={() => dismissible && onClose?.()}

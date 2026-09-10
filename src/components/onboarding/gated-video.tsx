@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Maximize, Minimize, Pause, Play } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 export interface GatedVideoProps {
   /** Caminho público do arquivo (/uploads/...). */
@@ -30,6 +31,11 @@ export interface GatedVideoProps {
  *    nossos e vivem sobrepostos ao vídeo, pedir tela cheia no elemento de
  *    vídeo pintaria só ele: a pessoa ficaria em tela cheia sem botão de pausa
  *    e sem saber quanto falta, e sem os controles nativos para socorrê-la.
+ *
+ *    Esse contêiner é descendente do `Modal`, e é daí que vinha a tela cheia
+ *    que animava sem expandir: o portal do modal seguia o `fullscreenElement`
+ *    para dentro de si mesmo e derrubava o fullscreen. A guarda está em
+ *    `lib/portal-target`.
  *
  * 3. Falha de carregamento não prende ninguém. O arquivo pode ter sumido do
  *    disco; quem chama libera o acesso com aviso, sem marcar como assistido.
@@ -83,9 +89,17 @@ export function GatedVideo({ src, onProgress, onFinished, onFailed, finished }: 
   }, [toggle]);
 
   return (
+    // Em tela cheia o contêiner É a tela: sem moldura, e centralizando o
+    // vídeo em toda a altura disponível — senão ele fica encostado no topo,
+    // com borda arredondada em volta de uma área preta do tamanho do monitor.
     <div
       ref={containerRef}
-      className="relative overflow-hidden rounded-xl border border-border bg-black"
+      className={cn(
+        "relative overflow-hidden bg-black",
+        fullscreen
+          ? "flex h-full w-full items-center justify-center"
+          : "rounded-xl border border-border",
+      )}
     >
       <video
         ref={videoRef}
@@ -93,7 +107,7 @@ export function GatedVideo({ src, onProgress, onFinished, onFailed, finished }: 
         // `max-h` some em tela cheia: ali o vídeo deve ocupar o que tem.
         className={
           fullscreen
-            ? "h-screen w-full object-contain"
+            ? "h-full max-h-full w-full object-contain"
             : "aspect-video max-h-[70vh] w-full object-contain"
         }
         playsInline

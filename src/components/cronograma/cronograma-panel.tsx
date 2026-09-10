@@ -6,7 +6,6 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   ChevronLeft,
   ChevronRight,
-  Download,
   Maximize2,
   Minimize2,
   Plus,
@@ -14,18 +13,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import {
-  BRAND,
-  BRAND_ORDER,
-  PLATFORM,
-  FUNNEL,
-  FUNNEL_ORDER,
-  MONTH_LABEL,
-  STATUS_LABEL,
-  formatsLabel,
-  resolveBrand,
-  resolvePlatforms,
-} from "@/lib/funnel";
+import { BRAND, BRAND_ORDER, FUNNEL, FUNNEL_ORDER, MONTH_LABEL } from "@/lib/funnel";
+import { matchesBrand } from "@/lib/cronograma-filters";
 import { FunnelAreaChart } from "./funnel-area-chart";
 import { FunnelDonut } from "./funnel-donut";
 import { ContentCalendar, type CalendarView } from "./content-calendar";
@@ -33,7 +22,12 @@ import { ProductionBacklog } from "./production-backlog";
 import { PostModal } from "./post-modal";
 import { PostDetailsModal } from "./post-details-modal";
 import { VISIBILITY_HINT, VISIBILITY_LABEL } from "@/lib/cronograma-visibility";
-import type { ContentPostItem, CronogramaData, FunnelStage } from "@/types/cronograma";
+import type {
+  ContentBrand,
+  ContentPostItem,
+  CronogramaData,
+  FunnelStage,
+} from "@/types/cronograma";
 
 export interface CronogramaPanelProps {
   slug: string;
@@ -67,8 +61,13 @@ function todayIso(): string {
  * Ferramenta Cronograma.
  *
  * Ordem da tela: cabeçalho → filtros e legenda → calendário em largura total
- * → gráficos → fila de produção. O calendário é o centro do trabalho diário;
- * os gráficos são leitura de apoio e ficam abaixo dele.
+ * → fila de produção → gráficos. O calendário é o centro do trabalho diário e
+ * o backlog é a lista de execução; os gráficos são leitura de apoio e fecham
+ * a página.
+ *
+ * Dois recortes convivem na faixa de filtros: o de funil, que vale só para o
+ * calendário, e o de marca, que vale para o calendário E para o backlog — as
+ * duas listas de cards da tela.
  *
  * Navegar de mês recarrega a página (dados vêm do servidor); semana e dia são
  * recortes do que já está carregado, sem ida ao servidor.
@@ -82,6 +81,8 @@ export function CronogramaPanel({ slug, data }: CronogramaPanelProps) {
   const [mounted, setMounted] = useState(false);
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const [visible, setVisible] = useState<readonly FunnelStage[]>(FUNNEL_ORDER);
+  /** Recorte por marca. Vazio = sem filtro; ver `lib/cronograma-filters`. */
+  const [brands, setBrands] = useState<readonly ContentBrand[]>([]);
   const [cursor, setCursor] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ContentPostItem | null>(null);
@@ -145,8 +146,21 @@ export function CronogramaPanel({ slug, data }: CronogramaPanelProps) {
   const today = todayIso();
 
   const filteredPosts = useMemo(
-    () => data.posts.filter((post) => visible.includes(post.funnel)),
-    [data.posts, visible],
+    () =>
+      data.posts.filter(
+        (post) => visible.includes(post.funnel) && matchesBrand(post.brand, brands),
+      ),
+    [data.posts, visible, brands],
+  );
+
+  /**
+   * O backlog é a outra lista de cards da tela, então acompanha o recorte por
+   * marca. O filtro de funil continua valendo só para o calendário — é o
+   * comportamento que já existia, e mexer nele não foi pedido.
+   */
+  const filteredBacklog = useMemo(
+    () => data.backlog.filter((post) => matchesBrand(post.brand, brands)),
+    [data.backlog, brands],
   );
 
   // Recorte visível conforme a visão escolhida.
@@ -188,6 +202,15 @@ export function CronogramaPanel({ slug, data }: CronogramaPanelProps) {
     );
   }
 
+  /** Marca clicada entra ou sai do recorte; nenhuma marcada = sem filtro. */
+  function toggleBrand(brand: ContentBrand) {
+    setBrands((prev) =>
+      prev.includes(brand)
+        ? prev.filter((b) => b !== brand)
+        : BRAND_ORDER.filter((b) => prev.includes(b) || b === brand),
+    );
+  }
+
   function openCreate(date?: string) {
     setEditing(null);
     setDraftDate(date ?? days[0] ?? today);
@@ -204,48 +227,6 @@ export function CronogramaPanel({ slug, data }: CronogramaPanelProps) {
     setEditing(post);
     setDraftDate(undefined);
     setModalOpen(true);
-  }
-
-  /** Exportação local em CSV — sem rota extra e sem carregar o servidor. */
-  function exportCsv() {
-    const header = [
-      "Título",
-      "Data",
-      "Hora",
-      "Funil",
-      "Formato",
-      "Redes sociais",
-      "Marca",
-      "Status",
-      "Responsável",
-    ];
-    const rows = filteredPosts.map((post) => [
-      post.title,
-      post.date,
-      post.time,
-      post.funnel,
-      formatsLabel(post.formats, post.formatOther),
-      resolvePlatforms(post.platforms)
-        .map((key) => PLATFORM[key].label)
-        .join(", "),
-      (() => {
-        const key = resolveBrand(post.brand);
-        return key ? BRAND[key].label : "";
-      })(),
-      STATUS_LABEL[post.status],
-      post.owner?.name ?? "",
-    ]);
-    const csv = [header, ...rows]
-      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(";"))
-      .join("\n");
-
-    const blob = new Blob([`﻿${csv}`], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `cronograma-${data.scopeSlug}-${data.year}-${String(data.month).padStart(2, "0")}.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
   }
 
   const rangeLabel =
@@ -379,10 +360,6 @@ export function CronogramaPanel({ slug, data }: CronogramaPanelProps) {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={exportCsv}>
-            <Download className="h-4 w-4" />
-            Exportar
-          </Button>
           {/* Criar é liberado para todos os níveis de acesso. */}
           <Button onClick={() => openCreate()}>
             <Plus className="h-4 w-4" />
@@ -452,20 +429,41 @@ export function CronogramaPanel({ slug, data }: CronogramaPanelProps) {
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Marcas</p>
             <div className="mt-2 flex flex-wrap gap-2">
-              {BRAND_ORDER.map((brand) => (
-                <span
-                  key={brand}
-                  className="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold"
-                  style={{
-                    backgroundColor: BRAND[brand].background,
-                    borderColor: BRAND[brand].border,
-                    color: BRAND[brand].foreground,
-                  }}
-                >
-                  {BRAND[brand].label}
-                </span>
-              ))}
+              {BRAND_ORDER.map((brand) => {
+                const active = brands.includes(brand);
+                return (
+                  <button
+                    key={brand}
+                    type="button"
+                    onClick={() => toggleBrand(brand)}
+                    aria-pressed={active}
+                    className={cn(
+                      "focus-ring inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-colors",
+                      !active && "border-border bg-surface-2 text-muted hover:text-foreground",
+                    )}
+                    // Marca ativa veste as próprias cores; inativa fica cinza,
+                    // como os chips de funil ao lado. O estado precisa ser
+                    // legível sem legenda nova.
+                    style={
+                      active
+                        ? {
+                            backgroundColor: BRAND[brand].background,
+                            borderColor: BRAND[brand].border,
+                            color: BRAND[brand].foreground,
+                          }
+                        : undefined
+                    }
+                  >
+                    {BRAND[brand].label}
+                  </button>
+                );
+              })}
             </div>
+            {brands.length > 0 && (
+              <p className="mt-2 text-[10px] leading-snug text-muted">
+                Cards sem marca continuam visíveis.
+              </p>
+            )}
           </div>
         </div>
       </section>
@@ -489,7 +487,17 @@ export function CronogramaPanel({ slug, data }: CronogramaPanelProps) {
           document.body,
         )}
 
-      {/* Gráficos — leitura de apoio, abaixo do calendário */}
+      {/* Fila de produção — antes dos gráficos: é a lista de execução do dia,
+          e os gráficos são leitura de apoio. */}
+      <section className="rounded-xl border border-border bg-surface p-5">
+        <h3 className="text-sm font-semibold text-foreground">Backlog de Produção</h3>
+        <p className="mb-4 mt-0.5 text-xs text-muted">
+          Posts do mês que ainda não foram publicados.
+        </p>
+        <ProductionBacklog slug={slug} items={filteredBacklog} onSelect={openDetails} />
+      </section>
+
+      {/* Gráficos — leitura de apoio, abaixo do backlog */}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <section className="rounded-xl border border-border bg-surface p-5">
           <h3 className="text-sm font-semibold text-foreground">Volume por Etapa do Funil</h3>
@@ -538,15 +546,6 @@ export function CronogramaPanel({ slug, data }: CronogramaPanelProps) {
           </ul>
         </section>
       </div>
-
-      {/* Fila de produção */}
-      <section className="rounded-xl border border-border bg-surface p-5">
-        <h3 className="text-sm font-semibold text-foreground">Backlog de Produção</h3>
-        <p className="mb-4 mt-0.5 text-xs text-muted">
-          Posts do mês que ainda não foram publicados.
-        </p>
-        <ProductionBacklog slug={slug} items={data.backlog} onSelect={openDetails} />
-      </section>
 
       <PostDetailsModal
         slug={slug}
