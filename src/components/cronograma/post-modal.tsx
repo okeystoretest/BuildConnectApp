@@ -24,11 +24,19 @@ import {
 } from "@/lib/funnel";
 import { PlatformIcon } from "@/components/cronograma/platform-icon";
 import { createContentPost, updateContentPost } from "@/lib/cronograma-actions";
+import {
+  VISIBILITY_HINT,
+  VISIBILITY_LABEL,
+  VISIBILITY_ORDER,
+  VISIBILITY_SHORT,
+  defaultVisibilityForSlug,
+} from "@/lib/cronograma-visibility";
 import type {
   ContentBrand,
   ContentFormat,
   ContentPlatform,
   ContentPostItem,
+  ContentVisibility,
   FunnelStage,
 } from "@/types/cronograma";
 
@@ -79,6 +87,7 @@ export function PostModal({
   const [funnel, setFunnel] = useState<FunnelStage>("TOFU");
   const [formats, setFormats] = useState<readonly ContentFormat[]>(["REEL"]);
   const [brand, setBrand] = useState<ContentBrand | null>(null);
+  const [visibility, setVisibility] = useState<ContentVisibility>("SHARED");
   const [platforms, setPlatforms] = useState<readonly ContentPlatform[]>([]);
   const [formatOther, setFormatOther] = useState("");
   const [notes, setNotes] = useState("");
@@ -95,11 +104,13 @@ export function PostModal({
     // aceita vazio. Cai no padrão para o formulário nunca abrir sem seleção.
     setFormats(post?.formats?.length ? post.formats : ["REEL"]);
     setBrand(post?.brand ?? null);
+    // Editando, o alcance é o do card. Criando, o padrão da aba.
+    setVisibility(post?.visibility ?? defaultVisibilityForSlug(slug));
     setPlatforms(post?.platforms ?? []);
     setFormatOther(post?.formatOther ?? "");
     setNotes(post?.notes ?? "");
     setError(null);
-  }, [open, post, defaultDate]);
+  }, [open, post, defaultDate, slug]);
 
   function handleClose() {
     if (pending) return;
@@ -121,6 +132,7 @@ export function PostModal({
         platforms: PLATFORM_ORDER.filter((option) => platforms.includes(option)),
         formatOther: formats.includes("OUTRO") ? formatOther.trim() : undefined,
         notes: notes.trim() || undefined,
+        visibility,
       };
 
       const res = post
@@ -355,6 +367,40 @@ export function PostModal({
                 Remover marca
               </button>
             )}
+          </div>
+
+          {/* Alcance: quem vai enxergar este card. Fica DEPOIS dos campos do
+              conteúdo porque é decisão de publicação, não de produção — e
+              antes das observações para não passar despercebido no fim. */}
+          <div>
+            <Label>Quem vê este conteúdo</Label>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {VISIBILITY_ORDER.map((option) => {
+                const active = visibility === option;
+                return (
+                  <button
+                    key={option}
+                    type="button"
+                    disabled={readOnly}
+                    onClick={() => setVisibility(option)}
+                    aria-pressed={active}
+                    title={VISIBILITY_HINT[option]}
+                    className={cn(
+                      "focus-ring flex flex-col items-center justify-center gap-0.5 rounded-lg border px-2 py-2.5 text-center transition-colors disabled:opacity-60",
+                      active
+                        ? "border-primary bg-primary/10 text-foreground"
+                        : "border-border bg-surface-2 text-muted hover:text-foreground",
+                    )}
+                  >
+                    <span className="text-xs font-semibold">{VISIBILITY_LABEL[option]}</span>
+                    <span className="text-[10px] leading-tight">{VISIBILITY_SHORT[option]}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1.5 text-[11px] leading-snug text-muted">
+              {VISIBILITY_HINT[visibility]}
+            </p>
           </div>
 
           <div>

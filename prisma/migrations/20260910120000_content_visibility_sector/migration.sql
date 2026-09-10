@@ -1,0 +1,17 @@
+-- Terceiro alcance para o card do Cronograma: SECTOR.
+--
+-- Os três alcances passam a ser:
+--   SHARED  "Público"     — visível nas abas de Marketing, Vendas e Criação;
+--   SECTOR  "Setor"       — visível só na aba onde foi criado (`originSlug`),
+--                           mas para TODOS os usuários dela;
+--   PRIVATE "Somente eu"  — só o autor.
+--
+-- É acréscimo de valor ao enum, não alteração: NENHUMA linha existente é
+-- reescrita. Post do Marketing continua SHARED, e o que Vendas e Criação
+-- criaram continua PRIVATE — a promessa "somente eu" que a tela fez a quem
+-- criou segue valendo. Ninguém troca de alcance sem clicar.
+--
+-- `ALTER TYPE ... ADD VALUE` roda dentro da transação da migration porque o
+-- valor novo não é USADO aqui; usá-lo na mesma transação é que o Postgres
+-- recusa. Por isso esta migration não tem UPDATE algum.
+ALTER TYPE "ContentVisibility" ADD VALUE 'SECTOR';

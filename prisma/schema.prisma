@@ -405,7 +405,12 @@ enum ContentBrand {
 // SHARED  = criado no Marketing: aparece para todos, editável só pelo autor.
 // PRIVATE = criado fora do Marketing: aparece só para o autor (e Admin).
 enum ContentVisibility {
+  // Público: aparece nas abas de Marketing, Vendas e Criação.
   SHARED
+  // Setor: aparece só na aba onde foi criado (`originSlug`), para todos os
+  // usuários dela.
+  SECTOR
+  // Somente eu: apenas o autor enxerga.
   PRIVATE
 }
 

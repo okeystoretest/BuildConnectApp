@@ -349,13 +349,14 @@ export function CronogramaPanel({ slug, data }: CronogramaPanelProps) {
               Base compartilhada com {data.scopeLabel}
             </p>
           )}
-          {/* Deixa explícito o alcance do que for criado nesta aba. */}
+          {/* O alcance passou a ser escolhido nos botões do formulário; aqui
+              fica só o que vem pré-selecionado nesta aba. */}
           <p className="mt-1 text-[11px] text-muted" title={VISIBILITY_HINT[data.authoring]}>
-            Nesta aba, o que você criar fica como{" "}
+            Nesta aba, o novo conteúdo já vem como{" "}
             <span className="font-semibold text-foreground">
               {VISIBILITY_LABEL[data.authoring]}
             </span>
-            .
+            {" "}— dá para trocar ao criar.
           </p>
         </div>
 

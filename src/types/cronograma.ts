@@ -21,7 +21,11 @@ export type ContentPlatform = "INSTAGRAM" | "TIKTOK" | "YOUTUBE";
  * - SHARED: criado no Marketing. Todo mundo vê; só o autor edita.
  * - PRIVATE: criado fora do Marketing. Só o autor vê e edita.
  */
-export type ContentVisibility = "SHARED" | "PRIVATE";
+/**
+ * Alcance do card: "Público" (os três setores), "Setor" (só a aba de origem,
+ * mas para todos os usuários dela) e "Somente eu" (apenas o autor).
+ */
+export type ContentVisibility = "SHARED" | "SECTOR" | "PRIVATE";
 
 export interface PostOwner {
   id: string;

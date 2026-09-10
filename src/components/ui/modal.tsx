@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
-import { resolvePortalTarget } from "@/lib/portal-target";
+import { usePortalTarget } from "./use-portal-target";
 
 export interface ModalProps {
   open: boolean;
@@ -14,49 +14,6 @@ export interface ModalProps {
   className?: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
-}
-
-/**
- * Alvo do portal.
- *
- * Normalmente `document.body`. Mas quando alguma tela está em FULLSCREEN
- * nativo (dashboards e calendário), o navegador só pinta a subárvore do
- * elemento em tela cheia — um modal ancorado no body existiria no DOM e
- * ficaria invisível. Por isso o alvo acompanha `document.fullscreenElement`,
- * reavaliado a cada `fullscreenchange`.
- *
- * A exceção mora em `resolvePortalTarget`: quando quem está em tela cheia é um
- * elemento DE DENTRO do próprio modal (o player dos vídeos de boas-vindas), o
- * portal fica onde está. Segui-lo arrancaria o modal do documento e derrubaria
- * o fullscreen no mesmo instante.
- */
-function usePortalTarget(
-  open: boolean,
-  rootRef: React.RefObject<HTMLDivElement | null>,
-): HTMLElement | null {
-  const [target, setTarget] = useState<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (!open) {
-      setTarget(null);
-      return;
-    }
-    const resolve = () => {
-      const active = document.fullscreenElement;
-      setTarget(
-        resolvePortalTarget(
-          active instanceof HTMLElement ? active : null,
-          rootRef.current,
-          document.body,
-        ),
-      );
-    };
-    resolve();
-    document.addEventListener("fullscreenchange", resolve);
-    return () => document.removeEventListener("fullscreenchange", resolve);
-  }, [open, rootRef]);
-
-  return target;
 }
 
 export function Modal({

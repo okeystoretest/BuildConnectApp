@@ -1,7 +1,11 @@
 import { prisma } from "@/lib/db/prisma";
 import { resolveAppScope } from "@/lib/app-scope";
 import { FUNNEL_ORDER, MONTH_LABEL, WEEKDAY_SHORT } from "@/lib/funnel";
-import { visibilityForSlug } from "@/lib/cronograma-visibility";
+import {
+  canViewInTab,
+  defaultVisibilityForSlug,
+  visibilityWhere,
+} from "@/lib/cronograma-visibility";
 import type { Role } from "@/types";
 import type {
   ContentFormat,
@@ -109,16 +113,20 @@ export function canDeletePost(
   return canEditPost(createdById, userId, role);
 }
 
-/** Quem pode enxergar o post — espelho do filtro aplicado na consulta. */
+/**
+ * Quem pode enxergar o post. Delega para `cronograma-visibility`, que é onde
+ * a regra e a cláusula de consulta ficam lado a lado — este arquivo não tem
+ * uma segunda cópia da política.
+ */
 export function canViewPost(
   visibility: ContentVisibility,
+  originSlug: string | null,
   createdById: string | null,
   userId: string,
   role: Role,
+  slug: string,
 ): boolean {
-  if (visibility === "SHARED") return true;
-  if (role === "ADMIN") return true;
-  return createdById !== null && createdById === userId;
+  return canViewInTab({ visibility, originSlug, createdById }, { id: userId, role }, slug);
 }
 
 function toItem(row: PostRow, userId: string, role: Role): ContentPostItem {
@@ -167,13 +175,11 @@ export async function getCronogramaData(
   const rangeEnd = new Date(gridEnd(year, month).getTime() + CELL_MS);
 
   /**
-   * Alcance na consulta: post do Marketing é de todos; post privado só
-   * aparece para o próprio autor. Admin lê tudo.
+   * Alcance na consulta — a MESMA regra de `canViewInTab`, em cláusula. O
+   * filtro é aplicado aqui, e não na UI: o que não pode ser visto nem chega
+   * ao cliente.
    */
-  const visibilityWhere =
-    role === "ADMIN"
-      ? {}
-      : { OR: [{ visibility: "SHARED" as const }, { createdById: userId }] };
+  const scopeWhere = visibilityWhere(slug, { id: userId, role });
 
   // A lista de responsáveis selecionáveis deixou de ser consultada: o
   // formulário não pergunta mais quem é o responsável — é sempre quem criou.
@@ -181,7 +187,7 @@ export async function getCronogramaData(
     where: {
       subsectorId: scope.id,
       scheduledAt: { gte: rangeStart, lt: rangeEnd },
-      ...visibilityWhere,
+      ...scopeWhere,
     },
     orderBy: { scheduledAt: "asc" },
     select: {
@@ -240,8 +246,8 @@ export async function getCronogramaData(
     scopeSlug: scope.slug,
     scopeLabel: scope.label,
     inherited: scope.inherited,
-    // A aba de origem define o alcance do que for criado agora.
-    authoring: visibilityForSlug(slug),
+    // Alcance PRÉ-SELECIONADO no formulário desta aba. Quem cria escolhe.
+    authoring: defaultVisibilityForSlug(slug),
     month,
     year,
     monthLabel: `${MONTH_LABEL[month - 1] ?? ""} ${year}`,

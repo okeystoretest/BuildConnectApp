@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ExternalLink, FileText, VideoOff, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { usePortalTarget } from "@/components/ui/use-portal-target";
 import type { VideoItem } from "@/types/sector";
 
 export interface VideoModalProps {
@@ -21,6 +23,8 @@ export interface VideoModalProps {
  */
 export function VideoModal({ video, open, onClose }: VideoModalProps) {
   const [showTranscript, setShowTranscript] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const target = usePortalTarget(open, rootRef);
 
   // Fecha com ESC e trava o scroll do body enquanto aberto.
   useEffect(() => {
@@ -42,25 +46,32 @@ export function VideoModal({ video, open, onClose }: VideoModalProps) {
     if (!open) setShowTranscript(false);
   }, [open]);
 
-  if (!open) return null;
+  if (!open || !target) return null;
 
   const hasTranscript = Boolean(video.transcriptText?.trim());
   const hasInstruction = Boolean(video.instructionPath);
 
   /*
-   * `items-center` junto com `overflow-y-auto` NO MESMO elemento era o que
-   * cortava a tela: quando o conteúdo passa da altura da janela, a
+   * O overlay VAI POR PORTAL, e isso não é detalhe de organização: era a
+   * causa do modal aparecer cortado, preso a um retângulo com barra de
+   * rolagem própria. Renderizado onde o card mora, ele fica dentro do
+   * `TabPanel`, que leva `animate-tab-in` — e essa animação usa
+   * `animation-fill-mode: both`, então o `transform: translateY(0)` do último
+   * quadro PERMANECE no elemento. Ancestral com `transform` vira bloco
+   * contentor, e `position: fixed` passa a medir contra o painel da aba em
+   * vez da janela. A mesma armadilha está descrita em `it-dashboard.tsx`.
+   *
+   * `items-center` junto com `overflow-y-auto` NO MESMO elemento cortava a
+   * tela de outro jeito: quando o conteúdo passa da altura da janela, a
    * centralização empurra o topo para FORA da área rolável, e a barra não
    * alcança o que ficou acima — cabeçalho e começo do player ficavam
-   * inacessíveis. Por isso o corte só aparecia em tela baixa ou com a
-   * transcrição aberta, que é o que torna o conteúdo alto.
-   *
-   * A rolagem ficou no elemento de fora; a centralização foi para o invólucro
-   * de dentro, com `min-h-full`: centraliza quando cabe, e vira topo-alinhado
-   * com rolagem quando não cabe.
+   * inacessíveis. Por isso a rolagem fica no elemento de fora e a
+   * centralização no invólucro de dentro, com `min-h-full`: centraliza quando
+   * cabe, e vira topo-alinhado com rolagem quando não cabe.
    */
-  return (
+  return createPortal(
     <div
+      ref={rootRef}
       role="dialog"
       aria-modal="true"
       aria-label={`Vídeo: ${video.title}`}
@@ -162,6 +173,7 @@ export function VideoModal({ video, open, onClose }: VideoModalProps) {
         </div>
         </div>
       </div>
-    </div>
+    </div>,
+    target,
   );
 }

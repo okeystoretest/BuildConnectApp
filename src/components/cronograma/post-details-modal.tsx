@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Building2,
   CalendarDays,
   Clock,
   Loader2,
@@ -173,7 +174,8 @@ export function PostDetailsModal({ slug, open, post, onClose, onEdit }: PostDeta
           )}
         </div>
 
-        {/* Alcance: quem enxerga esta atividade */}
+        {/* Alcance: quem enxerga esta atividade. Três estados — público
+            chama atenção; setor e pessoal ficam discretos. */}
         <div
           className={cn(
             "mt-4 rounded-lg border p-3",
@@ -185,6 +187,8 @@ export function PostDetailsModal({ slug, open, post, onClose, onEdit }: PostDeta
           <p className="flex items-center gap-1.5 text-xs font-semibold text-foreground">
             {post.visibility === "SHARED" ? (
               <Users className="h-3.5 w-3.5" />
+            ) : post.visibility === "SECTOR" ? (
+              <Building2 className="h-3.5 w-3.5" />
             ) : (
               <Lock className="h-3.5 w-3.5" />
             )}

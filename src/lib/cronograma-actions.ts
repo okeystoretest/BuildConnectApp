@@ -7,7 +7,7 @@ import { getCurrentUser } from "@/lib/auth/require-user";
 import { resolveAccessibleSlugs, canAccessSlug } from "@/lib/auth/access";
 import { resolveAppScope } from "@/lib/app-scope";
 import { toScheduledDate, canEditPost, canDeletePost } from "@/lib/cronograma-data";
-import { visibilityForSlug } from "@/lib/cronograma-visibility";
+import { defaultVisibilityForSlug } from "@/lib/cronograma-visibility";
 import type { Role } from "@/types";
 
 export interface ActionResult {
@@ -48,6 +48,9 @@ const postSchema = z.object({
   // entre os escolhidos.
   formatOther: z.string().trim().max(60, "Descrição do formato muito longa.").optional(),
   brand: z.enum(["OKEY", "LOV_CLUB"]).optional(),
+  // Alcance escolhido nos botões do formulário. Ausente = o padrão da aba,
+  // para que uma chamada antiga não vire um card público sem querer.
+  visibility: z.enum(["SHARED", "SECTOR", "PRIVATE"]).optional(),
   // Seleção múltipla: o post pode ir ao ar em mais de uma rede.
   platforms: z.array(z.enum(["INSTAGRAM", "TIKTOK", "YOUTUBE"])).max(3).optional(),
   notes: z.string().trim().max(500, "Observação muito longa.").optional(),
@@ -96,7 +99,7 @@ async function requireAuthor(postId: string, scopeId: string, user: { id: string
       post: null,
       error:
         post.visibility === "SHARED"
-          ? "Atividade do Marketing: apenas o autor pode alterá-la."
+          ? "Atividade pública: apenas o autor pode alterá-la."
           : "Só o autor do conteúdo pode editá-lo.",
     };
   }
@@ -174,8 +177,10 @@ export async function createContentPost(input: ContentPostInput): Promise<Action
         // formulário não pergunta mais.
         ownerId: user.id,
         createdById: user.id,
-        // Alcance derivado da aba de origem — nunca vem do cliente.
-        visibility: visibilityForSlug(data.slug),
+        // Alcance escolhido no formulário; sem escolha, o padrão da aba.
+        // `originSlug` é o que dá sentido a SECTOR — ele, sim, nunca vem do
+        // cliente, senão bastaria forjá-lo para ler a aba dos outros.
+        visibility: data.visibility ?? defaultVisibilityForSlug(data.slug),
         originSlug: data.slug,
       },
     });
@@ -212,8 +217,13 @@ export async function updateContentPost(
   try {
     // O filtro por subsectorId impede editar post de outro escopo pela action.
     //
+    // `visibility` passou a ser editável: os botões de alcance aparecem
+    // também na edição, e só o autor (ou o Admin) chega a esta tela.
+    //
     // Ficam DE FORA, e cada um por um motivo:
-    //  - `visibility` e `originSlug`: alcance não se edita;
+    //  - `originSlug`: a aba de origem é fato consumado, não preferência. É
+    //    ela que define quem vê um card SECTOR, então reescrevê-la seria
+    //    mudar de setor um card alheio;
     //  - `status`: o campo saiu do formulário. Se ele continuasse sendo
     //    gravado a partir daqui, corrigir o título de um post PUBLICADO o
     //    devolveria para "Ideia";
@@ -227,6 +237,7 @@ export async function updateContentPost(
         brand: data.brand ?? null,
         ...contentFields(data),
         notes: data.notes || null,
+        ...(data.visibility ? { visibility: data.visibility } : {}),
       },
     });
     if (result.count === 0) return { ok: false, error: "Post não encontrado." };
