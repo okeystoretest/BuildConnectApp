@@ -77,22 +77,26 @@ export function TicketCard({
         </div>
       </div>
 
-      <h3 className="mt-2 text-sm font-semibold leading-snug text-foreground">{ticket.title}</h3>
+      {/* Nada trunca no card: o texto quebra linha e o card cresce. A largura
+          vem do container amplo da aba (AppShell wide), que acompanha a sidebar. */}
+      <h3 className="mt-2 break-words text-sm font-semibold leading-snug text-foreground">
+        {ticket.title}
+      </h3>
 
       <div className="mt-3 flex items-center gap-2">
         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent/20 text-[9px] font-semibold text-accent">
           {initials(ticket.requesterName)}
         </span>
         <div className="min-w-0">
-          <p className="truncate text-xs font-medium text-foreground">{ticket.requesterName}</p>
-          <p className="truncate text-[10px] text-muted">
+          <p className="break-words text-xs font-medium text-foreground">{ticket.requesterName}</p>
+          <p className="break-words text-[10px] text-muted">
             {ticket.requesterUnit} · {ticket.requesterSector}
           </p>
         </div>
       </div>
 
       {ticket.assignee && (
-        <p className="mt-2 truncate text-[11px] text-muted">
+        <p className="mt-2 break-words text-[11px] text-muted">
           Responsável: <span className="text-foreground">{ticket.assignee}</span>
         </p>
       )}

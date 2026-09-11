@@ -96,7 +96,13 @@ export function ItSectorView({
   );
 
   return (
-    <AppShell eyebrow="Setores · Retaguarda" title="Retaguarda">
+    <AppShell
+      eyebrow="Setores · Retaguarda"
+      title="Retaguarda"
+      // Só o quadro de Chamados ocupa a tela toda — como o Cronograma: a
+      // largura das colunas cresce quando a barra lateral é recolhida.
+      wide={active === "chamados"}
+    >
       <PageHeader
         title="Retaguarda"
         description="Gestão de chamados e conteúdos do setor de Retaguarda."
