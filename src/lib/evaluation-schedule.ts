@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { notifyCycleAvailable } from "@/lib/whatsapp/notify";
 import { addBusinessDays, holidaySet } from "@/lib/business-days";
+import { isPreEfetivoRequired, PRE_EFETIVO_SUBJECT_WHERE } from "@/lib/pre-efetivo-cutoff";
 
 /**
  * Motor de ciclos do Acompanhamento Pré-Efetivo.
@@ -10,6 +11,9 @@ import { addBusinessDays, holidaySet } from "@/lib/business-days";
  *  - Ciclo 1: 7 dias úteis após o cadastro do colaborador (User.createdAt).
  *  - Ciclo 2: 7 dias úteis após a CONCLUSÃO do ciclo 1.
  *  - Ciclo 3: 7 dias úteis após a CONCLUSÃO do ciclo 2.
+ *
+ * Só para quem foi cadastrado a partir do corte (ver pre-efetivo-cutoff.ts):
+ * antes dele, nem agenda, nem liberação, nem aviso.
  *
  * Como não há cron garantido na VPS, a liberação é feita por uma varredura
  * idempotente (`sweepAvailability`) chamada:
@@ -35,21 +39,24 @@ async function getPreEfetivoType() {
  * se já existir, apenas retorna. A âncora é `User.createdAt` (data de cadastro).
  * Apenas o ciclo 1 nasce com `availableAt` calculado; 2 e 3 recebem uma data
  * provisória e são recalculados na conclusão do ciclo anterior.
+ *
+ * Quem foi cadastrado antes do corte sai daqui sem agenda — e é a data de
+ * cadastro que decide, não a data de hoje.
  */
 export async function ensureCycleSchedule(subjectId: string): Promise<void> {
   const type = await getPreEfetivoType();
   if (!type) return;
 
-  const existing = await prisma.evaluationCycle.count({
-    where: { subjectId, typeId: type.id },
-  });
-  if (existing > 0) return;
-
   const subject = await prisma.user.findUnique({
     where: { id: subjectId },
     select: { createdAt: true, role: true },
   });
-  if (!subject) return;
+  if (!subject || !isPreEfetivoRequired(subject.createdAt)) return;
+
+  const existing = await prisma.evaluationCycle.count({
+    where: { subjectId, typeId: type.id },
+  });
+  if (existing > 0) return;
 
   const holidays = await loadHolidaySet();
   const c1 = addBusinessDays(subject.createdAt, BUSINESS_DAYS_PER_CYCLE, holidays);
@@ -88,9 +95,14 @@ export async function sweepAvailability(now: Date = new Date()): Promise<number>
   const type = await getPreEfetivoType();
   if (!type) return 0;
 
-  // Candidatos: agendados com data vencida.
+  // Candidatos: agendados com data vencida, de quem passa pela regra.
   const due = await prisma.evaluationCycle.findMany({
-    where: { typeId: type.id, status: "AGENDADO", availableAt: { lte: now } },
+    where: {
+      typeId: type.id,
+      status: "AGENDADO",
+      availableAt: { lte: now },
+      subject: PRE_EFETIVO_SUBJECT_WHERE,
+    },
     include: {
       subject: {
         select: { id: true, fullName: true, sectorId: true },

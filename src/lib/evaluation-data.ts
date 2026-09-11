@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { PRE_EFETIVO_SUBJECT_WHERE } from "@/lib/pre-efetivo-cutoff";
 import { sweepAvailability } from "@/lib/evaluation-schedule";
 import { MULTI_RATER_SLUGS } from "@/lib/evaluation-rounds-config";
 import type {
@@ -148,9 +149,11 @@ export async function getPendingEvaluations(
   const cycles = await prisma.evaluationCycle.findMany({
     where: {
       status: "DISPONIVEL",
-      ...(sectors && sectors.length > 0
-        ? { subject: { sector: { label: { in: sectors } } } }
-        : {}),
+      subject: {
+        active: true,
+        ...PRE_EFETIVO_SUBJECT_WHERE,
+        ...(sectors && sectors.length > 0 ? { sector: { label: { in: sectors } } } : {}),
+      },
     },
     orderBy: [{ availableAt: "asc" }],
     include: {
@@ -182,6 +185,7 @@ export async function getSubjectCycles(sectors?: string[] | null): Promise<Subje
   const subjects = await prisma.user.findMany({
     where: {
       active: true,
+      ...PRE_EFETIVO_SUBJECT_WHERE,
       evaluationCycles: { some: {} },
       ...(sectors && sectors.length > 0 ? { sector: { label: { in: sectors } } } : {}),
     },

@@ -262,7 +262,7 @@ export function UserManagementPanel({ users }: { users: readonly ManagedUser[] }
         open={pendingDelete !== null}
         onClose={() => setPendingDelete(null)}
         title="Remover usuário"
-        description="Esta ação desativa o acesso do colaborador à plataforma."
+        description="Exclusão definitiva: o cadastro, as avaliações, os chamados e todo o histórico do colaborador são apagados e não podem ser recuperados."
         className="max-w-md"
         footer={
           <div className="flex justify-end gap-2">

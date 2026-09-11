@@ -560,8 +560,11 @@ model Ticket {
   title       String
   description String?
 
+  // Cascade: excluir um usuário é apagar tudo dele, chamados inclusive
+  // (ver deleteUser). Sem isto o banco recusaria a exclusão de quem já abriu
+  // um chamado.
   requesterId String
-  requester   User   @relation("TicketRequester", fields: [requesterId], references: [id])
+  requester   User   @relation("TicketRequester", fields: [requesterId], references: [id], onDelete: Cascade)
 
   assigneeId String?
   assignee   User?   @relation("TicketAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
@@ -1202,9 +1205,10 @@ model FormResponse {
   formId String
   form   Form   @relation(fields: [formId], references: [id], onDelete: Cascade)
 
-  // null quando o formulário é anônimo.
+  // null quando o formulário é anônimo. Cascade, e não SetNull: a resposta
+  // de quem foi excluído vai junto — nada do usuário fica para trás.
   respondentId String?
-  respondent   User?   @relation("FormRespondent", fields: [respondentId], references: [id], onDelete: SetNull)
+  respondent   User?   @relation("FormRespondent", fields: [respondentId], references: [id], onDelete: Cascade)
 
   submittedAt DateTime @default(now())
 

@@ -12,6 +12,7 @@ import { can } from "@/lib/permissions";
 import type { Role } from "@/types";
 import { processAndStoreImage, ImageProcessingError } from "@/lib/storage/images";
 import { removeFile } from "@/lib/storage/files";
+import { toAbsolutePath } from "@/lib/storage/config";
 import { ensureCycleSchedule } from "@/lib/evaluation-schedule";
 import { USERNAME_PATTERN, MIN_PASSWORD_LENGTH } from "@/types/user-form";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
@@ -291,9 +292,22 @@ export async function updateUser(formData: FormData): Promise<UserActionResult> 
 }
 
 // ──────────────────────────────────────────────
-// Remover usuário (desativa o acesso)
+// Excluir usuário (apaga de verdade)
 // ──────────────────────────────────────────────
 
+/**
+ * Exclusão física. Nada do usuário fica para trás: o registro sai do banco e
+ * o cascade leva o que é dele — avaliações recebidas, ciclos e rodadas do
+ * Pré-Efetivo, designações como avaliador, chamados que abriu (com imagens e
+ * viagens), progresso de conteúdo, atribuições e respostas de formulário,
+ * notificações e mensagens de WhatsApp. O que era de OUTRA pessoa e só
+ * apontava para ele (avaliação que ele deu, denúncia contra ele, card do
+ * cronograma que ele criou) perde a referência e continua.
+ *
+ * Os arquivos em disco (avatar, imagens e comprovantes dos chamados dele) são
+ * removidos DEPOIS que o banco confirmou: falhar na exclusão e ficar sem os
+ * arquivos seria o pior dos dois mundos.
+ */
 export async function deleteUser(id: string): Promise<UserActionResult> {
   const { actor, error } = await requireManager();
   if (!actor) return { ok: false, error: error ?? undefined };
@@ -303,12 +317,33 @@ export async function deleteUser(id: string): Promise<UserActionResult> {
   }
 
   try {
-    // Soft delete: desativa em vez de apagar — preserva histórico de chamados
-    // etc. A versão de sessão sobe junto: quem estava logado cai na hora.
-    await prisma.user.update({
+    const target = await prisma.user.findUnique({
       where: { id },
-      data: { active: false, sessionVersion: { increment: 1 } },
+      select: {
+        avatarPath: true,
+        requestedTickets: {
+          select: { proofPath: true, images: { select: { filePath: true } } },
+        },
+      },
     });
+    if (!target) return { ok: false, error: "Usuário não encontrado." };
+
+    await prisma.user.delete({ where: { id } });
+
+    const paths = [
+      ...(target.avatarPath ? [target.avatarPath] : []),
+      ...target.requestedTickets.flatMap((t) => [
+        ...(t.proofPath ? [t.proofPath] : []),
+        ...t.images.map((i) => i.filePath),
+      ]),
+    ];
+    await Promise.allSettled(
+      paths.map((p) => {
+        const abs = toAbsolutePath(p);
+        return abs ? removeFile(abs) : Promise.resolve();
+      }),
+    );
+
     revalidatePath("/setores/rh");
     return { ok: true };
   } catch (e) {
