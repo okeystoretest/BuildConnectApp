@@ -30,24 +30,53 @@ interface TabDef extends TabItem {
   uploadLabel?: string;
 }
 
+// Vitrine não tem Aplicativos: a ferramenta foi retirada das duas vitrines
+// (OKEY e Lov Club). Os atalhos continuam no banco; só a aba saiu.
 const VITRINE_TABS: readonly TabDef[] = [
   { id: "fotos", label: "Fotos da Coleção", uploadLabel: "Enviar foto" },
   { id: "videos", label: "Vídeos da Coleção", uploadLabel: "Enviar vídeo" },
   { id: "workshop", label: "Workshop", uploadLabel: "Enviar workshop" },
-  // Aplicativos é consulta: visível para todos. Criar/editar seguem no painel.
-  { id: "sites", label: "Aplicativos" },
 ];
 
-const PADRAO_TABS: readonly TabDef[] = [
-  { id: "instrucoes-video", label: "Instruções em Vídeo", uploadLabel: "Enviar vídeo" },
-  { id: "documentos", label: "Documentos", uploadLabel: "Enviar documento" },
-  { id: "avaliacoes", label: "Avaliações", permission: "evaluations.view" },
-  // Aplicativos é consulta: visível para todos. Criar/editar seguem no painel.
-  { id: "sites", label: "Aplicativos" },
-];
-
+const INSTRUCOES_TAB: TabDef = {
+  id: "instrucoes-video",
+  label: "Instruções em Vídeo",
+  uploadLabel: "Enviar vídeo",
+};
+const DOCUMENTOS_TAB: TabDef = {
+  id: "documentos",
+  label: "Documentos",
+  uploadLabel: "Enviar documento",
+};
+const AVALIACOES_TAB: TabDef = {
+  id: "avaliacoes",
+  label: "Avaliações",
+  permission: "evaluations.view",
+};
+// Aplicativos é consulta: visível para todos. Criar/editar seguem no painel.
+const SITES_TAB: TabDef = { id: "sites", label: "Aplicativos" };
 /** Aba da ferramenta Cronograma — só entra quando o subsetor a habilita. */
 const CRONOGRAMA_TAB: TabDef = { id: "cronograma", label: "Cronograma" };
+
+const PADRAO_TABS: readonly TabDef[] = [
+  INSTRUCOES_TAB,
+  DOCUMENTOS_TAB,
+  AVALIACOES_TAB,
+  SITES_TAB,
+];
+
+/**
+ * Ordem própria dos subsetores com Cronograma (Vendas e Marketing): a
+ * ferramenta vem logo depois das instruções, e Aplicativos sobe para antes de
+ * Avaliações e Documentos. Os demais setores padrão mantêm PADRAO_TABS.
+ */
+const CRONOGRAMA_LAYOUT_TABS: readonly TabDef[] = [
+  INSTRUCOES_TAB,
+  CRONOGRAMA_TAB,
+  SITES_TAB,
+  AVALIACOES_TAB,
+  DOCUMENTOS_TAB,
+];
 
 /** Abas que aceitam filtros por pílula. */
 const FILTERABLE: readonly TabId[] = ["instrucoes-video"];
@@ -69,10 +98,17 @@ export function SectorPage({
   const { can } = useRole();
 
   const tabs = useMemo(() => {
-    const source = sector.kind === "VITRINE" ? VITRINE_TABS : PADRAO_TABS;
-    const visible = source.filter((tab) => !tab.permission || can(tab.permission));
-    // A ferramenta entra como última aba, sem deslocar as abas de conteúdo.
-    return cronograma ? [...visible, CRONOGRAMA_TAB] : visible;
+    const source =
+      sector.kind === "VITRINE"
+        ? // Vitrine com Cronograma não existe hoje; se vier a existir, a
+          // ferramenta entra por último, sem deslocar as abas de conteúdo.
+          cronograma
+          ? [...VITRINE_TABS, CRONOGRAMA_TAB]
+          : VITRINE_TABS
+        : cronograma
+          ? CRONOGRAMA_LAYOUT_TABS
+          : PADRAO_TABS;
+    return source.filter((tab) => !tab.permission || can(tab.permission));
   }, [sector.kind, can, cronograma]);
 
   const [active, setActive] = useState<TabId>(() => {
