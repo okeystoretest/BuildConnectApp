@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Building2,
@@ -34,6 +34,7 @@ import {
 import { PlatformIcon } from "@/components/cronograma/platform-icon";
 import { VISIBILITY_HINT, VISIBILITY_LABEL } from "@/lib/cronograma-visibility";
 import { deleteContentPost } from "@/lib/cronograma-actions";
+import { GenerateScriptButton, PostScript } from "./post-script";
 import type { ContentPostItem } from "@/types/cronograma";
 
 export interface PostDetailsModalProps {
@@ -43,6 +44,8 @@ export interface PostDetailsModalProps {
   onClose: () => void;
   /** Abre o formulário de edição para este post. */
   onEdit: (post: ContentPostItem) => void;
+  /** Há chave do Gemini salva? Liga o botão "Roteiro" e a seção de roteiro. */
+  aiReady: boolean;
 }
 
 function formatDate(iso: string): string {
@@ -78,11 +81,23 @@ function Field({
  * aparecem para quem a Server Action de fato autoriza (`canEdit`/`canDelete`,
  * resolvidos no servidor: dono do card ou Admin).
  */
-export function PostDetailsModal({ slug, open, post, onClose, onEdit }: PostDetailsModalProps) {
+export function PostDetailsModal({
+  slug,
+  open,
+  post,
+  onClose,
+  onEdit,
+  aiReady,
+}: PostDetailsModalProps) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  // Gerar/salvar roteiro acontece dentro de PostScript; o modal só precisa
+  // saber que algo está rodando para travar Fechar/Editar/Excluir.
+  const [scriptBusy, setScriptBusy] = useState(false);
+  const onBusyChange = useCallback((busy: boolean) => setScriptBusy(busy), []);
+  const anyPending = pending || scriptBusy;
 
   useEffect(() => {
     if (!open) return;
@@ -97,7 +112,7 @@ export function PostDetailsModal({ slug, open, post, onClose, onEdit }: PostDeta
   const platformKeys = resolvePlatforms(post.platforms);
 
   function handleClose() {
-    if (pending) return;
+    if (anyPending) return;
     onClose();
   }
 
@@ -246,6 +261,14 @@ export function PostDetailsModal({ slug, open, post, onClose, onEdit }: PostDeta
           )}
         </div>
 
+        <PostScript
+          slug={slug}
+          post={post}
+          aiReady={aiReady}
+          busy={anyPending}
+          onBusyChange={onBusyChange}
+        />
+
         {error && <p className="mt-3 text-xs text-danger">{error}</p>}
 
         <div className="mt-6 flex items-center justify-between gap-3">
@@ -253,7 +276,7 @@ export function PostDetailsModal({ slug, open, post, onClose, onEdit }: PostDeta
             <Button
               variant="secondary"
               onClick={() => setConfirming(true)}
-              disabled={pending}
+              disabled={anyPending}
               className="h-11 text-danger"
             >
               <Trash2 className="h-4 w-4" />
@@ -264,11 +287,19 @@ export function PostDetailsModal({ slug, open, post, onClose, onEdit }: PostDeta
           )}
 
           <div className="flex gap-3">
-            <Button variant="secondary" onClick={handleClose} disabled={pending} className="h-11">
+            <Button variant="secondary" onClick={handleClose} disabled={anyPending} className="h-11">
               Fechar
             </Button>
+            <GenerateScriptButton
+              slug={slug}
+              post={post}
+              aiReady={aiReady}
+              busy={anyPending}
+              onBusyChange={onBusyChange}
+              onError={setError}
+            />
             {post.canEdit && (
-              <Button onClick={() => onEdit(post)} disabled={pending} className="h-11">
+              <Button onClick={() => onEdit(post)} disabled={anyPending} className="h-11">
                 <Pencil className="h-4 w-4" />
                 Editar
               </Button>
@@ -282,10 +313,10 @@ export function PostDetailsModal({ slug, open, post, onClose, onEdit }: PostDeta
               Excluir <span className="font-semibold">{post.title}</span> do cronograma?
             </p>
             <div className="mt-3 flex justify-end gap-2">
-              <Button variant="secondary" onClick={() => setConfirming(false)} disabled={pending}>
+              <Button variant="secondary" onClick={() => setConfirming(false)} disabled={anyPending}>
                 Manter
               </Button>
-              <Button variant="danger" onClick={remove} disabled={pending}>
+              <Button variant="danger" onClick={remove} disabled={anyPending}>
                 {pending && <Loader2 className="h-4 w-4 animate-spin" />}
                 Excluir
               </Button>

@@ -554,6 +554,7 @@ export function CronogramaPanel({ slug, data }: CronogramaPanelProps) {
         post={detailsPost}
         onClose={() => setDetailsId(null)}
         onEdit={openEdit}
+        aiReady={data.aiReady}
       />
 
       <PostModal
