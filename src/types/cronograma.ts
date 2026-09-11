@@ -66,6 +66,12 @@ export interface ContentPostItem {
   canEdit: boolean;
   /** Excluir segue a mesma regra de editar: autor ou Admin. */
   canDelete: boolean;
+  /** Roteiro gerado pela IA (ou editado à mão). Ausente = nunca gerado. */
+  script?: string;
+  /** ISO de quando o roteiro foi gerado/editado por último. */
+  scriptUpdatedAt?: string;
+  /** Quem gerou/editou o roteiro por último, para o rodapé da seção. */
+  scriptAuthorName?: string;
 }
 
 /** Um ponto do gráfico de volume (um dia da semana). */
@@ -93,6 +99,11 @@ export interface CronogramaData {
    * visível para todos. Fora dela, o post nasce privado.
    */
   authoring: ContentVisibility;
+  /**
+   * Há chave do Gemini salva na Retaguarda? Liga o botão "Roteiro" nos
+   * cards. Sem chave, nada de IA aparece — nem botão, nem seção vazia.
+   */
+  aiReady: boolean;
   /** Mês exibido (1–12) e ano. */
   month: number;
   year: number;

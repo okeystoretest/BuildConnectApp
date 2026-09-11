@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { resolveAppScope } from "@/lib/app-scope";
+import { isAiReady } from "@/lib/ai/settings-data";
 import { FUNNEL_ORDER, MONTH_LABEL, WEEKDAY_SHORT } from "@/lib/funnel";
 import {
   canViewInTab,
@@ -83,6 +84,9 @@ interface PostRow {
   createdById: string | null;
   createdBy: { fullName: string } | null;
   owner: { id: string; fullName: string; avatarPath: string | null } | null;
+  script: string | null;
+  scriptUpdatedAt: Date | null;
+  scriptBy: { fullName: string } | null;
 }
 
 /**
@@ -155,6 +159,9 @@ function toItem(row: PostRow, userId: string, role: Role): ContentPostItem {
     originSlug: row.originSlug ?? undefined,
     canEdit: canEditPost(row.createdById, userId, role),
     canDelete: canDeletePost(row.createdById, userId, role),
+    script: row.script ?? undefined,
+    scriptUpdatedAt: row.scriptUpdatedAt?.toISOString(),
+    scriptAuthorName: row.scriptBy?.fullName ?? undefined,
   };
 }
 
@@ -165,7 +172,7 @@ export async function getCronogramaData(
   userId: string,
   role: Role,
 ): Promise<CronogramaData | null> {
-  const scope = await resolveAppScope(slug);
+  const [scope, aiReady] = await Promise.all([resolveAppScope(slug), isAiReady()]);
   if (!scope || !scope.scheduleEnabled) return null;
 
   const monthStart = new Date(Date.UTC(year, month - 1, 1));
@@ -206,6 +213,9 @@ export async function getCronogramaData(
       createdById: true,
       createdBy: { select: { fullName: true } },
       owner: { select: { id: true, fullName: true, avatarPath: true } },
+      script: true,
+      scriptUpdatedAt: true,
+      scriptBy: { select: { fullName: true } },
     },
   });
 
@@ -248,6 +258,7 @@ export async function getCronogramaData(
     inherited: scope.inherited,
     // Alcance PRÉ-SELECIONADO no formulário desta aba. Quem cria escolhe.
     authoring: defaultVisibilityForSlug(slug),
+    aiReady,
     month,
     year,
     monthLabel: `${MONTH_LABEL[month - 1] ?? ""} ${year}`,
