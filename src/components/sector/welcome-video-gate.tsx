@@ -38,10 +38,25 @@ export function WelcomeVideoGate({ slug, sectorLabel, path, title }: WelcomeVide
   const [finished, setFinished] = useState(false);
   const [failed, setFailed] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
+  /**
+   * O portão só fecha DEPOIS que a visualização foi gravada. Antes, o
+   * resultado era ignorado: uma falha (sessão vencida, banco fora) fechava o
+   * modal do mesmo jeito e o vídeo voltava na próxima visita — para a pessoa,
+   * "assisti e apareceu de novo".
+   */
   async function enter() {
     setSaving(true);
-    if (!failed) await markWelcomeVideoWatched(slug);
+    setSaveError(null);
+    if (!failed) {
+      const res = await markWelcomeVideoWatched(slug);
+      if (!res.ok) {
+        setSaving(false);
+        setSaveError(res.error ?? "Não foi possível registrar a visualização.");
+        return;
+      }
+    }
     setSaving(false);
     setOpen(false);
   }
@@ -64,16 +79,18 @@ export function WelcomeVideoGate({ slug, sectorLabel, path, title }: WelcomeVide
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="flex-1">
             <Progress value={progress} label="Progresso do vídeo" />
-            <p className="mt-1.5 text-xs text-muted">
-              {failed
-                ? "Não foi possível carregar o vídeo."
-                : finished
-                  ? "Vídeo concluído."
-                  : `${Math.round(progress)}% assistido`}
+            <p className={saveError ? "mt-1.5 text-xs text-danger" : "mt-1.5 text-xs text-muted"}>
+              {saveError
+                ? `${saveError} Tente de novo.`
+                : failed
+                  ? "Não foi possível carregar o vídeo."
+                  : finished
+                    ? "Vídeo concluído."
+                    : `${Math.round(progress)}% assistido`}
             </p>
           </div>
           <Button onClick={enter} disabled={!canEnter || saving} className="shrink-0">
-            {saving ? "Entrando" : "Entrar no setor"}
+            {saving ? "Entrando" : saveError ? "Tentar de novo" : "Entrar no setor"}
           </Button>
         </div>
       }

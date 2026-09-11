@@ -64,8 +64,8 @@ model User {
   // (SubsectorWelcomeView), porque o vídeo da plataforma é um só: a junção
   // teria cardinalidade 1 e existiria só para guardar uma data.
   //
-  // Publicar um vídeo novo zera esta coluna para TODOS — é o equivalente a
-  // apagar as linhas de visualização do setor.
+  // Publicar um vídeo novo NÃO zera esta coluna: a data é da pessoa, não do
+  // arquivo (ver lib/welcome-video-core).
   platformWelcomeWatchedAt DateTime?
 
   active    Boolean  @default(true)
@@ -162,8 +162,8 @@ model Subsector {
   // (/uploads/conteudo/ano/mes/arquivo.mp4) — nunca o binário.
   welcomeVideoPath  String?
   welcomeVideoTitle String?
-  // Quando o vídeo atual foi publicado. Trocar o vídeo zera as visualizações:
-  // quem já tinha visto o anterior assiste ao novo.
+  // Quando o vídeo atual foi publicado. Informativo: trocar o vídeo NÃO
+  // reexibe para quem já assistiu (ver lib/welcome-video-core).
   welcomeVideoAt    DateTime?
 
   // Conteúdo do subsetor.
@@ -182,8 +182,8 @@ model Subsector {
 
 // Junção colaborador ↔ subsetor.
 // Registro de que UM usuário já assistiu ao vídeo de boas-vindas de UM
-// subsetor. A ausência da linha é o que dispara o vídeo obrigatório — por isso
-// apagar as linhas de um subsetor (ao trocar o vídeo) reexibe para todos.
+// subsetor. A ausência da linha é o que dispara o vídeo obrigatório. A linha
+// é da PESSOA, não do arquivo: trocar o vídeo do subsetor não a apaga.
 model SubsectorWelcomeView {
   id String @id @default(cuid())
 
@@ -216,8 +216,8 @@ model PlatformWelcomeVideo {
   path  String
   title String?
 
-  // Quando o vídeo atual foi publicado. Trocar o vídeo zera as visualizações:
-  // quem já tinha visto o anterior assiste ao novo.
+  // Quando o vídeo atual foi publicado. Informativo: trocar o vídeo NÃO
+  // reexibe para quem já assistiu (ver lib/welcome-video-core).
   publishedAt DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }

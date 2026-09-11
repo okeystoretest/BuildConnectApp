@@ -5,8 +5,7 @@ export type Permission =
   | "content.upload"
   // Publicar/remover o VÍDEO DE BOAS-VINDAS de um setor. Separada de
   // `content.upload` de propósito: o vídeo de boas-vindas é obrigatório para
-  // todo mundo do setor e trocá-lo zera as visualizações — decisão da
-  // administração, não da gestão do setor.
+  // todo mundo do setor — decisão da administração, não da gestão do setor.
   | "welcomeVideo.manage"
   | "links.manage"
   | "evaluations.view"

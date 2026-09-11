@@ -31,8 +31,9 @@ export interface WelcomeVideoCardProps {
  * Gestão do vídeo de boas-vindas do setor. Visível apenas para quem tem
  * `welcomeVideo.manage` — hoje só o Admin. Para todos os demais, inclusive o
  * Gestor, o vídeo aparece como o modal obrigatório da primeira visita, e mais
- * nada: publicar um vídeo obrigatório para o setor inteiro (e zerar as
- * visualizações de quem já assistiu) é decisão da administração.
+ * nada: publicar um vídeo obrigatório para o setor inteiro é decisão da
+ * administração. Trocar o vídeo NÃO reexibe para quem já assistiu — a marca
+ * é da pessoa, não do arquivo (ver `welcome-video-core`).
  *
  * Fica logo abaixo do cabeçalho da página, antes das abas: é conteúdo do
  * setor inteiro, não de uma aba específica.
@@ -97,7 +98,7 @@ export function WelcomeVideoCard({
     void (async () => {
       const res = await upload.send("boas-vindas-setor", data);
       if (res.ok) {
-        success("Vídeo de boas-vindas publicado. Todos do setor vão assisti-lo.");
+        success("Vídeo de boas-vindas publicado. Quem ainda não assistiu vai vê-lo na próxima visita.");
         upload.reset();
         closeModal();
         router.refresh();
@@ -248,9 +249,9 @@ export function WelcomeVideoCard({
             <p className="text-xs leading-relaxed text-foreground">
               {path ? (
                 <>
-                  O vídeo atual será <strong>apagado do servidor</strong> e{" "}
-                  <strong>todos do setor voltarão a assistir</strong> — inclusive quem já tinha
-                  visto o anterior.
+                  O vídeo atual será <strong>apagado do servidor</strong>. Quem já assistiu ao
+                  anterior <strong>não precisa assistir de novo</strong> — o novo vídeo aparece só
+                  para quem ainda não viu nenhum.
                 </>
               ) : (
                 <>

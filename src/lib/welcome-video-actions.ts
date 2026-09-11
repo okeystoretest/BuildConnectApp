@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/auth/require-user";
 import { can } from "@/lib/permissions";
 import { storeFile, removeFile, FileStorageError } from "@/lib/storage/files";
 import { toAbsolutePath } from "@/lib/storage/config";
+import { clearSectorWelcomeVideo, publishSectorWelcomeVideo } from "@/lib/welcome-video-core";
 import type { Role } from "@/types";
 
 /**
@@ -16,13 +17,12 @@ import type { Role } from "@/types";
  *  - O binário vai para o disco (categoria `conteudo`, particionado por
  *    ano/mês); o banco guarda só o caminho público.
  *  - Trocar o vídeo APAGA o arquivo anterior do disco (não acumula órfão na
- *    VPS) e ZERA as visualizações — o vídeo novo tem de ser assistido por
- *    todos, inclusive por quem já tinha visto o antigo.
+ *    VPS) e MANTÉM as visualizações: quem assistiu uma vez não assiste de
+ *    novo. A regra e o teste dela moram em `welcome-video-core`.
  *  - Enviar/remover exige `welcomeVideo.manage` — hoje só o Admin. O Gestor
  *    continua enviando conteúdo do setor (`content.upload`), mas NÃO o vídeo
- *    de boas-vindas: ele é obrigatório para todos do setor e publicá-lo zera
- *    as visualizações de quem já havia assistido. Marcar como assistido é do
- *    próprio usuário logado.
+ *    de boas-vindas: ele é obrigatório para todos do setor. Marcar como
+ *    assistido é do próprio usuário logado.
  */
 
 export interface WelcomeVideoResult {
@@ -81,20 +81,9 @@ export async function uploadWelcomeVideo(formData: FormData): Promise<WelcomeVid
   }
 
   try {
-    // Vídeo novo = todo mundo assiste de novo. As duas escritas andam juntas:
-    // gravar o caminho sem limpar as visualizações deixaria o setor com vídeo
-    // novo que ninguém veria.
-    await prisma.$transaction([
-      prisma.subsectorWelcomeView.deleteMany({ where: { subsectorId: sub.id } }),
-      prisma.subsector.update({
-        where: { id: sub.id },
-        data: {
-          welcomeVideoPath: publicPath,
-          welcomeVideoTitle: title || null,
-          welcomeVideoAt: new Date(),
-        },
-      }),
-    ]);
+    // Só o caminho muda. Quem já assistiu continua marcado — ver
+    // `welcome-video-core`, que é onde essa promessa está testada.
+    await publishSectorWelcomeVideo(sub.id, publicPath, title);
   } catch (e) {
     // Banco falhou: remove o arquivo recém-gravado para não virar órfão.
     await removeFile(absolutePath);
@@ -121,13 +110,7 @@ export async function removeWelcomeVideo(slug: string): Promise<WelcomeVideoResu
   if (!sub.welcomeVideoPath) return { ok: true };
 
   try {
-    await prisma.$transaction([
-      prisma.subsectorWelcomeView.deleteMany({ where: { subsectorId: sub.id } }),
-      prisma.subsector.update({
-        where: { id: sub.id },
-        data: { welcomeVideoPath: null, welcomeVideoTitle: null, welcomeVideoAt: null },
-      }),
-    ]);
+    await clearSectorWelcomeVideo(sub.id);
   } catch (e) {
     console.error("[removeWelcomeVideo] db:", e);
     return { ok: false, error: "Falha ao remover o vídeo do setor." };

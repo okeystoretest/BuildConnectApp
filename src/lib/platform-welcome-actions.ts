@@ -6,6 +6,7 @@ import { getCurrentUser } from "@/lib/auth/require-user";
 import { can } from "@/lib/permissions";
 import { storeFile, removeFile, FileStorageError } from "@/lib/storage/files";
 import { toAbsolutePath } from "@/lib/storage/config";
+import { clearPlatformWelcomeVideo, publishPlatformWelcomeVideo } from "@/lib/welcome-video-core";
 import type { Role } from "@/types";
 
 /**
@@ -17,8 +18,8 @@ import type { Role } from "@/types";
  *  - o binário vai para o disco (categoria `conteudo`, particionado por
  *    ano/mês); o banco guarda só o caminho público;
  *  - trocar o vídeo APAGA o arquivo anterior do disco (não acumula órfão na
- *    VPS) e ZERA as visualizações — o vídeo novo tem de ser assistido por
- *    todos, inclusive por quem já tinha visto o antigo;
+ *    VPS) e MANTÉM as visualizações: quem assistiu uma vez não assiste de
+ *    novo. A regra e o teste dela moram em `welcome-video-core`;
  *  - publicar/remover exige `welcomeVideo.manage` (hoje só o Admin). Marcar
  *    como assistido é do próprio usuário logado.
  *
@@ -83,20 +84,9 @@ export async function uploadPlatformWelcomeVideo(
   }
 
   try {
-    // Vídeo novo = todo mundo assiste de novo. As duas escritas andam juntas:
-    // gravar o caminho sem zerar as visualizações deixaria a plataforma com
-    // vídeo novo que ninguém veria.
-    await prisma.$transaction([
-      prisma.user.updateMany({
-        where: { platformWelcomeWatchedAt: { not: null } },
-        data: { platformWelcomeWatchedAt: null },
-      }),
-      prisma.platformWelcomeVideo.upsert({
-        where: { id: SINGLETON },
-        update: { path: publicPath, title: title || null, publishedAt: new Date() },
-        create: { id: SINGLETON, path: publicPath, title: title || null },
-      }),
-    ]);
+    // Só o caminho muda. Quem já assistiu continua com a data — ver
+    // `welcome-video-core`, que é onde essa promessa está testada.
+    await publishPlatformWelcomeVideo(publicPath, title);
   } catch (e) {
     // Banco falhou: remove o arquivo recém-gravado para não virar órfão.
     await removeFile(absolutePath);
@@ -122,13 +112,7 @@ export async function removePlatformWelcomeVideo(): Promise<PlatformWelcomeResul
   if (!current) return { ok: true };
 
   try {
-    await prisma.$transaction([
-      prisma.user.updateMany({
-        where: { platformWelcomeWatchedAt: { not: null } },
-        data: { platformWelcomeWatchedAt: null },
-      }),
-      prisma.platformWelcomeVideo.delete({ where: { id: SINGLETON } }),
-    ]);
+    await clearPlatformWelcomeVideo();
   } catch (e) {
     console.error("[removePlatformWelcomeVideo] db:", e);
     return { ok: false, error: "Falha ao remover o vídeo da plataforma." };

@@ -33,8 +33,9 @@ export interface InstitutionalVideoProps {
  * vídeo, um lugar para administrá-lo. Antes esta tela era um placeholder: o
  * botão "Trocar vídeo" esperava 700 ms e não enviava nada.
  *
- * Publicar um vídeo novo APAGA o anterior do disco e faz todo mundo assistir
- * de novo, inclusive quem já tinha visto — por isso o aviso é explícito.
+ * Publicar um vídeo novo APAGA o anterior do disco. Quem já assistiu NÃO
+ * assiste de novo — a marca é da pessoa, não do arquivo (ver
+ * `welcome-video-core`) — e o aviso no modal diz exatamente isso.
  */
 export function InstitutionalVideo({ path, title, watchedCount }: InstitutionalVideoProps) {
   const { can } = useRole();
@@ -88,7 +89,7 @@ export function InstitutionalVideo({ path, title, watchedCount }: InstitutionalV
     void (async () => {
       const res = await upload.send("boas-vindas-plataforma", data);
       if (res.ok) {
-        success("Vídeo de boas-vindas publicado. Todos vão assisti-lo no próximo acesso.");
+        success("Vídeo de boas-vindas publicado. Quem ainda não assistiu vai vê-lo no próximo acesso.");
         upload.reset();
         closeModal();
         router.refresh();
@@ -253,9 +254,9 @@ export function InstitutionalVideo({ path, title, watchedCount }: InstitutionalV
             <p className="text-xs leading-relaxed text-foreground">
               {path ? (
                 <>
-                  O vídeo atual será <strong>apagado do servidor</strong> e{" "}
-                  <strong>todos voltarão a assistir</strong> — inclusive quem já tinha visto o
-                  anterior.
+                  O vídeo atual será <strong>apagado do servidor</strong>. Quem já assistiu ao
+                  anterior <strong>não precisa assistir de novo</strong> — o novo vídeo aparece só
+                  para quem ainda não viu nenhum.
                 </>
               ) : (
                 <>

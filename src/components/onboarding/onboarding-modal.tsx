@@ -34,10 +34,25 @@ export function OnboardingModal({ open, path, title, onComplete }: OnboardingMod
   const [finished, setFinished] = useState(false);
   const [failed, setFailed] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
+  /**
+   * O portão só libera DEPOIS que a visualização foi gravada. Antes, o
+   * resultado era ignorado: uma falha (sessão vencida, banco fora) liberava
+   * do mesmo jeito e o vídeo voltava no próximo acesso — para a pessoa,
+   * "assisti e apareceu de novo".
+   */
   async function enter() {
     setSaving(true);
-    if (!failed) await markPlatformWelcomeWatched();
+    setSaveError(null);
+    if (!failed) {
+      const res = await markPlatformWelcomeWatched();
+      if (!res.ok) {
+        setSaving(false);
+        setSaveError(res.error ?? "Não foi possível registrar a visualização.");
+        return;
+      }
+    }
     setSaving(false);
     onComplete();
   }
@@ -60,18 +75,20 @@ export function OnboardingModal({ open, path, title, onComplete }: OnboardingMod
             <p
               className={cn(
                 "mt-1.5 text-xs transition-colors",
-                finished ? "text-primary" : "text-muted",
+                saveError ? "text-danger" : finished ? "text-primary" : "text-muted",
               )}
             >
-              {failed
-                ? "Não foi possível carregar o vídeo."
-                : finished
-                  ? "Vídeo concluído — acesso liberado."
-                  : `${Math.round(progress)}% assistido`}
+              {saveError
+                ? `${saveError} Tente de novo.`
+                : failed
+                  ? "Não foi possível carregar o vídeo."
+                  : finished
+                    ? "Vídeo concluído — acesso liberado."
+                    : `${Math.round(progress)}% assistido`}
             </p>
           </div>
           <Button onClick={enter} disabled={!canEnter || saving} className="shrink-0">
-            {saving ? "Entrando" : "Continuar para a plataforma"}
+            {saving ? "Entrando" : saveError ? "Tentar de novo" : "Continuar para a plataforma"}
           </Button>
         </div>
       }
