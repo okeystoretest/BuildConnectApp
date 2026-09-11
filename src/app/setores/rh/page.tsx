@@ -5,7 +5,7 @@ import { can } from "@/lib/permissions";
 import { canUseDhoTools } from "@/lib/auth/access";
 import { getManagedUsers } from "@/lib/users-data";
 import { getHrDocuments, getIntegrationMaps } from "@/lib/hr-content-data";
-import { getEmployeeRoster } from "@/lib/hr-history-data";
+import { getRecentEmployees } from "@/lib/hr-history-data";
 import { getEvaluationResultsCatalog, getEvaluationSubjects } from "@/lib/evaluation-data";
 import {
   getAssignableEvaluationTypes,
@@ -66,7 +66,7 @@ export default async function HrSectorPage() {
     canHrAdmin ? getManagedUsers() : Promise.resolve([]),
     canHrAdmin ? getHrDocuments() : Promise.resolve([]),
     canHrAdmin ? getIntegrationMaps() : Promise.resolve([]),
-    canHrAdmin ? getEmployeeRoster() : Promise.resolve([]),
+    canHrAdmin ? getRecentEmployees() : Promise.resolve([]),
     getEvaluationResultsCatalog(sectorScope),
     getEvaluationRounds(sectorScope),
     getAssignableEvaluationTypes(),

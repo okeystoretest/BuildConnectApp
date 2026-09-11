@@ -26,27 +26,67 @@ function pct(done: number, total: number): number {
   return total === 0 ? 0 : Math.round((done / total) * 100);
 }
 
-/** Lista de colaboradores ativos para o seletor do histórico. */
-export async function getEmployeeRoster(): Promise<EmployeeSummary[]> {
-  const users = await prisma.user.findMany({
-    where: { active: true },
-    orderBy: { fullName: "asc" },
-    select: {
-      id: true,
-      fullName: true,
-      username: true,
-      role: true,
-      sector: { select: { label: true } },
-    },
-  });
+/** Quantos colaboradores a lista mostra sem busca: só os cadastros mais novos. */
+export const RECENT_EMPLOYEES_LIMIT = 5;
+/** Teto de resultados por busca. */
+export const EMPLOYEE_SEARCH_LIMIT = 20;
 
-  return users.map((u) => ({
+const SUMMARY_SELECT = {
+  id: true,
+  fullName: true,
+  username: true,
+  role: true,
+  sector: { select: { label: true } },
+} as const;
+
+function toSummary(u: {
+  id: string;
+  fullName: string;
+  username: string;
+  role: string;
+  sector: { label: string } | null;
+}): EmployeeSummary {
+  return {
     id: u.id,
     name: u.fullName,
     username: u.username,
     role: ROLE_LABEL[u.role as Role],
     sector: u.sector?.label ?? "—",
-  }));
+  };
+}
+
+/**
+ * Colaboradores que a lista do histórico mostra ANTES de qualquer busca: os
+ * cinco cadastrados por último. O restante da empresa não vai para a página —
+ * só aparece pela busca (`searchEmployees`).
+ */
+export async function getRecentEmployees(): Promise<EmployeeSummary[]> {
+  const users = await prisma.user.findMany({
+    where: { active: true },
+    orderBy: { createdAt: "desc" },
+    take: RECENT_EMPLOYEES_LIMIT,
+    select: SUMMARY_SELECT,
+  });
+  return users.map(toSummary);
+}
+
+/** Busca por trecho do nome ou do usuário, sem diferenciar maiúsculas. */
+export async function searchEmployeesByName(query: string): Promise<EmployeeSummary[]> {
+  const term = query.trim();
+  if (!term) return [];
+  const users = await prisma.user.findMany({
+    where: {
+      active: true,
+      OR: [
+        { fullName: { contains: term, mode: "insensitive" } },
+        { username: { contains: term, mode: "insensitive" } },
+      ],
+    },
+    orderBy: { fullName: "asc" },
+    take: EMPLOYEE_SEARCH_LIMIT,
+    select: SUMMARY_SELECT,
+  });
+  return users.map(toSummary);
 }
 
 /**

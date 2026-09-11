@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import * as Icons from "lucide-react";
 import { ChevronDown, Loader2, Search } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { DonutChart } from "@/components/ui/donut-chart";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
-import { fetchEmployeeHistory } from "@/lib/hr-actions-history";
+import { fetchEmployeeHistory, searchEmployees } from "@/lib/hr-actions-history";
 import type { EmployeeHistory as History, EmployeeSummary } from "@/types/hr";
 
 function Icon({ name, className }: { name: string; className?: string }) {
@@ -59,34 +59,64 @@ function EngagementCard({
 }
 
 export interface EmployeeHistoryPanelProps {
+  /** Só os cadastros mais recentes — o resto chega pela busca. */
   roster: readonly EmployeeSummary[];
   initial: History | null;
 }
 
+/** Espera entre teclas antes de consultar o servidor. */
+const SEARCH_DEBOUNCE_MS = 300;
+
 /**
  * Histórico do Colaborador (RH), focado em ENGAJAMENTO e com dados reais.
  *
- * A busca inicia vazia e sem seleção prévia; ao escolher um colaborador, o
- * histórico é carregado via Server Action. Exibe progresso geral (donut +
- * breakdown), indicadores de engajamento (vídeos assistidos, documentos e
- * instruções lidos, feedbacks recebidos) e um detalhamento de pendências
- * agrupado por tipo de mídia (modal). Chamados foram removidos deste módulo.
+ * A lista começa com os cinco cadastros mais recentes e sem seleção prévia. A
+ * busca é feita no SERVIDOR: a página não carrega a empresa inteira — quem não
+ * está entre os recentes só aparece quando procurado. Ao escolher um
+ * colaborador, o histórico é carregado via Server Action. Exibe progresso
+ * geral (donut + breakdown), indicadores de engajamento (vídeos assistidos,
+ * documentos e instruções lidos, feedbacks recebidos) e um detalhamento de
+ * pendências agrupado por tipo de mídia (modal). Chamados foram removidos
+ * deste módulo.
  */
 export function EmployeeHistoryPanel({ roster, initial }: EmployeeHistoryPanelProps) {
   const [query, setQuery] = useState("");
+  const [results, setResults] = useState<readonly EmployeeSummary[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const searchToken = useRef(0);
   const [history, setHistory] = useState<History | null>(initial);
   const [selectedId, setSelectedId] = useState<string | null>(initial?.id ?? null);
   const [pendingModal, setPendingModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
-  const filtered = query.trim()
-    ? roster.filter(
-        (e) =>
-          e.name.toLowerCase().includes(query.trim().toLowerCase()) ||
-          e.username.toLowerCase().includes(query.trim().toLowerCase()),
-      )
-    : roster;
+  // Busca no servidor, com espera entre teclas para não disparar uma consulta
+  // por caractere. O token descarta respostas de buscas já superadas.
+  useEffect(() => {
+    const term = query.trim();
+    if (!term) {
+      setResults(null);
+      setSearching(false);
+      return;
+    }
+
+    const token = ++searchToken.current;
+    setSearching(true);
+    const timer = setTimeout(() => {
+      void searchEmployees(term)
+        .then((res) => {
+          if (token !== searchToken.current) return;
+          setResults(res.employees);
+        })
+        .finally(() => {
+          if (token === searchToken.current) setSearching(false);
+        });
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const listing = results ?? roster;
 
   function select(id: string) {
     if (id === selectedId) return;
@@ -115,8 +145,12 @@ export function EmployeeHistoryPanel({ roster, initial }: EmployeeHistoryPanelPr
           />
         </div>
 
+        <p className="px-1 text-[10px] font-semibold uppercase tracking-widest text-muted">
+          {results ? "Resultados da busca" : "Cadastros mais recentes"}
+        </p>
+
         <div className="scrollbar-slim max-h-[calc(100vh-18rem)] space-y-1.5 overflow-y-auto pr-0.5">
-          {filtered.map((emp) => (
+          {listing.map((emp) => (
             <button
               key={emp.id}
               type="button"
@@ -140,7 +174,12 @@ export function EmployeeHistoryPanel({ roster, initial }: EmployeeHistoryPanelPr
               </span>
             </button>
           ))}
-          {filtered.length === 0 && (
+          {searching && listing.length === 0 && (
+            <p className="flex items-center justify-center gap-2 py-8 text-xs text-muted">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Buscando…
+            </p>
+          )}
+          {!searching && listing.length === 0 && (
             <p className="py-8 text-center text-xs text-muted">Nenhum colaborador encontrado.</p>
           )}
         </div>
