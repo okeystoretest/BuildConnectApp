@@ -37,6 +37,25 @@ export async function register(): Promise<void> {
     console.error(`[processo] promessa rejeitada sem tratamento: ${describeError(motivo)}`);
   });
 
+  // Acorda o agendador da fila do WhatsApp: as mensagens que ficaram
+  // marcadas para depois de um restart estão no banco, e sem isto só sairiam
+  // no próximo enfileiramento ou no cron externo.
+  //
+  // O `import()` fica DENTRO de um `if` com NEXT_RUNTIME de propósito, e não
+  // depois do `return` lá em cima: este arquivo também é compilado para o
+  // runtime edge, e o webpack só deixa de arrastar o Baileys para lá quando
+  // o ramo inteiro é morto em tempo de build — um `return` antecipado não
+  // conta. Cada falha aqui é engolida: a rede de segurança não pode ser o que
+  // derruba a subida.
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    try {
+      const { scheduleOutboxTick } = await import("@/lib/whatsapp/outbox");
+      scheduleOutboxTick();
+    } catch (erro) {
+      console.error(`[processo] fila do WhatsApp não acordou: ${describeError(erro)}`);
+    }
+  }
+
   // `uncaughtException` fica DE FORA de propósito — e a ausência é a decisão,
   // não o esquecimento.
   //

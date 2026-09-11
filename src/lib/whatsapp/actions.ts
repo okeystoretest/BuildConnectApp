@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth/require-user";
 import { can } from "@/lib/permissions";
 import { connectionInfo, resetSession, type ConnectionInfo } from "./connection";
-import { drainOutbox } from "./outbox";
+import { drainOutbox, scheduleOutboxTick } from "./outbox";
 import type { Role } from "@/types";
 
 /**
@@ -70,6 +70,7 @@ export async function getWhatsappLog(limit = 50): Promise<WhatsappLogRow[]> {
       error: true,
       createdAt: true,
       sentAt: true,
+      sendAfter: true,
       user: { select: { fullName: true } },
     },
   });
@@ -80,7 +81,12 @@ export async function getWhatsappLog(limit = 50): Promise<WhatsappLogRow[]> {
     kind: r.kind,
     status: r.status,
     error: r.error ?? undefined,
-    when: label(r.sentAt ?? r.createdAt),
+    // Pendente mostra QUANDO vai sair — o intervalo sorteado chega a duas
+    // horas, e sem isto a fila pareceria travada.
+    when:
+      r.status === "PENDENTE"
+        ? `sai ${label(r.sendAfter)}`
+        : label(r.sentAt ?? r.createdAt),
   }));
 }
 
@@ -95,16 +101,28 @@ export async function getWhatsappLog(limit = 50): Promise<WhatsappLogRow[]> {
 export async function retryFailedWhatsapp(): Promise<{ ok: boolean; requeued: number }> {
   if (!(await requireAdmin())) return { ok: false, requeued: 0 };
 
+  // Voltam marcadas para "agora": é a drenagem que impõe o espaçamento entre
+  // elas, uma a uma, na hora de enviar.
   const { count } = await prisma.whatsappMessage.updateMany({
     where: { status: "FALHOU" },
-    data: { status: "PENDENTE", attempts: 0, error: null },
+    data: { status: "PENDENTE", attempts: 0, error: null, sendAfter: new Date() },
   });
+  scheduleOutboxTick();
   return { ok: true, requeued: count };
 }
 
-/** Drena a fila agora, sem esperar o cron. */
-export async function drainWhatsappNow(): Promise<{ ok: boolean; enviados: number; falhas: number }> {
-  if (!(await requireAdmin())) return { ok: false, enviados: 0, falhas: 0 };
+/**
+ * Drena agora o que já venceu, sem esperar o agendador. O que ainda espera o
+ * horário sorteado continua esperando — o botão não fura o intervalo.
+ */
+export async function drainWhatsappNow(): Promise<{
+  ok: boolean;
+  enviados: number;
+  falhas: number;
+  aguardando: number;
+}> {
+  if (!(await requireAdmin())) return { ok: false, enviados: 0, falhas: 0, aguardando: 0 };
   const res = await drainOutbox({ limit: 10 });
-  return { ok: true, enviados: res.enviados, falhas: res.falhas };
+  scheduleOutboxTick();
+  return { ok: true, enviados: res.enviados, falhas: res.falhas, aguardando: res.aguardando };
 }

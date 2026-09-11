@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "node:crypto";
 import { sweepAvailability } from "@/lib/evaluation-schedule";
-import { drainOutbox } from "@/lib/whatsapp/outbox";
+import { drainOutbox, scheduleOutboxTick } from "@/lib/whatsapp/outbox";
 
 /**
  * Varredura de liberação de ciclos, protegida por token.
@@ -45,17 +45,18 @@ export async function GET(request: Request) {
 
     // Drena a fila do WhatsApp na mesma passada. Vem DEPOIS da varredura de
     // propósito: o que ela acabou de liberar já sai nesta rodada, em vez de
-    // esperar o próximo cron.
+    // esperar o agendador acordar.
     //
-    // O lote é limitado porque cada envio espera de 1 a 10 segundos: sem teto,
-    // uma fila grande seguraria a requisição HTTP até o proxy desistir. O que
-    // sobra fica para a chamada seguinte.
+    // A drenagem não dorme: envia só o que venceu (o intervalo sorteado entre
+    // mensagens, de 1 s a 2 h, vive no banco) e devolve na hora. O agendador
+    // do processo é reacordado por garantia — é ele que cuida do resto.
     const whatsapp = await drainOutbox({ limit: 15 }).catch((e) => {
       // Falha no WhatsApp não pode derrubar a varredura de avaliações, que é
       // a razão original desta rota.
       console.error("[cron/evaluations] fila do WhatsApp:", e);
       return null;
     });
+    scheduleOutboxTick();
 
     return NextResponse.json({ ok: true, released, whatsapp });
   } catch (e) {

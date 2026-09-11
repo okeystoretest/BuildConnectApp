@@ -1296,9 +1296,14 @@ model WhatsappMessage {
   /** Motivo da falha, em português. Nunca contém o número nem credencial. */
   error    String?
 
+  // A partir de quando esta mensagem pode sair. O espaçamento aleatório entre
+  // envios (1 s a 2 h) fica gravado AQUI, ao enfileirar, e não numa espera em
+  // memória: sobrevive a restart e não prende requisição nenhuma.
+  sendAfter DateTime @default(now())
+
   createdAt DateTime  @default(now())
   sentAt    DateTime?
 
-  @@index([status, createdAt])
+  @@index([status, sendAfter])
   @@index([userId])
 }

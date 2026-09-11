@@ -98,7 +98,11 @@ export function WhatsappPanel() {
   function handleDrain() {
     startAction(async () => {
       const res = await drainWhatsappNow();
-      success(`${res.enviados} enviada(s), ${res.falhas} falha(s).`);
+      success(
+        res.aguardando > 0
+          ? `${res.enviados} enviada(s), ${res.falhas} falha(s) · ${res.aguardando} aguardam o horário sorteado.`
+          : `${res.enviados} enviada(s), ${res.falhas} falha(s).`,
+      );
       await refresh();
     });
   }
@@ -171,7 +175,7 @@ export function WhatsappPanel() {
           </Button>
           <Button variant="secondary" size="sm" onClick={handleDrain} disabled={busy}>
             <Send className="h-4 w-4" />
-            Enviar fila agora
+            Enviar vencidas agora
           </Button>
           {falhas > 0 && (
             <Button variant="secondary" size="sm" onClick={handleRetry} disabled={busy}>
