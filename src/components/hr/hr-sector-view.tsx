@@ -8,7 +8,6 @@ import { Tabs, TabPanel, type TabItem } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/ui/empty-state";
 import { EmployeeHistoryPanel } from "@/components/hr/employee-history";
 import { EvaluationResultsPanel } from "@/components/hr/evaluation-results-panel";
-import { TrainingResultsPanel } from "@/components/hr/training-results-panel";
 import { IntegrationMapsPanel } from "@/components/hr/integration-maps";
 import { HrDocumentsPanel } from "@/components/hr/hr-documents";
 import { UserManagementPanel } from "@/components/hr/user-management";
@@ -95,7 +94,6 @@ export function HrSectorView({
     return [
       { id: "historico", label: "Histórico do Colaborador" },
       ...evalTabs,
-      { id: "treinamento", label: "Resultados de Treinamento" },
       { id: "mapas", label: "Mapas de Integração" },
       { id: "documentos", label: "Documentos" },
       // A Central de Denúncias é do DHO e só aparece para quem pode tratá-la.
@@ -155,8 +153,6 @@ export function HrSectorView({
             forms={forms}
           />
         )}
-
-        {active === "treinamento" && canHrAdmin && <TrainingResultsPanel />}
 
         {active === "mapas" && canHrAdmin && (
           <IntegrationMapsPanel maps={maps} onUpload={() => setMapModalOpen(true)} />
