@@ -83,6 +83,11 @@ model User {
   contentProgress    ContentProgress[]
   contentPosts       ContentPost[]      @relation("ContentPostOwner")
   authoredPosts      ContentPost[]      @relation("ContentPostAuthor")
+  // Roteiros de card que este usuário gerou ou editou por último.
+  contentScripts     ContentPost[]      @relation("ContentPostScript")
+  // Configuração da IA (Retaguarda) — quem salvou por último.
+  aiSettingsEdits    AiSettings[]       @relation("AiSettingsEditor")
+  aiInstructionEdits AiInstruction[]    @relation("AiInstructionEditor")
   requestedTickets   Ticket[]           @relation("TicketRequester")
   assignedTickets    Ticket[]           @relation("TicketAssignee")
   // Notificações de WhatsApp endereçadas a este usuário (fila + auditoria).
@@ -215,6 +220,41 @@ model PlatformWelcomeVideo {
   // quem já tinha visto o anterior assiste ao novo.
   publishedAt DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+/**
+ * Integração com o Gemini — credencial e modelo. Linha única, como
+ * PlatformWelcomeVideo.
+ *
+ * A chave fica CIFRADA (AES-256-GCM, chave derivada do SESSION_SECRET — ver
+ * lib/ai/secret.ts): um dump do banco não entrega a chave da API. `apiKeyHint`
+ * guarda só os 4 últimos caracteres, em claro, para a tela dizer QUAL chave
+ * está salva sem nunca devolver a chave inteira ao navegador.
+ */
+model AiSettings {
+  id           String   @id @default("singleton")
+  apiKeyCipher String?
+  apiKeyHint   String?
+  model        String   @default("gemini-2.5-flash")
+  updatedAt    DateTime @updatedAt
+  updatedById  String?
+  updatedBy    User?    @relation("AiSettingsEditor", fields: [updatedById], references: [id], onDelete: SetNull)
+}
+
+/**
+ * Instruções do sistema (system instructions) da IA, por escopo.
+ * id: "DEFAULT" | "OKEY" | "LOV_CLUB". A Padrão vale para todo roteiro; a da
+ * marca é acrescentada depois dela quando o card tem marca.
+ *
+ * Chave de texto, e não colunas fixas em AiSettings, porque marca nova vira
+ * INSERT — não vira migration.
+ */
+model AiInstruction {
+  id          String   @id
+  body        String
+  updatedAt   DateTime @updatedAt
+  updatedById String?
+  updatedBy   User?    @relation("AiInstructionEditor", fields: [updatedById], references: [id], onDelete: SetNull)
 }
 
 /**
@@ -452,6 +492,14 @@ model ContentPost {
   createdById String?
   createdBy   User?   @relation("ContentPostAuthor", fields: [createdById], references: [id], onDelete: SetNull)
 
+  // Roteiro da atividade: rascunho da IA, acabamento da pessoa. Nulo = nunca
+  // gerado. Os três andam juntos — o texto, quem o escreveu por último e
+  // quando — para o modal dizer "Gerado por X · data".
+  script          String?
+  scriptUpdatedAt DateTime?
+  scriptById      String?
+  scriptBy        User?     @relation("ContentPostScript", fields: [scriptById], references: [id], onDelete: SetNull)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -459,6 +507,7 @@ model ContentPost {
   @@index([subsectorId, visibility])
   @@index([ownerId])
   @@index([createdById])
+  @@index([scriptById])
 }
 
 // Progresso por usuário e por item de conteúdo. Uma linha marca "assistido"/
