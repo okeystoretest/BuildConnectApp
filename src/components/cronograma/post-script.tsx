@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Pencil, RefreshCw, Sparkles } from "lucide-react";
+import { FileText, Loader2, Pencil, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { generatePostScript, savePostScript } from "@/lib/ai/script-actions";
@@ -92,7 +92,7 @@ export function PostScript({ slug, post, aiReady, busy, onBusyChange }: PostScri
     <div className="mt-3 rounded-lg border border-border bg-surface-2 p-3">
       <div className="flex items-center justify-between gap-2">
         <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
-          <Sparkles className="h-3 w-3" />
+          <FileText className="h-3 w-3" />
           Roteiro
         </p>
         {hasScript && post.canEdit && !editing && (
@@ -193,7 +193,7 @@ export function PostScript({ slug, post, aiReady, busy, onBusyChange }: PostScri
               Manter
             </Button>
             <Button size="sm" onClick={generate} disabled={disabled}>
-              <Sparkles className="h-3.5 w-3.5" />
+              <FileText className="h-3.5 w-3.5" />
               Gerar
             </Button>
           </div>
@@ -235,7 +235,7 @@ export function GenerateScriptButton({
 
   return (
     <Button variant="outline" onClick={generate} disabled={pending || busy} className="h-11">
-      {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+      {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
       {pending ? "Gerando…" : "Roteiro"}
     </Button>
   );
