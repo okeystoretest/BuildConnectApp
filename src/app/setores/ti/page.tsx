@@ -7,6 +7,8 @@ import { getItTickets, getItDashboard } from "@/lib/it-data-db";
 import { ItSectorView } from "@/components/it/it-sector-view";
 import { getSectorEvaluations } from "@/lib/sector-evaluations-data";
 import { getSectorWelcomeVideo } from "@/lib/welcome-video-data";
+import { can } from "@/lib/permissions";
+import { getAiSettingsView } from "@/lib/ai/settings-data";
 import type { Role } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -21,12 +23,17 @@ export default async function ItSectorPage() {
   const slugs = await resolveAccessibleSlugs(session.userId, session.role as Role);
   if (!canAccessSlug(slugs, "ti")) notFound();
 
-  const [content, tickets, dashboard] = await Promise.all([
+  const canManageAi = can(session.role as Role, "ai.manage");
+
+  const [content, tickets, dashboard, aiSettings] = await Promise.all([
     getSectorContent("ti", session.userId),
     // O quadro já sai do banco recortado: chamado atribuído a terceiro nem
     // chega a esta página (ver `lib/ticket-visibility`).
     getItTickets({ id: session.userId, role: session.role }),
     getItDashboard(),
+    // Configuração da IA só desce para quem pode mexer nela — quem não é
+    // Admin não recebe nem os 4 últimos caracteres da chave.
+    canManageAi ? getAiSettingsView() : Promise.resolve(null),
   ]);
 
   // Fallback de conteúdo vazio se o subsetor "ti" ainda não existir.
@@ -55,6 +62,7 @@ export default async function ItSectorPage() {
       tickets={tickets}
       dashboard={dashboard}
       evaluations={evaluations}
+      aiSettings={aiSettings}
     />
   );
 }

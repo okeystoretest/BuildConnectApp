@@ -18,6 +18,8 @@ import { SectorWelcomeVideo } from "@/components/sector/welcome-video";
 import type { SectorWelcomeVideo as SectorWelcomeVideoData } from "@/lib/welcome-video-data";
 import { KanbanBoard } from "@/components/it/kanban-board";
 import { ItDashboard } from "@/components/it/it-dashboard";
+import { AiSettingsPanel } from "@/components/it/ai-settings-panel";
+import type { AiSettingsView } from "@/lib/ai/settings-data";
 import { useRole } from "@/providers/role-provider";
 import type { LinkItem, SectorContent } from "@/types/sector";
 import type { ItTicket, ItDashboardData } from "@/types/it";
@@ -29,6 +31,7 @@ const TABS: readonly TabItem[] = [
   { id: "dashboard", label: "Dashboard" },
   { id: "avaliacoes", label: "Avaliações" },
   { id: "sites", label: "Aplicativos" },
+  { id: "ia", label: "Inteligência Artificial" },
 ];
 
 export interface ItSectorViewProps {
@@ -38,6 +41,8 @@ export interface ItSectorViewProps {
   evaluations?: SectorEvaluations | null;
   /** Vídeo de boas-vindas do setor (modal + card de gestão). */
   welcome?: SectorWelcomeVideoData | null;
+  /** Configuração da IA. Nulo para quem não tem `ai.manage` — a aba some. */
+  aiSettings?: AiSettingsView | null;
 }
 
 export function ItSectorView({
@@ -46,6 +51,7 @@ export function ItSectorView({
   dashboard,
   evaluations,
   welcome,
+  aiSettings,
 }: ItSectorViewProps) {
   const { can } = useRole();
   const [active, setActive] = useState("chamados");
@@ -60,6 +66,12 @@ export function ItSectorView({
   // enviar conteúdo exige content.upload; o resto dos painéis se autolimita
   // (LinksPanel por links.manage, KanbanBoard por tickets.manage/claim).
   const canUpload = can("content.upload");
+
+  // A aba de IA só existe para quem pode configurá-la. A checagem é dupla de
+  // propósito: a permissão diz quem PODE, e a prop diz que o servidor de fato
+  // ENVIOU a configuração — sem uma das duas, a aba nem é listada.
+  const showAi = can("ai.manage") && aiSettings != null;
+  const tabs = showAi ? TABS : TABS.filter((tab) => tab.id !== "ia");
 
   const uploadLabel = !canUpload
     ? undefined
@@ -94,7 +106,7 @@ export function ItSectorView({
 
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
         <Tabs
-          items={TABS}
+          items={tabs}
           value={active}
           onValueChange={(id) => {
             setActive(id);
@@ -161,6 +173,8 @@ export function ItSectorView({
             onEdit={(link) => openLinkModal(link)}
           />
         )}
+
+        {active === "ia" && showAi && aiSettings && <AiSettingsPanel settings={aiSettings} />}
       </TabPanel>
 
       {fileModal && (
