@@ -31,7 +31,11 @@ export type Permission =
   // Criar, publicar e ler os resultados dos formulários do DHO. GESTOR e ADMIN.
   // O recorte por setor NÃO mora aqui: a matriz é por papel, e quem recorta é
   // a cláusula de consulta (ver formScopeFor em lib/forms/rules).
-  | "forms.manage";
+  | "forms.manage"
+  // Configurar a integração com o Gemini: chave da API, modelo e instruções
+  // do sistema, na aba "Inteligência Artificial" da Retaguarda. Só ADMIN —
+  // é a tela onde uma credencial paga é colada.
+  | "ai.manage";
 
 export interface SectorLink {
   label: string;

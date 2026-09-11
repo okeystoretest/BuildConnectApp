@@ -36,6 +36,7 @@ const MATRIX: Record<Role, readonly Permission[]> = {
     "sector.hr",
     "reports.manage",
     "users.manage",
+    "ai.manage",
     "tickets.create",
     "tickets.viewOwn",
     "tickets.manage",

@@ -12,3 +12,9 @@ test("forms.manage é distinta de sector.hr — o gestor cria formulário sem ad
   assert.equal(can("GESTOR", "sector.hr"), false);
   assert.equal(can("GESTOR", "forms.manage"), true);
 });
+
+test("ai.manage é exclusiva do ADMIN — a chave da API do Gemini fica com a administração", () => {
+  assert.equal(can("ADMIN", "ai.manage"), true);
+  assert.equal(can("GESTOR", "ai.manage"), false);
+  assert.equal(can("COLABORADOR", "ai.manage"), false);
+});
