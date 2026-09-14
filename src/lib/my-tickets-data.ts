@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { dayMonthBR, daysAgoBR } from "@/lib/brasilia";
 import type { Ticket, TicketStatus } from "@/types/content";
 
 /**
@@ -23,20 +24,12 @@ const DESTINATION_LABEL: Record<string, string> = {
   MOTORISTAS: "Motoristas",
 };
 
-/** Rótulo relativo de abertura (hoje / ontem / dd/mm). */
+/** Rótulo relativo de abertura (hoje / ontem / dd/mm), no calendário de Brasília. */
 function openedLabel(date: Date): string {
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const startOfDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const diffDays = Math.round(
-    (startOfToday.getTime() - startOfDate.getTime()) / (24 * 60 * 60 * 1000),
-  );
-
+  const diffDays = daysAgoBR(date);
   if (diffDays <= 0) return "aberto hoje";
   if (diffDays === 1) return "aberto ontem";
-  const dd = String(date.getDate()).padStart(2, "0");
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  return `aberto ${dd}/${mm}`;
+  return `aberto ${dayMonthBR(date)}`;
 }
 
 export async function getMyTickets(userId: string): Promise<Ticket[]> {

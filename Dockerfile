@@ -20,6 +20,14 @@ WORKDIR /app
 
 ENV NEXT_TELEMETRY_DISABLED=1
 
+# Fuso de Brasília para o processo. A imagem nasce em UTC, e qualquer data
+# construída com `new Date(ano, mês, dia)` ou lida com `getHours()` sairia
+# três horas adiantada. Os rótulos de tela já não dependem disto (ver
+# lib/brasilia.ts, que fixa o fuso explicitamente) — esta linha é a segunda
+# camada, para cálculos de "hoje", dias úteis e pastas ano/mês. O Node lê o
+# fuso do ICU embutido, então não precisa do pacote tzdata.
+ENV TZ=America/Sao_Paulo
+
 # Dependências primeiro: enquanto package-lock.json não mudar, o Docker
 # reaproveita esta camada e o build fica em segundos.
 COPY package.json package-lock.json ./

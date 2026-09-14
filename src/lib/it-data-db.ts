@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { dateLabelBR, isoDateBR, timeLabelBR } from "@/lib/brasilia";
 import { prisma } from "@/lib/db/prisma";
 import { archiveCutoff } from "@/lib/archive-window";
 import type {
@@ -16,15 +17,6 @@ import type {
 
 const PALETTE = ["bg-info", "bg-primary", "bg-accent", "bg-warning", "bg-danger"];
 
-function dateLabel(d: Date): string {
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `${dd}/${mm}/${d.getFullYear()}`;
-}
-
-function timeLabel(d: Date): string {
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
 
 function durationLabel(startedAt: Date | null, finishedAt: Date | null): string | undefined {
   if (!startedAt || !finishedAt) return undefined;
@@ -85,9 +77,9 @@ function mapTicket(row: DbTicketRow): ItTicket {
     requesterUnit: row.unit?.label ?? "—",
     requesterSector: row.requester?.sector?.label ?? "—",
     status: row.status as ItTicketStatus,
-    openedAt: row.createdAt.toISOString().slice(0, 10),
-    openedLabel: dateLabel(row.createdAt),
-    timeLabel: timeLabel(row.createdAt),
+    openedAt: isoDateBR(row.createdAt),
+    openedLabel: dateLabelBR(row.createdAt),
+    timeLabel: timeLabelBR(row.createdAt),
     assignee: row.assignee?.fullName,
     assigneeId: row.assignee?.id,
     assignedById: row.assignedById ?? undefined,

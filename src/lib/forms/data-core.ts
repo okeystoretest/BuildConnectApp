@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { dateLabelBR } from "@/lib/brasilia";
 import { aggregate, type QuestionResult } from "./aggregate";
 import type { FormDraft, FormListItem, FormQuestionKind, FormStatus } from "@/types/form";
 
@@ -16,9 +17,6 @@ import type { FormDraft, FormListItem, FormQuestionKind, FormStatus } from "@/ty
 /** Escopo já resolvido: `null` é ADMIN (lê tudo). */
 export type ReadScope = { ownerSectorId: string } | null;
 
-function dateLabel(d: Date): string {
-  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
-}
 
 export async function formsInScope(scope: ReadScope): Promise<FormListItem[]> {
   const rows = await prisma.form.findMany({
@@ -41,7 +39,7 @@ export async function formsInScope(scope: ReadScope): Promise<FormListItem[]> {
     anonymous: f.anonymous,
     responseCount: f._count.responses,
     assignedCount: f._count.assignments,
-    createdAtLabel: dateLabel(f.createdAt),
+    createdAtLabel: dateLabelBR(f.createdAt),
   }));
 }
 

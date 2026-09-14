@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { dateLabelBR, timeLabelBR } from "@/lib/brasilia";
 import { archiveCutoff } from "@/lib/archive-window";
 import type { ReportItem, ReportStatus } from "@/types/report";
 
@@ -26,15 +27,6 @@ interface ReportRow {
   attachments: { id: string; filePath: string; order: number }[];
 }
 
-function dateLabel(d: Date): string {
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  return `${dd}/${mm}/${d.getFullYear()}`;
-}
-
-function timeLabel(d: Date): string {
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-}
 
 function mapReport(row: ReportRow): ReportItem {
   return {
@@ -45,8 +37,8 @@ function mapReport(row: ReportRow): ReportItem {
     description: row.description,
     handlingNote: row.handlingNote ?? undefined,
     createdAt: row.createdAt.toISOString(),
-    createdLabel: dateLabel(row.createdAt),
-    timeLabel: timeLabel(row.createdAt),
+    createdLabel: dateLabelBR(row.createdAt),
+    timeLabel: timeLabelBR(row.createdAt),
     closedAt: row.closedAt?.toISOString(),
     attachments: [...row.attachments]
       .sort((a, b) => a.order - b.order)
