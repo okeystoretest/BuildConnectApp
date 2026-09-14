@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Clock, Lock, Minus, Plus, User as UserIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, firstName } from "@/lib/utils";
 import {
   BRAND,
   FORMAT,
@@ -60,6 +60,12 @@ export interface ContentCalendarProps {
    * cheia" seria só fundo vazio.
    */
   fill?: boolean;
+  /**
+   * Id de quem está olhando. Quando presente, cards de OUTROS responsáveis
+   * ganham borda destacada — é o modo "Geral" do filtro de usuários, em que
+   * tudo aparece e o que não é seu precisa saltar aos olhos.
+   */
+  emphasizeOthersOf?: string;
   onCreate: (date: string) => void;
   /** Clique no card: abre o modal de DETALHES (não o formulário). */
   onSelect: (post: ContentPostItem) => void;
@@ -87,6 +93,19 @@ function brandStyle(post: ContentPostItem) {
   return key ? BRAND[key] : null;
 }
 
+/** Primeiro nome do responsável, para o selo do card. Nulo = sem responsável. */
+function ownerTag(post: ContentPostItem): string | null {
+  const name = post.owner ? firstName(post.owner.name) : "";
+  return name || null;
+}
+
+/**
+ * Borda destacada do card alheio. `ring-inset` e não borda: a borda do card
+ * com marca é cor inline, e o card expandido ladrilha a célula sem borda
+ * lateral — o anel por dentro funciona igual nos dois.
+ */
+const EMPHASIS = "ring-2 ring-inset ring-primary";
+
 /**
  * Chip de post (estado padrão).
  *
@@ -99,16 +118,20 @@ function brandStyle(post: ContentPostItem) {
  */
 function PostChip({
   post,
+  emphasized = false,
   onSelect,
   onExpand,
 }: {
   post: ContentPostItem;
+  /** Card de outro responsável em modo "Geral": borda destacada. */
+  emphasized?: boolean;
   onSelect: (post: ContentPostItem) => void;
   onExpand: (post: ContentPostItem) => void;
 }) {
   const brand = brandStyle(post);
   const platformKeys = resolvePlatforms(post.platforms);
   const summary = notesSummary(post.notes);
+  const owner = ownerTag(post);
 
   return (
     <div
@@ -136,6 +159,7 @@ function PostChip({
       className={cn(
         "focus-ring w-full cursor-pointer rounded-lg border p-2 text-left transition-colors",
         brand ? "hover:brightness-95" : "border-border bg-surface-2 hover:border-border-strong",
+        emphasized && EMPHASIS,
       )}
     >
       <span className="flex items-start gap-1.5">
@@ -228,6 +252,18 @@ function PostChip({
             >
               {brand.label}
             </span>
+            {owner && (
+              <span
+                className="rounded px-1 py-px text-[9px] font-semibold uppercase tracking-wide"
+                style={{
+                  backgroundColor: "rgba(255,255,255,0.55)",
+                  color: brand.foreground,
+                }}
+                title={post.owner?.name}
+              >
+                {owner}
+              </span>
+            )}
           </>
         ) : (
           <>
@@ -246,6 +282,14 @@ function PostChip({
             >
               {FUNNEL[post.funnel].short}
             </span>
+            {owner && (
+              <span
+                className="rounded border border-border bg-surface px-1 py-px text-[9px] font-semibold uppercase tracking-wide text-muted"
+                title={post.owner?.name}
+              >
+                {owner}
+              </span>
+            )}
           </>
         )}
       </span>
@@ -275,6 +319,7 @@ function ExpandedPostCard({
   post,
   variant,
   dense = false,
+  emphasized = false,
   onSelect,
   onCollapse,
 }: {
@@ -292,12 +337,15 @@ function ExpandedPostCard({
    * quanto cabe em cada um.
    */
   dense?: boolean;
+  /** Card de outro responsável em modo "Geral": borda destacada. */
+  emphasized?: boolean;
   onSelect: (post: ContentPostItem) => void;
   onCollapse: () => void;
 }) {
   const brand = brandStyle(post);
   const platformKeys = resolvePlatforms(post.platforms);
   const notes = post.notes?.replace(/\s+\n/g, "\n").trim();
+  const owner = ownerTag(post);
 
   /** Selo compacto: herda o contraste da marca quando há uma. */
   function Tag({ children, solid }: { children: React.ReactNode; solid?: string }) {
@@ -365,6 +413,7 @@ function ExpandedPostCard({
             // a célula de borda a borda, com a mesma geometria do calendário.
             "w-full min-w-0 min-h-0 flex-1 basis-0 rounded-none border-x-0 border-b-0 border-t first:border-t-0",
         !brand && "border-border-strong bg-surface",
+        emphasized && EMPHASIS,
       )}
     >
       {/* Cabeçalho: data à esquerda, recolher à direita. O horário fica na
@@ -435,6 +484,9 @@ function ExpandedPostCard({
             formato identificam o post; os outros dois são complemento. */}
         {!dense && <Tag>{STATUS_LABEL[post.status]}</Tag>}
         {!dense && brand && <Tag>{brand.label}</Tag>}
+        {/* O responsável fica mesmo no modo denso: é o selo que diz de quem
+            é o card, e cabe num nome só. */}
+        {owner && <Tag>{owner}</Tag>}
       </div>
 
       {/* Horário planejado ao lado do responsável: quem faz e a que horas
@@ -520,6 +572,7 @@ export function ContentCalendar({
   posts,
   today,
   fill = false,
+  emphasizeOthersOf,
   onCreate,
   onSelect,
 }: ContentCalendarProps) {
@@ -530,6 +583,10 @@ export function ContentCalendar({
 
   const isExpanded = (post: ContentPostItem) =>
     fill ? !collapsedIds.has(post.id) : expandedId === post.id;
+
+  /** Destaque só no modo "Geral", e só para o que não é de quem está olhando. */
+  const isOthers = (post: ContentPostItem) =>
+    emphasizeOthersOf !== undefined && post.owner?.id !== emphasizeOthersOf;
 
   function expand(post: ContentPostItem) {
     if (!fill) {
@@ -666,6 +723,7 @@ export function ContentCalendar({
                         post={post}
                         variant="inline"
                         dense={dayPosts.length >= 3}
+                        emphasized={isOthers(post)}
                         onSelect={onSelect}
                         onCollapse={() => collapse(post)}
                       />
@@ -673,12 +731,18 @@ export function ContentCalendar({
                       // Card recolhido dentro do ladrilho: ganha respiro por
                       // um invólucro, já que o container em si não tem gap.
                       <div key={post.id} className="shrink-0 px-2 py-1.5">
-                        <PostChip post={post} onSelect={onSelect} onExpand={expand} />
+                        <PostChip
+                          post={post}
+                          emphasized={isOthers(post)}
+                          onSelect={onSelect}
+                          onExpand={expand}
+                        />
                       </div>
                     ) : (
                       <PostChip
                         key={post.id}
                         post={post}
+                        emphasized={isOthers(post)}
                         onSelect={onSelect}
                         onExpand={expand}
                       />
@@ -690,6 +754,7 @@ export function ContentCalendar({
                   <ExpandedPostCard
                     post={overlay}
                     variant="overlay"
+                    emphasized={isOthers(overlay)}
                     onSelect={onSelect}
                     onCollapse={() => collapse(overlay)}
                   />

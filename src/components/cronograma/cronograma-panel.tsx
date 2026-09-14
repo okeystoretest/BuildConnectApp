@@ -10,17 +10,27 @@ import {
   Minimize2,
   Plus,
   Share2,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRole } from "@/providers/role-provider";
 import { Button } from "@/components/ui/button";
 import { BRAND, BRAND_ORDER, FUNNEL, FUNNEL_ORDER, MONTH_LABEL } from "@/lib/funnel";
-import { matchesBrand } from "@/lib/cronograma-filters";
+import {
+  collabScopesForSlug,
+  defaultCollabScopes,
+  matchesBrand,
+  matchesCollabScope,
+  matchesOwner,
+  type CollabScope,
+} from "@/lib/cronograma-filters";
 import { FunnelAreaChart } from "./funnel-area-chart";
 import { FunnelDonut } from "./funnel-donut";
 import { ContentCalendar, type CalendarView } from "./content-calendar";
 import { ProductionBacklog } from "./production-backlog";
 import { PostModal } from "./post-modal";
 import { PostDetailsModal } from "./post-details-modal";
+import { UserFilterModal } from "./user-filter-modal";
 import { VISIBILITY_HINT, VISIBILITY_LABEL } from "@/lib/cronograma-visibility";
 import type {
   ContentBrand,
@@ -31,6 +41,8 @@ import type {
 
 export interface CronogramaPanelProps {
   slug: string;
+  /** Nome da aba atual — dá nome ao chip "Setor (…)" do colaborador. */
+  sectorLabel: string;
   data: CronogramaData;
 }
 
@@ -65,16 +77,24 @@ function todayIso(): string {
  * o backlog é a lista de execução; os gráficos são leitura de apoio e fecham
  * a página.
  *
- * Dois recortes convivem na faixa de filtros: o de funil, que vale só para o
- * calendário, e o de marca, que vale para o calendário E para o backlog — as
- * duas listas de cards da tela.
+ * Três recortes convivem na faixa de filtros: o de funil, que vale só para o
+ * calendário; e os de marca e de pessoa, que valem para o calendário E para o
+ * backlog — as duas listas de cards da tela.
+ *
+ * O recorte de pessoa tem duas caras, decididas pela permissão
+ * `cronograma.filterUsers`: Gestor/Admin escolhem NOMES num modal (padrão
+ * "só eu"; vazio é "Geral", que mostra tudo e destaca os cards alheios); o
+ * Colaborador escolhe GRUPOS em dois chips, "Setor" e "Marketing". As regras
+ * moram em `lib/cronograma-filters`.
  *
  * Navegar de mês recarrega a página (dados vêm do servidor); semana e dia são
  * recortes do que já está carregado, sem ida ao servidor.
  */
-export function CronogramaPanel({ slug, data }: CronogramaPanelProps) {
+export function CronogramaPanel({ slug, sectorLabel, data }: CronogramaPanelProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const { can } = useRole();
+  const canFilterUsers = can("cronograma.filterUsers");
 
   const [view, setView] = useState<CalendarView>("month");
   const [fullscreen, setFullscreen] = useState(false);
@@ -83,6 +103,11 @@ export function CronogramaPanel({ slug, data }: CronogramaPanelProps) {
   const [visible, setVisible] = useState<readonly FunnelStage[]>(FUNNEL_ORDER);
   /** Recorte por marca. Vazio = sem filtro; ver `lib/cronograma-filters`. */
   const [brands, setBrands] = useState<readonly ContentBrand[]>([]);
+  /** Gestor/Admin: ids escolhidos no modal. Nasce "só eu"; vazio = "Geral". */
+  const [owners, setOwners] = useState<readonly string[]>([data.currentUserId]);
+  const [usersOpen, setUsersOpen] = useState(false);
+  /** Colaborador: grupos ligados. Os próprios cards aparecem sempre. */
+  const [scopes, setScopes] = useState<readonly CollabScope[]>(() => defaultCollabScopes(slug));
   const [cursor, setCursor] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ContentPostItem | null>(null);
@@ -145,22 +170,40 @@ export function CronogramaPanel({ slug, data }: CronogramaPanelProps) {
   const allDays = useMemo(() => buildDays(data.year, data.month), [data.year, data.month]);
   const today = todayIso();
 
+  /** "Geral" (Gestor/Admin): tudo à vista, e o que não é meu ganha destaque. */
+  const general = canFilterUsers && owners.length === 0;
+
+  /** Recorte de pessoa — por nome ou por grupo, conforme o papel. */
+  const matchesPerson = useMemo(() => {
+    if (canFilterUsers) {
+      return (post: ContentPostItem) => matchesOwner(post.owner?.id, owners);
+    }
+    return (post: ContentPostItem) =>
+      matchesCollabScope(
+        { ownerId: post.owner?.id, visibility: post.visibility, originSlug: post.originSlug },
+        data.currentUserId,
+        slug,
+        scopes,
+      );
+  }, [canFilterUsers, owners, scopes, data.currentUserId, slug]);
+
   const filteredPosts = useMemo(
     () =>
       data.posts.filter(
-        (post) => visible.includes(post.funnel) && matchesBrand(post.brand, brands),
+        (post) =>
+          visible.includes(post.funnel) && matchesBrand(post.brand, brands) && matchesPerson(post),
       ),
-    [data.posts, visible, brands],
+    [data.posts, visible, brands, matchesPerson],
   );
 
   /**
-   * O backlog é a outra lista de cards da tela, então acompanha o recorte por
-   * marca. O filtro de funil continua valendo só para o calendário — é o
-   * comportamento que já existia, e mexer nele não foi pedido.
+   * O backlog é a outra lista de cards da tela, então acompanha os recortes
+   * por marca e por pessoa. O filtro de funil continua valendo só para o
+   * calendário — é o comportamento que já existia, e mexer nele não foi pedido.
    */
   const filteredBacklog = useMemo(
-    () => data.backlog.filter((post) => matchesBrand(post.brand, brands)),
-    [data.backlog, brands],
+    () => data.backlog.filter((post) => matchesBrand(post.brand, brands) && matchesPerson(post)),
+    [data.backlog, brands, matchesPerson],
   );
 
   // Recorte visível conforme a visão escolhida.
@@ -210,6 +253,24 @@ export function CronogramaPanel({ slug, data }: CronogramaPanelProps) {
         : BRAND_ORDER.filter((b) => prev.includes(b) || b === brand),
     );
   }
+
+  function toggleScope(scope: CollabScope) {
+    setScopes((prev) =>
+      prev.includes(scope) ? prev.filter((s) => s !== scope) : [...prev, scope],
+    );
+  }
+
+  const scopeLabel: Record<CollabScope, string> = {
+    SECTOR: `Setor (${sectorLabel})`,
+    MARKETING: "Marketing",
+  };
+
+  /** Texto do botão do modal: resume a escolha sem abrir nada. */
+  const ownersLabel = general
+    ? "Geral"
+    : owners.length === 1 && owners[0] === data.currentUserId
+      ? "Só eu"
+      : `${owners.length} ${owners.length === 1 ? "usuário" : "usuários"}`;
 
   function openCreate(date?: string) {
     setEditing(null);
@@ -325,6 +386,7 @@ export function CronogramaPanel({ slug, data }: CronogramaPanelProps) {
           posts={filteredPosts}
           today={today}
           fill={inFullscreen}
+          emphasizeOthersOf={general ? data.currentUserId : undefined}
           onCreate={openCreate}
           onSelect={openDetails}
         />
@@ -466,6 +528,57 @@ export function CronogramaPanel({ slug, data }: CronogramaPanelProps) {
               </p>
             )}
           </div>
+
+          {/* Recorte de pessoa, ao lado de Marcas. Gestor/Admin: modal de
+              nomes. Colaborador: chips de grupo. */}
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+              {canFilterUsers ? "Usuários" : "Atividades de"}
+            </p>
+            {canFilterUsers ? (
+              <>
+                <div className="mt-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => setUsersOpen(true)}
+                    aria-haspopup="dialog"
+                    aria-expanded={usersOpen}
+                  >
+                    <Users className="h-4 w-4" />
+                    {ownersLabel}
+                  </Button>
+                </div>
+                {general && (
+                  <p className="mt-2 text-[10px] leading-snug text-muted">
+                    Cards de outros usuários têm borda destacada.
+                  </p>
+                )}
+              </>
+            ) : (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {collabScopesForSlug(slug).map((scope) => {
+                  const active = scopes.includes(scope);
+                  return (
+                    <button
+                      key={scope}
+                      type="button"
+                      onClick={() => toggleScope(scope)}
+                      aria-pressed={active}
+                      className={cn(
+                        "focus-ring inline-flex items-center rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-colors",
+                        active
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border bg-surface-2 text-muted hover:text-foreground",
+                      )}
+                    >
+                      {scopeLabel[scope]}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </section>
 
@@ -556,6 +669,16 @@ export function CronogramaPanel({ slug, data }: CronogramaPanelProps) {
         onEdit={openEdit}
         aiReady={data.aiReady}
       />
+
+      {canFilterUsers && (
+        <UserFilterModal
+          open={usersOpen}
+          onClose={() => setUsersOpen(false)}
+          groups={data.filterUsers}
+          selected={owners}
+          onChange={setOwners}
+        />
+      )}
 
       <PostModal
         slug={slug}

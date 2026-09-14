@@ -88,7 +88,27 @@ export interface FunnelBalanceSlice {
   percent: number;
 }
 
+/** Uma pessoa do modal de filtro por usuário — só o que o modal mostra. */
+export interface FilterUser {
+  id: string;
+  firstName: string;
+}
+
+/** Um bloco do modal: o setor e quem trabalha nele. */
+export interface FilterUserGroup {
+  slug: string;
+  label: string;
+  users: readonly FilterUser[];
+}
+
 export interface CronogramaData {
+  /** Quem está olhando — o recorte padrão ("só eu") parte daqui. */
+  currentUserId: string;
+  /**
+   * Pessoas do modal de filtro, agrupadas por setor com Cronograma. Vazio
+   * para quem não tem `cronograma.filterUsers` — a lista nem é consultada.
+   */
+  filterUsers: readonly FilterUserGroup[];
   /** Subsetor dono da base (origem, quando há herança). */
   scopeSlug: string;
   scopeLabel: string;

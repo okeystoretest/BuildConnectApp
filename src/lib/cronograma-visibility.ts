@@ -14,6 +14,13 @@ import type { ContentVisibility } from "@/types/cronograma";
  *                          usuários dela.
  * - PRIVATE "Somente eu" → só o autor.
  *
+ * Isso é o que o GESTOR lê. O COLABORADOR lê menos: além dos próprios cards,
+ * só o que a aba em que ele está liberou (Público ou Setor criados ali) e o
+ * que o Marketing publicou. Público criado em OUTRA aba — Vendas visto de
+ * Criação, por exemplo — não chega a ele. É exatamente o universo dos dois
+ * recortes que a tela lhe oferece, "Setor" e "Marketing"; entregar mais do
+ * que isso seria mandar ao cliente o que nenhum recorte mostra.
+ *
  * Admin enxerga tudo, para poder corrigir e organizar a agenda do time.
  *
  * A decisão em forma pura (`canViewInTab`) e a cláusula que a consulta manda
@@ -27,6 +34,13 @@ export const VISIBILITY_ORDER: readonly ContentVisibility[] = ["SHARED", "SECTOR
 
 /** Abas cujo conteúdo NASCE público. As demais nascem restritas ao autor. */
 const PUBLIC_BY_DEFAULT: readonly string[] = ["marketing", "criacao"];
+
+/**
+ * Aba cujos cards públicos chegam ao Colaborador de QUALQUER aba. É o setor
+ * que publica a agenda para os outros dois; por isso ganha um recorte próprio
+ * na tela dele.
+ */
+export const BROADCAST_SLUG = "marketing";
 
 /**
  * Alcance pré-selecionado ao abrir o formulário na aba `slug`.
@@ -56,9 +70,12 @@ export function canViewInTab(post: PostScope, viewer: Viewer, slug: string): boo
   if (viewer.role === "ADMIN") return true;
   // O autor nunca perde o próprio card de vista, seja qual for o alcance.
   if (post.createdById !== null && post.createdById === viewer.id) return true;
-  if (post.visibility === "SHARED") return true;
+  if (post.visibility === "PRIVATE") return false;
   if (post.visibility === "SECTOR") return post.originSlug === slug;
-  return false;
+  // SHARED: o Gestor lê de qualquer origem; o Colaborador só da própria aba
+  // ou do Marketing.
+  if (viewer.role === "GESTOR") return true;
+  return post.originSlug === slug || post.originSlug === BROADCAST_SLUG;
 }
 
 /**
@@ -67,9 +84,16 @@ export function canViewInTab(post: PostScope, viewer: Viewer, slug: string): boo
  */
 export function visibilityWhere(slug: string, viewer: Viewer) {
   if (viewer.role === "ADMIN") return {};
+  const shared =
+    viewer.role === "GESTOR"
+      ? [{ visibility: "SHARED" as const }]
+      : [
+          { visibility: "SHARED" as const, originSlug: slug },
+          { visibility: "SHARED" as const, originSlug: BROADCAST_SLUG },
+        ];
   return {
     OR: [
-      { visibility: "SHARED" as const },
+      ...shared,
       { visibility: "SECTOR" as const, originSlug: slug },
       { createdById: viewer.id },
     ],

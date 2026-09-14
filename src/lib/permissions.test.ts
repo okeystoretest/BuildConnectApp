@@ -18,3 +18,9 @@ test("ai.manage é exclusiva do ADMIN — a chave da API do Gemini fica com a ad
   assert.equal(can("GESTOR", "ai.manage"), false);
   assert.equal(can("COLABORADOR", "ai.manage"), false);
 });
+
+test("cronograma.filterUsers pertence a GESTOR e ADMIN — o colaborador não escolhe pessoas", () => {
+  assert.equal(can("ADMIN", "cronograma.filterUsers"), true);
+  assert.equal(can("GESTOR", "cronograma.filterUsers"), true);
+  assert.equal(can("COLABORADOR", "cronograma.filterUsers"), false);
+});

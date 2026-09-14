@@ -288,7 +288,7 @@ export function SectorPage({
           ))}
 
         {activeId === "cronograma" && cronograma && (
-          <CronogramaPanel slug={sector.slug} data={cronograma} />
+          <CronogramaPanel slug={sector.slug} sectorLabel={sector.name} data={cronograma} />
         )}
 
         {activeId === "sites" && (

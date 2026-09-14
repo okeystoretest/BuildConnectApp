@@ -22,21 +22,40 @@ const AUTOR = "user-autor";
 const COLEGA = "user-colega";
 
 const colaborador = (id: string): Viewer => ({ id, role: "COLABORADOR" });
+const gestor = (id: string): Viewer => ({ id, role: "GESTOR" });
 const admin = (id: string): Viewer => ({ id, role: "ADMIN" });
 
 function post(visibility: ContentVisibility, originSlug: string | null): PostScope {
   return { visibility, originSlug, createdById: AUTOR };
 }
 
-test("público aparece nas três abas", () => {
+test("público do Marketing aparece nas três abas, para qualquer papel", () => {
   const p = post("SHARED", "marketing");
   for (const slug of ["marketing", "vendas", "criacao"]) {
     assert.equal(canViewInTab(p, colaborador(COLEGA), slug), true, slug);
+    assert.equal(canViewInTab(p, gestor(COLEGA), slug), true, slug);
   }
+});
+
+/**
+ * O Colaborador só enxerga colegas por dois caminhos: o que o próprio setor
+ * dele liberou (aba atual) e o que o Marketing publicou. Público de OUTRA aba
+ * não chega a ele — chega ao Gestor, que continua lendo tudo que é público.
+ */
+test("público de outra aba (não Marketing) não aparece para o colaborador", () => {
+  const p = post("SHARED", "vendas");
+  assert.equal(canViewInTab(p, colaborador(COLEGA), "criacao"), false);
+  assert.equal(canViewInTab(p, gestor(COLEGA), "criacao"), true);
+});
+
+test("público da PRÓPRIA aba aparece para o colaborador", () => {
+  assert.equal(canViewInTab(post("SHARED", "vendas"), colaborador(COLEGA), "vendas"), true);
 });
 
 test("setor aparece para o colega da MESMA aba", () => {
   assert.equal(canViewInTab(post("SECTOR", "marketing"), colaborador(COLEGA), "marketing"), true);
+  assert.equal(canViewInTab(post("SECTOR", "vendas"), colaborador(COLEGA), "vendas"), true);
+  assert.equal(canViewInTab(post("SECTOR", "vendas"), gestor(COLEGA), "vendas"), true);
 });
 
 test("setor NÃO vaza para as outras abas, mesmo compartilhando a base", () => {
@@ -89,7 +108,12 @@ test("a cláusula do banco decide exatamente o mesmo que a regra da tela", () =>
   const alcances = ["SHARED", "SECTOR", "PRIVATE"] as const;
   const origens = ["marketing", "vendas", "criacao", null];
   const abas = ["marketing", "vendas", "criacao"];
-  const espectadores = [colaborador(AUTOR), colaborador(COLEGA), admin("adm")];
+  const espectadores = [
+    colaborador(AUTOR),
+    colaborador(COLEGA),
+    gestor(COLEGA),
+    admin("adm"),
+  ];
 
   let combinacoes = 0;
   for (const visibility of alcances) {
@@ -107,5 +131,5 @@ test("a cláusula do banco decide exatamente o mesmo que a regra da tela", () =>
       }
     }
   }
-  assert.equal(combinacoes, 108);
+  assert.equal(combinacoes, 144);
 });

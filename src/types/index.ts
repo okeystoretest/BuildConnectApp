@@ -34,7 +34,11 @@ export type Permission =
   // Configurar a integração com o Gemini: chave da API, modelo e instruções
   // do sistema, na aba "Inteligência Artificial" da Retaguarda. Só ADMIN —
   // é a tela onde uma credencial paga é colada.
-  | "ai.manage";
+  | "ai.manage"
+  // Filtrar o Cronograma por PESSOA (modal de usuários, "Geral"). GESTOR e
+  // ADMIN. O colaborador recorta por grupo — "Setor" e "Marketing" — e não
+  // escolhe nomes.
+  | "cronograma.filterUsers";
 
 export interface SectorLink {
   label: string;

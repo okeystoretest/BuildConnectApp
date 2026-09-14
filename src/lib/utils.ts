@@ -5,6 +5,11 @@ export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs));
 }
 
+/** Primeiro nome, para selos e listas em que o nome inteiro não cabe. */
+export function firstName(name: string): string {
+  return name.trim().split(/\s+/)[0] ?? "";
+}
+
 export function initials(name: string): string {
   return name
     .split(" ")

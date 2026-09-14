@@ -2,6 +2,8 @@ import { prisma } from "@/lib/db/prisma";
 import { resolveAppScope } from "@/lib/app-scope";
 import { isAiReady } from "@/lib/ai/settings-data";
 import { FUNNEL_ORDER, MONTH_LABEL, WEEKDAY_SHORT } from "@/lib/funnel";
+import { can } from "@/lib/permissions";
+import { firstName } from "@/lib/utils";
 import {
   canViewInTab,
   defaultVisibilityForSlug,
@@ -14,6 +16,7 @@ import type {
   ContentPostItem,
   ContentVisibility,
   CronogramaData,
+  FilterUserGroup,
   FunnelBalanceSlice,
   FunnelStage,
   FunnelVolumePoint,
@@ -165,6 +168,37 @@ function toItem(row: PostRow, userId: string, role: Role): ContentPostItem {
   };
 }
 
+/**
+ * Pessoas do modal de filtro por usuário: quem está nos subsetores em que a
+ * ferramenta existe — o dono da base e quem herda dela (Vendas, Marketing e
+ * Criação hoje), sem lista fixa no código. Um bloco por subsetor; a pessoa
+ * que está em dois aparece nos dois, e o modal trata a marcação por id.
+ */
+async function getFilterUsers(scopeId: string): Promise<FilterUserGroup[]> {
+  const subsectors = await prisma.subsector.findMany({
+    where: {
+      scheduleEnabled: true,
+      OR: [{ id: scopeId }, { appsSourceId: scopeId }],
+    },
+    orderBy: { order: "asc" },
+    select: {
+      slug: true,
+      label: true,
+      members: {
+        where: { user: { active: true } },
+        orderBy: { user: { fullName: "asc" } },
+        select: { user: { select: { id: true, fullName: true } } },
+      },
+    },
+  });
+
+  return subsectors.map((sub) => ({
+    slug: sub.slug,
+    label: sub.label,
+    users: sub.members.map(({ user }) => ({ id: user.id, firstName: firstName(user.fullName) })),
+  }));
+}
+
 export async function getCronogramaData(
   slug: string,
   year: number,
@@ -221,6 +255,10 @@ export async function getCronogramaData(
 
   const posts = (rows as PostRow[]).map((row) => toItem(row, userId, role));
 
+  // Só quem pode filtrar por pessoa recebe a lista — o colaborador recorta
+  // por grupo e não precisa saber quem trabalha em cada setor.
+  const filterUsers = can(role, "cronograma.filterUsers") ? await getFilterUsers(scope.id) : [];
+
   // Métricas consideram apenas o mês corrente — a grade extrapola para as
   // semanas vizinhas, mas os números do topo são do mês exibido.
   const inMonth = (rows as PostRow[]).filter(
@@ -253,6 +291,8 @@ export async function getCronogramaData(
     .map((row) => toItem(row, userId, role));
 
   return {
+    currentUserId: userId,
+    filterUsers,
     scopeSlug: scope.slug,
     scopeLabel: scope.label,
     inherited: scope.inherited,
