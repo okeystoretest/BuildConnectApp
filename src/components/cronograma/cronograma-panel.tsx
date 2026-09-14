@@ -357,6 +357,50 @@ export function CronogramaPanel({ slug, sectorLabel, data }: CronogramaPanelProp
               ))}
             </div>
 
+            {/* Recorte de pessoa, ao lado do período. Gestor/Admin: modal de
+                nomes. Colaborador: chips de grupo. Fica na barra do
+                calendário, então vale também em tela cheia — o modal sabe
+                abrir por cima dela. */}
+            {canFilterUsers ? (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setUsersOpen(true)}
+                aria-haspopup="dialog"
+                aria-expanded={usersOpen}
+                title={
+                  general
+                    ? "Geral: cards de outros usuários têm borda destacada"
+                    : "Filtrar por usuário"
+                }
+              >
+                <Users className="h-4 w-4" />
+                {ownersLabel}
+              </Button>
+            ) : (
+              <div className="flex items-center gap-1 rounded-lg border border-border bg-surface-2 p-1">
+                {collabScopesForSlug(slug).map((scope) => {
+                  const active = scopes.includes(scope);
+                  return (
+                    <button
+                      key={scope}
+                      type="button"
+                      onClick={() => toggleScope(scope)}
+                      aria-pressed={active}
+                      className={cn(
+                        "focus-ring rounded-md px-3 py-1.5 text-xs transition-colors",
+                        active
+                          ? "bg-primary/10 font-semibold text-primary"
+                          : "text-muted hover:text-foreground",
+                      )}
+                    >
+                      {scopeLabel[scope]}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Tela cheia: o calendário toma a janela inteira. */}
             <Button
               variant="secondary"
@@ -526,57 +570,6 @@ export function CronogramaPanel({ slug, sectorLabel, data }: CronogramaPanelProp
               <p className="mt-2 text-[10px] leading-snug text-muted">
                 Cards sem marca continuam visíveis.
               </p>
-            )}
-          </div>
-
-          {/* Recorte de pessoa, ao lado de Marcas. Gestor/Admin: modal de
-              nomes. Colaborador: chips de grupo. */}
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-              {canFilterUsers ? "Usuários" : "Atividades de"}
-            </p>
-            {canFilterUsers ? (
-              <>
-                <div className="mt-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setUsersOpen(true)}
-                    aria-haspopup="dialog"
-                    aria-expanded={usersOpen}
-                  >
-                    <Users className="h-4 w-4" />
-                    {ownersLabel}
-                  </Button>
-                </div>
-                {general && (
-                  <p className="mt-2 text-[10px] leading-snug text-muted">
-                    Cards de outros usuários têm borda destacada.
-                  </p>
-                )}
-              </>
-            ) : (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {collabScopesForSlug(slug).map((scope) => {
-                  const active = scopes.includes(scope);
-                  return (
-                    <button
-                      key={scope}
-                      type="button"
-                      onClick={() => toggleScope(scope)}
-                      aria-pressed={active}
-                      className={cn(
-                        "focus-ring inline-flex items-center rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-colors",
-                        active
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-border bg-surface-2 text-muted hover:text-foreground",
-                      )}
-                    >
-                      {scopeLabel[scope]}
-                    </button>
-                  );
-                })}
-              </div>
             )}
           </div>
         </div>

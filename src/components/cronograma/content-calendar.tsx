@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Clock, Lock, Minus, Plus, User as UserIcon } from "lucide-react";
 import { cn, firstName } from "@/lib/utils";
 import {
@@ -103,8 +103,12 @@ function ownerTag(post: ContentPostItem): string | null {
  * Borda destacada do card alheio. `ring-inset` e não borda: a borda do card
  * com marca é cor inline, e o card expandido ladrilha a célula sem borda
  * lateral — o anel por dentro funciona igual nos dois.
+ *
+ * Tom neutro (`muted`) e fino de propósito: o destaque precisa ser notado
+ * numa varredura, não competir com as cores de marca e de funil que já
+ * identificam o card.
  */
-const EMPHASIS = "ring-2 ring-inset ring-primary";
+const EMPHASIS = "ring-1 ring-inset ring-muted/60";
 
 /**
  * Chip de post (estado padrão).
@@ -581,6 +585,34 @@ export function ContentCalendar({
   // Tela cheia: exceções ao padrão "todos expandidos".
   const [collapsedIds, setCollapsedIds] = useState<ReadonlySet<string>>(() => new Set());
 
+  /**
+   * A grade cabe na largura disponível?
+   *
+   * O cabeçalho dos dias da semana fica grudado no topo enquanto a página
+   * rola — mas `position: sticky` gruda no ancestral que ROLA, e um
+   * contêiner com `overflow-x: auto` é um ancestral que rola (nos dois
+   * eixos, por definição), o que anula o sticky em relação à página. Então
+   * o contêiner só vira rolável quando precisa: grade mais larga que o
+   * espaço (tela estreita). Cabendo, ele usa `overflow: clip`, que corta
+   * sem criar rolagem, e o cabeçalho gruda na página. A troca é medida, não
+   * adivinhada por breakpoint — a largura útil depende da barra lateral.
+   */
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const [overflows, setOverflows] = useState(false);
+
+  useEffect(() => {
+    const frame = frameRef.current;
+    const grid = gridRef.current;
+    if (!frame || !grid) return;
+
+    const measure = () => setOverflows(grid.getBoundingClientRect().width > frame.clientWidth + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, [view]);
+
   const isExpanded = (post: ContentPostItem) =>
     fill ? !collapsedIds.has(post.id) : expandedId === post.id;
 
@@ -621,14 +653,18 @@ export function ContentCalendar({
 
   return (
     // A grade ocupa toda a largura disponível; abaixo de ~900px ela rola na
-    // horizontal em vez de espremer as células a ponto de esconder os cards.
+    // horizontal em vez de espremer as células a ponto de esconder os cards
+    // (e só então — ver `overflows`).
     <div
+      ref={frameRef}
       className={cn(
-        "scrollbar-slim overflow-x-auto rounded-xl border border-border",
+        "scrollbar-slim rounded-xl border border-border",
+        overflows ? "overflow-x-auto" : "overflow-x-clip",
         fill && "flex h-full min-h-0 flex-col",
       )}
     >
       <div
+        ref={gridRef}
         className={cn(
           "w-full",
           view !== "day" && "min-w-[900px]",
@@ -636,7 +672,19 @@ export function ContentCalendar({
         )}
       >
         {view !== "day" && (
-          <div className="grid grid-cols-7 border-b border-border bg-surface-2">
+          // Gruda logo abaixo da barra superior enquanto a página rola, para
+          // que cada coluna continue dizendo que dia é. Acima dos cards
+          // expandidos (z-20) e do botão de criar (z-30) — e ainda assim
+          // abaixo da barra superior (z-20), porque o painel da aba tem
+          // `transform` residual e é um contexto de empilhamento próprio.
+          // Em tela cheia nada rola e não há barra superior, então não há
+          // o que grudar.
+          <div
+            className={cn(
+              "grid grid-cols-7 border-b border-border bg-surface-2",
+              !fill && "sticky top-topbar z-40 rounded-t-xl",
+            )}
+          >
             {WEEKDAY_LONG.map((label) => (
               <div
                 key={label}
