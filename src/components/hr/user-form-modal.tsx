@@ -13,7 +13,7 @@ import { AvatarPicker } from "@/components/ui/avatar-picker";
 import { PasswordInput } from "@/components/ui/password-input";
 import { initials } from "@/lib/utils";
 import { UNITS } from "@/lib/units";
-import { SECTOR_LABELS, getSubsectors } from "@/lib/sector-tree";
+import { SECTOR_LABELS, SECTOR_TREE, getSubsectors } from "@/lib/sector-tree";
 import { ROLE_LABEL } from "@/lib/permissions";
 import { createUser, updateUser } from "@/lib/user-actions";
 import {
@@ -94,7 +94,18 @@ export function UserFormModal({ open, onClose, initial, onSaved }: UserFormModal
     }
   }, [open, initial]);
 
-  const subsectorOptions = useMemo(() => getSubsectors(form.sector), [form.sector]);
+  /**
+   * Blocos de subsetores: TODOS os setores, não só o principal. Uma pessoa
+   * pode ser de Comercial › Vendas e de Produção › Criação ao mesmo tempo —
+   * o acesso já é por subsetor (ver lib/auth/access), o formulário é que
+   * limitava a um setor. Setores sem subsetor (Retaguarda, DHO) não têm
+   * bloco: entram só como setor principal.
+   */
+  const subsectorGroups = useMemo(
+    () => SECTOR_TREE.filter((sector) => sector.subsectors.length > 0),
+    [],
+  );
+  const principalHasSubsectors = getSubsectors(form.sector).length > 0;
 
   function patch(next: Partial<UserFormState>) {
     setForm((prev) => ({ ...prev, ...next }));
@@ -117,8 +128,9 @@ export function UserFormModal({ open, onClose, initial, onSaved }: UserFormModal
   }
 
   function handleSectorChange(value: string) {
-    // Trocar de setor invalida os subsetores anteriores.
-    patch({ sector: value, subsectors: [] });
+    // Os subsetores marcados são independentes do setor principal — trocar
+    // a lotação não desfaz o acesso a outros setores.
+    patch({ sector: value });
   }
 
   function validate(): boolean {
@@ -326,7 +338,7 @@ export function UserFormModal({ open, onClose, initial, onSaved }: UserFormModal
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="sector" className="mb-1.5 block text-xs font-medium text-foreground">
-                Setor
+                Setor principal
               </label>
               <Select
                 id="sector"
@@ -356,20 +368,30 @@ export function UserFormModal({ open, onClose, initial, onSaved }: UserFormModal
           </div>
 
           <div>
-            <p className="mb-1.5 text-xs font-medium text-foreground">Subsetores</p>
-            {form.sector ? (
-              <MultiChipGroup
-                options={subsectorOptions}
-                values={form.subsectors}
-                onChange={(subsectors) => patch({ subsectors })}
-                ariaLabel="Subsetores com acesso liberado"
-              />
-            ) : (
-              <p className="text-xs text-muted">Selecione um setor para ver os subsetores.</p>
-            )}
-            {subsectorOptions.length > 0 && (
+            <p className="text-xs font-medium text-foreground">Subsetores</p>
+            <p className="mb-2 mt-0.5 text-[11px] text-muted">
+              Marque os subsetores que o usuário acessa — de um ou de vários setores.
+            </p>
+            <div className="space-y-3">
+              {subsectorGroups.map((sector) => (
+                <div key={sector.label}>
+                  <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                    {sector.label}
+                  </p>
+                  <MultiChipGroup
+                    options={sector.subsectors}
+                    values={form.subsectors}
+                    onChange={(subsectors) => patch({ subsectors })}
+                    ariaLabel={`Subsetores de ${sector.label}`}
+                  />
+                </div>
+              ))}
+            </div>
+            {form.subsectors.length === 0 && form.sector && (
               <p className="mt-2 text-[11px] text-muted">
-                Sem seleção, o usuário acessa todos os subsetores de {form.sector}.
+                {principalHasSubsectors
+                  ? `Sem seleção, o usuário acessa todos os subsetores de ${form.sector}.`
+                  : `Sem seleção, o usuário acessa apenas ${form.sector}.`}
               </p>
             )}
           </div>

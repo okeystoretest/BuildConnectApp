@@ -1,7 +1,8 @@
 "use client";
 
 import { ArrowRight, Archive, CalendarDays, Eye, Paperclip, Trash2, UserMinus } from "lucide-react";
-import { cn, initials } from "@/lib/utils";
+import { cn, initials, shortName } from "@/lib/utils";
+import { useRole } from "@/providers/role-provider";
 import { Badge } from "@/components/ui/badge";
 import { itCategoryTone } from "@/lib/it-data";
 import { useArchiveCountdown } from "@/lib/use-archive-countdown";
@@ -38,7 +39,15 @@ export function TicketCard({
   canDelete = false,
   onDelete,
 }: TicketCardProps) {
+  const { user, can } = useRole();
   const attachmentCount = ticket.attachments?.length ?? 0;
+  /**
+   * "Responsável" é informação de quem DISTRIBUI o trabalho (Gestor/Admin).
+   * Quem assumiu o chamado para si não precisa ler o próprio nome; o
+   * solicitante acompanha o responsável em "Meus Chamados".
+   */
+  const showAssignee =
+    Boolean(ticket.assignee) && can("tickets.assign") && ticket.assigneeId !== user.id;
   // Concluído: quanto falta para o card sair do quadro e ir para o histórico.
   const countdown = useArchiveCountdown(
     ticket.status === "CONCLUIDO" ? ticket.finishedAt : undefined,
@@ -88,14 +97,17 @@ export function TicketCard({
           {initials(ticket.requesterName)}
         </span>
         <div className="min-w-0">
-          <p className="break-words text-xs font-medium text-foreground">{ticket.requesterName}</p>
+          {/* Dois primeiros nomes: o card é estreito e o nome inteiro está nos detalhes. */}
+          <p className="break-words text-xs font-medium text-foreground" title={ticket.requesterName}>
+            {shortName(ticket.requesterName)}
+          </p>
           <p className="break-words text-[10px] text-muted">
             {ticket.requesterUnit} · {ticket.requesterSector}
           </p>
         </div>
       </div>
 
-      {ticket.assignee && (
+      {showAssignee && (
         <p className="mt-2 break-words text-[11px] text-muted">
           Responsável: <span className="text-foreground">{ticket.assignee}</span>
         </p>

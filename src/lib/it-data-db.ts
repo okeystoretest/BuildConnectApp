@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { dateLabelBR, isoDateBR, timeLabelBR } from "@/lib/brasilia";
+import { stripCategoryPrefix } from "@/lib/ticket-title";
 import { prisma } from "@/lib/db/prisma";
 import { archiveCutoff } from "@/lib/archive-window";
 import type {
@@ -67,12 +68,15 @@ interface DbTicketRow {
 }
 
 function mapTicket(row: DbTicketRow): ItTicket {
+  const category = (row.category ?? "Equipamentos") as ItTicket["category"];
   return {
     id: row.id,
     code: row.code,
-    title: row.title,
+    // A categoria já vai na tag do card; no título ela seria a mesma
+    // informação duas vezes.
+    title: stripCategoryPrefix(row.title, category),
     description: row.description ?? undefined,
-    category: (row.category ?? "Equipamentos") as ItTicket["category"],
+    category,
     requesterName: row.requester?.fullName ?? "—",
     requesterUnit: row.unit?.label ?? "—",
     requesterSector: row.requester?.sector?.label ?? "—",

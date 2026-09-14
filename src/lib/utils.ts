@@ -10,6 +10,11 @@ export function firstName(name: string): string {
   return name.trim().split(/\s+/)[0] ?? "";
 }
 
+/** Dois primeiros nomes — cabe no card sem perder quem é a pessoa. */
+export function shortName(name: string): string {
+  return name.trim().split(/\s+/).filter(Boolean).slice(0, 2).join(" ");
+}
+
 export function initials(name: string): string {
   return name
     .split(" ")
