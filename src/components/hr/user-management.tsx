@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import { paginate } from "@/lib/paginate";
+import { Pagination } from "@/components/ui/pagination";
 import { useRouter } from "next/navigation";
 import { Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { initials } from "@/lib/utils";
@@ -43,6 +45,7 @@ function Avatar({ user, size = "h-8 w-8" }: { user: ManagedUser; size?: string }
 export function UserManagementPanel({ users }: { users: readonly ManagedUser[] }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
+  const [pageNumber, setPageNumber] = useState(1);
   const [pendingDelete, setPendingDelete] = useState<ManagedUser | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ManagedUser | null>(null);
@@ -62,6 +65,14 @@ export function UserManagementPanel({ users }: { users: readonly ManagedUser[] }
         .includes(term),
     );
   }, [users, query]);
+
+  /**
+   * 10 por página, sobre o RESULTADO da busca. `paginate` já puxa a página
+   * para dentro do intervalo quando a busca encolhe a lista; a tabela e os
+   * cards (mobile) leem a mesma fatia.
+   */
+  const PAGE_SIZE = 10;
+  const page = useMemo(() => paginate(filtered, pageNumber, PAGE_SIZE), [filtered, pageNumber]);
 
   function openCreate() {
     setEditing(null);
@@ -107,7 +118,10 @@ export function UserManagementPanel({ users }: { users: readonly ManagedUser[] }
         <input
           type="search"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setPageNumber(1);
+          }}
           placeholder="Buscar por nome, usuário, nível ou setor"
           aria-label="Buscar usuário"
           className="focus-ring h-10 w-full rounded-lg border border-border bg-surface-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted/70 transition-colors hover:border-border-strong"
@@ -137,7 +151,7 @@ export function UserManagementPanel({ users }: { users: readonly ManagedUser[] }
               </tr>
             </thead>
             <tbody>
-              {filtered.map((user) => (
+              {page.items.map((user) => (
                 <tr key={user.id} className="border-b border-border/60 last:border-0 hover:bg-surface-2/50">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
@@ -193,7 +207,7 @@ export function UserManagementPanel({ users }: { users: readonly ManagedUser[] }
         </div>
 
         <div className="space-y-3 lg:hidden">
-          {filtered.map((user) => (
+          {page.items.map((user) => (
             <article key={user.id} className="rounded-xl border border-border bg-surface p-4">
               <div className="flex items-center gap-3">
                 <Avatar user={user} size="h-9 w-9" />
@@ -242,6 +256,8 @@ export function UserManagementPanel({ users }: { users: readonly ManagedUser[] }
             </article>
           ))}
         </div>
+
+        <Pagination page={page} onChange={setPageNumber} noun="usuários" />
         </>
       )}
 
