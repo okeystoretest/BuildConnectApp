@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db/prisma";
 import { dayMonthBR, daysAgoBR } from "@/lib/brasilia";
 import type { Ticket, TicketStatus } from "@/types/content";
+import { needsReconcile } from "@/lib/flow/mirror";
+import { reconcileTicket } from "@/lib/flow/sync";
 
 /**
  * Chamados do próprio usuário para a tela "Meus Chamados".
@@ -33,6 +35,19 @@ function openedLabel(date: Date): string {
 }
 
 export async function getMyTickets(userId: string): Promise<Ticket[]> {
+  // Reconciliação na leitura: espelho velho de chamado de Motoristas não final
+  // é reconsultado no Flow. É a rede de segurança do webhook (melhor esforço).
+  const stale = await prisma.ticket.findMany({
+    where: {
+      requesterId: userId,
+      destination: "MOTORISTAS",
+      flowId: { not: null },
+      status: { notIn: ["CONCLUIDO", "CANCELADO"] },
+    },
+    select: { id: true, destination: true, status: true, flowId: true, flowSyncedAt: true },
+  });
+  await Promise.all(stale.filter((t) => needsReconcile(t)).map((t) => reconcileTicket(t.id)));
+
   const rows = await prisma.ticket.findMany({
     where: { requesterId: userId },
     orderBy: { createdAt: "desc" },
@@ -55,8 +70,17 @@ export async function getMyTickets(userId: string): Promise<Ticket[]> {
       status,
       openedLabel: openedLabel(row.createdAt),
       requestedBy: row.requester.fullName,
-      assignee: row.assignee?.fullName,
+      // Motorista do Flow (chamado de Motoristas) ou responsável local (TI).
+      assignee: row.externalAssigneeName ?? row.assignee?.fullName,
       category: row.category ?? undefined,
+      flowSyncHint:
+        row.destination === "MOTORISTAS" && !row.flowId && row.flowSyncError
+          ? "Aguardando envio à Logística"
+          : undefined,
+      proofUrl:
+        row.destination === "MOTORISTAS" && row.flowId && row.status === "CONCLUIDO"
+          ? `/api/integracao/flow/comprovante/${row.id}`
+          : undefined,
     });
   }
 

@@ -4,6 +4,7 @@ import { resolveAccessibleSlugs, canAccessSlug } from "@/lib/auth/access";
 import { prisma } from "@/lib/db/prisma";
 import type { Role } from "@/types";
 import { getTripTracking } from "@/lib/tracking/trip-tracking-data";
+import { fetchFlowTracking } from "@/lib/flow/client";
 
 /**
  * GET /api/chamados/[id]/tracking
@@ -42,7 +43,7 @@ export async function GET(
 
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
-    select: { requesterId: true, assigneeId: true },
+    select: { requesterId: true, assigneeId: true, destination: true, flowId: true },
   });
   if (!ticket) {
     return NextResponse.json({ error: "Chamado não encontrado." }, { status: 404 });
@@ -58,6 +59,20 @@ export async function GET(
   }
 
   try {
+    // Chamado gerido no Build.Flow: o rastreamento vive lá. Mesmo DTO; o
+    // mapa não sabe a diferença. Chamados antigos (sem flowId) seguem no Trip local.
+    if (ticket.destination === "MOTORISTAS" && ticket.flowId) {
+      const res = await fetchFlowTracking(ticketId);
+      if (res.status === 404) {
+        return NextResponse.json({ error: "Corrida não iniciada." }, { status: 404 });
+      }
+      const body = await res.text();
+      return new NextResponse(body, {
+        status: res.ok ? 200 : 502,
+        headers: { "content-type": "application/json", "Cache-Control": "no-store" },
+      });
+    }
+
     const tracking = await getTripTracking(ticketId);
     if (!tracking) {
       return NextResponse.json({ error: "Corrida não iniciada." }, { status: 404 });

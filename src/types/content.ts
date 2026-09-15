@@ -12,6 +12,10 @@ export interface Ticket {
   /** Técnico responsável pela resolução. */
   assignee?: string;
   category?: string;
+  /** Chamado de Motoristas ainda não chegou ao Build.Flow (reenvio automático). */
+  flowSyncHint?: string;
+  /** Comprovante de entrega (rota autenticada do Connect que busca no Flow). */
+  proofUrl?: string;
 }
 
 export interface AreaProgress {

@@ -104,6 +104,9 @@ function MyTicketCard({
             "Aguardando atribuição"
           )}
         </p>
+        {ticket.flowSyncHint && (
+          <p className="text-[11px] text-warning">{ticket.flowSyncHint}</p>
+        )}
       </div>
 
       <div className="mt-2 flex items-center justify-end">
