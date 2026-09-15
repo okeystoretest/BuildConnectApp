@@ -31,7 +31,7 @@ const jetbrains = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Build.Connect · Hub de Onboarding",
+  title: "Build.Connect · Hub de Gestão Inteligente",
   description: "Plataforma de integração e conhecimento.",
   icons: { icon: "/favicon.png" },
 };

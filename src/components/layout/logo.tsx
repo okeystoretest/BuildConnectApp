@@ -61,7 +61,7 @@ export function Logo({
         <div className="leading-none">
           <span className="text-[17px] font-bold tracking-tight text-foreground">Build.</span>
           <span className="text-[17px] font-bold tracking-tight text-primary">Connect</span>
-          <p className="mt-1 text-[11px] font-medium text-muted">Hub de Onboarding</p>
+          <p className="mt-1 text-[11px] font-medium text-muted">Hub de Gestão Inteligente</p>
         </div>
       )}
     </div>
