@@ -5,7 +5,7 @@ import type { ItTicketStatus } from "@/types/it";
  * das colunas por status, e o tom semântico de cada categoria.
  *
  * Só constantes de UI. Os chamados e as agregações do dashboard vêm do banco
- * (`lib/it-data-db`, `lib/driver-data-db`) — o acervo de demonstração que
+ * (`lib/it-data-db`) — o acervo de demonstração que
  * morava aqui, com nomes e unidades inventados, foi removido.
  */
 

@@ -6,7 +6,6 @@ import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth/require-user";
 import { resolveAccessibleSlugs, canAccessSlug } from "@/lib/auth/access";
 import { can } from "@/lib/permissions";
-import { listDrivers } from "@/lib/tickets/actions";
 import type { Role } from "@/types";
 
 export interface ActionResult {
@@ -67,6 +66,9 @@ export async function assignTicket(input: {
       select: { id: true, status: true, destination: true },
     });
     if (!ticket) return { ok: false, error: "Chamado não encontrado." };
+    if (ticket.destination === "MOTORISTAS") {
+      return { ok: false, error: "Chamados de Motoristas são atribuídos no Build.Flow." };
+    }
     if (ticket.status === "CONCLUIDO" || ticket.status === "CANCELADO") {
       return { ok: false, error: "Chamado já encerrado." };
     }
@@ -75,9 +77,8 @@ export async function assignTicket(input: {
     // papel (tickets.claim, que todo colaborador tem) bastava para assumir
     // chamado de um setor que a pessoa nem enxerga — e, como responsável, ela
     // passaria a poder mudar status e concluir.
-    const slugDoQuadro = ticket.destination === "MOTORISTAS" ? "motoristas" : "ti";
     const slugs = await resolveAccessibleSlugs(user.id, role);
-    if (!canAccessSlug(slugs, slugDoQuadro)) {
+    if (!canAccessSlug(slugs, "ti")) {
       return { ok: false, error: "Você não tem acesso ao quadro deste chamado." };
     }
 
@@ -122,9 +123,12 @@ export async function unassignTicket(input: { ticketId: string }): Promise<Actio
   try {
     const ticket = await prisma.ticket.findUnique({
       where: { id: ticketId },
-      select: { assigneeId: true, status: true, startedAt: true },
+      select: { assigneeId: true, status: true, startedAt: true, destination: true },
     });
     if (!ticket) return { ok: false, error: "Chamado não encontrado." };
+    if (ticket.destination === "MOTORISTAS") {
+      return { ok: false, error: "Chamados de Motoristas são atribuídos no Build.Flow." };
+    }
 
     const canAssign = can(user.role as Role, "tickets.assign");
     const isAssignee = ticket.assigneeId === user.id;
@@ -160,10 +164,7 @@ export async function unassignTicket(input: { ticketId: string }): Promise<Actio
  * Só quem tem tickets.assign pode escolher outra pessoa; para os demais a
  * lista volta vazia e o modal oferece apenas "Atribuir para mim".
  *
- * No quadro de MOTORISTAS a lista é a dos motoristas — usuários lotados em
- * Logística › Motoristas, o mesmo recorte do seletor de abertura de chamado.
- * Sem o destino a lista sairia com a empresa inteira, e daria para encaminhar
- * uma entrega a alguém do Marketing.
+ * MOTORISTAS não tem lista: esses chamados são atribuídos no Build.Flow.
  */
 export async function listAssignableUsers(
   destination?: "TI" | "MOTORISTAS",
@@ -171,9 +172,7 @@ export async function listAssignableUsers(
   const user = await getCurrentUser();
   if (!user || !can(user.role as Role, "tickets.assign")) return [];
 
-  if (destination === "MOTORISTAS") {
-    return listDrivers();
-  }
+  if (destination === "MOTORISTAS") return [];
 
   const people = await prisma.user.findMany({
     where: { active: true },

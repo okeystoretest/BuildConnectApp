@@ -3,11 +3,6 @@ import { LOGIN_EXPIRED_PATH } from "@/lib/auth/login-redirect";
 import { getVerifiedSession } from "@/lib/auth/require-user";
 import { resolveAccessibleSlugs, canAccessSlug } from "@/lib/auth/access";
 import { getSectorContent } from "@/lib/sector-data";
-import {
-  getDriverTickets,
-  getDriverDashboard,
-  getDriverLogistics,
-} from "@/lib/driver-data-db";
 import { DriverSectorView } from "@/components/it/driver-sector-view";
 import { getSectorEvaluations } from "@/lib/sector-evaluations-data";
 import { getSectorWelcomeVideo } from "@/lib/welcome-video-data";
@@ -23,19 +18,14 @@ export default async function DriversSectorPage() {
   const slugs = await resolveAccessibleSlugs(session.userId, session.role as Role);
   if (!canAccessSlug(slugs, "motoristas")) notFound();
 
-  const [content, tickets, dashboard, logistics] = await Promise.all([
-    getSectorContent("motoristas", session.userId),
-    getDriverTickets(),
-    getDriverDashboard(),
-    getDriverLogistics(),
-  ]);
+  const content = await getSectorContent("motoristas", session.userId);
 
   const safeContent = content ?? {
     slug: "motoristas",
     name: "Motoristas",
     parent: "Logística",
     kind: "PADRAO" as const,
-    description: "Central de chamados e conteúdos da equipe de rota.",
+    description: "Conteúdos e avaliações da equipe de rota.",
     completion: 0,
     photos: [],
     videos: [],
@@ -52,9 +42,6 @@ export default async function DriversSectorPage() {
   return (
     <DriverSectorView
       content={safeContent}
-      tickets={tickets}
-      dashboard={dashboard}
-      logistics={logistics}
       evaluations={evaluations}
       welcome={welcome}
     />
