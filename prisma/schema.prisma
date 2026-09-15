@@ -605,6 +605,19 @@ model Ticket {
   // Descrição técnica da solução aplicada (obrigatória ao concluir chamado de TI).
   resolutionNote String?
 
+  // ——— Integração com o Build.Flow (só destination = MOTORISTAS) ———
+  // O Flow é o dono do chamado de Motoristas a partir da abertura; aqui fica
+  // um ESPELHO para "Meus Chamados" listar e acompanhar sem consultar o Flow a
+  // cada tela. `flowSyncError` preenchido = ainda não chegou lá (o cron reenvia).
+  flowId               String?   @unique
+  flowSyncedAt         DateTime?
+  flowSyncError        String?
+  // Motorista escolhido na abertura (id de usuário do FLOW). Fica aqui até o
+  // envio acontecer — que pode ser no cron, minutos depois.
+  flowDriverId         String?
+  // Nome do motorista, vindo do Flow. O motorista não é usuário do Connect.
+  externalAssigneeName String?
+
   images  TicketImage[]
   trip    Trip?
 
