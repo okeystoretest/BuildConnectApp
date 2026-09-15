@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { deleteUser } from "@/lib/user-actions";
+import { useRole } from "@/providers/role-provider";
 import type { ManagedUser } from "@/types/hr";
 import type { Role } from "@/types";
 import { UserFormModal } from "./user-form-modal";
@@ -44,6 +45,7 @@ function Avatar({ user, size = "h-8 w-8" }: { user: ManagedUser; size?: string }
 
 export function UserManagementPanel({ users }: { users: readonly ManagedUser[] }) {
   const router = useRouter();
+  const { role } = useRole();
   const [query, setQuery] = useState("");
   const [pageNumber, setPageNumber] = useState(1);
   const [pendingDelete, setPendingDelete] = useState<ManagedUser | null>(null);
@@ -73,6 +75,11 @@ export function UserManagementPanel({ users }: { users: readonly ManagedUser[] }
    */
   const PAGE_SIZE = 10;
   const page = useMemo(() => paginate(filtered, pageNumber, PAGE_SIZE), [filtered, pageNumber]);
+
+  // Só o Admin toca em conta de Admin. O Gestor do DHO vê a conta na lista,
+  // mas sem os botões — a action recusa de qualquer jeito; aqui é só para não
+  // oferecer o que vai falhar.
+  const canTouch = (user: ManagedUser) => role === "ADMIN" || user.role !== "ADMIN";
 
   function openCreate() {
     setEditing(null);
@@ -181,24 +188,26 @@ export function UserManagementPanel({ users }: { users: readonly ManagedUser[] }
                     </p>
                   </td>
                   <td className="px-4 py-3">
-                    <div className="flex gap-1">
-                      <button
-                        type="button"
-                        onClick={() => openEdit(user)}
-                        aria-label={`Editar ${user.name}`}
-                        className="focus-ring flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setPendingDelete(user)}
-                        aria-label={`Remover ${user.name}`}
-                        className="focus-ring flex h-8 w-8 items-center justify-center rounded-lg text-danger transition-colors hover:bg-danger/15"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
+                    {canTouch(user) && (
+                      <div className="flex gap-1">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(user)}
+                          aria-label={`Editar ${user.name}`}
+                          className="focus-ring flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPendingDelete(user)}
+                          aria-label={`Remover ${user.name}`}
+                          className="focus-ring flex h-8 w-8 items-center justify-center rounded-lg text-danger transition-colors hover:bg-danger/15"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -234,25 +243,27 @@ export function UserManagementPanel({ users }: { users: readonly ManagedUser[] }
                 <p className="text-xs text-muted">{user.subsectors}</p>
               </div>
 
-              <div className="mt-3 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => openEdit(user)}
-                  aria-label={`Editar ${user.name}`}
-                  className="focus-ring flex h-9 flex-1 items-center justify-center gap-2 rounded-lg bg-surface-2 text-xs text-foreground transition-colors hover:bg-surface-3"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                  Editar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPendingDelete(user)}
-                  aria-label={`Remover ${user.name}`}
-                  className="focus-ring flex h-9 w-9 items-center justify-center rounded-lg bg-danger/15 text-danger transition-colors hover:bg-danger/25"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </div>
+              {canTouch(user) && (
+                <div className="mt-3 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openEdit(user)}
+                    aria-label={`Editar ${user.name}`}
+                    className="focus-ring flex h-9 flex-1 items-center justify-center gap-2 rounded-lg bg-surface-2 text-xs text-foreground transition-colors hover:bg-surface-3"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPendingDelete(user)}
+                    aria-label={`Remover ${user.name}`}
+                    className="focus-ring flex h-9 w-9 items-center justify-center rounded-lg bg-danger/15 text-danger transition-colors hover:bg-danger/25"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
             </article>
           ))}
         </div>

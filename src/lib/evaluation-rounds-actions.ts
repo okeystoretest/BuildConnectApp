@@ -6,7 +6,7 @@ import { notifyPendingEvaluation } from "@/lib/whatsapp/notify";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth/require-user";
-import { canUseDhoTools } from "@/lib/auth/access";
+import { canAdministerDho, canUseDhoTools } from "@/lib/auth/access";
 import { can } from "@/lib/permissions";
 import { canReachSector } from "@/lib/auth/scope";
 import { getRoundType, getRoundConsolidated } from "@/lib/evaluation-rounds";
@@ -115,8 +115,9 @@ export async function assignEvaluation(input: unknown): Promise<RoundResult> {
   }
   const subjectName = people.find((p) => p.id === subjectId)?.fullName ?? "colaborador";
 
-  // Escopo do Gestor: só atribui para o próprio setor.
-  if (!can(actor.role as Role, "sector.hr")) {
+  // Escopo do Gestor de outro setor: só atribui para o próprio setor. Quem
+  // administra o DHO (Admin, ou Gestor lotado no DHO) atribui para qualquer um.
+  if (!(await canAdministerDho(actor.id, actor.role as Role))) {
     const actorSector = await prisma.user.findUnique({
       where: { id: actor.id },
       select: { sector: { select: { label: true } } },
@@ -404,10 +405,10 @@ async function requireRoundScope(
   const round = await loadRoundForManagement(roundId);
   if (!round) return { round: null, error: "Atribuição não encontrada." };
 
-  // A consulta ao setor do ator só faz sentido para quem não é DHO/Admin:
-  // canReachSector libera esses antes de olhar setor algum.
-  const ehHr = can(actor.role as Role, "sector.hr");
-  const ator = ehHr
+  // A consulta ao setor do ator só faz sentido para quem não administra o
+  // DHO: canReachSector libera esses antes de olhar setor algum.
+  const dhoAdmin = await canAdministerDho(actor.id, actor.role as Role);
+  const ator = dhoAdmin
     ? null
     : await prisma.user.findUnique({
         where: { id: actor.id },
@@ -415,7 +416,7 @@ async function requireRoundScope(
       });
 
   const alcanca = canReachSector({
-    role: actor.role as Role,
+    dhoAdmin,
     actorSector: ator?.sector?.label ?? null,
     subjectSector: round.subject.sector?.label ?? null,
   });

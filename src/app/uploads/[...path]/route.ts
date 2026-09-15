@@ -4,7 +4,7 @@ import { Readable } from "node:stream";
 import path from "node:path";
 import { UPLOADS_ROOT } from "@/lib/storage/config";
 import { getCurrentUser } from "@/lib/auth/require-user";
-import { can } from "@/lib/permissions";
+import { canAdministerDho } from "@/lib/auth/access";
 import type { Role } from "@/types";
 
 /**
@@ -89,11 +89,12 @@ export async function GET(
   if (!user) return new Response("Não autenticado", { status: 401 });
 
   // Evidências da Central de Denúncias seguem a mesma régua da tela que as
-  // exibe: só quem trata as denúncias abre o anexo. O papel sai do BANCO, e
-  // não do cookie: admin rebaixado perde o anexo na requisição seguinte.
+  // exibe: só quem administra o DHO abre o anexo. Papel e lotação saem do
+  // BANCO, e não do cookie: admin rebaixado, ou gestor movido para fora do
+  // DHO, perde o anexo na requisição seguinte.
   const { path: segments } = await params;
   const category = segments?.[0];
-  if (category === "denuncias" && !can(user.role as Role, "reports.manage")) {
+  if (category === "denuncias" && !(await canAdministerDho(user.id, user.role as Role))) {
     return new Response("Sem permissão", { status: 403 });
   }
 

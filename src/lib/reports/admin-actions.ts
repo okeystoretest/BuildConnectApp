@@ -4,8 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth/require-user";
-import { canUseDhoTools } from "@/lib/auth/access";
-import { can } from "@/lib/permissions";
+import { canAdministerDho } from "@/lib/auth/access";
 import { getReportsHistory } from "@/lib/reports/data";
 import type { Role } from "@/types";
 import type { ReportItem } from "@/types/report";
@@ -27,12 +26,10 @@ export interface ReportActionResult {
 async function requireHandler() {
   const user = await getCurrentUser();
   if (!user) return { user: null, error: "Sessão expirada. Faça login novamente." };
-  if (!can(user.role as Role, "reports.manage")) {
-    return { user: null, error: "Apenas o DHO tem acesso à Central de Denúncias." };
-  }
-  // A frase acima já dizia "apenas o DHO"; até aqui ela não era verdade —
-  // `reports.manage` é permissão de papel, e qualquer ADMIN a tinha.
-  if (!(await canUseDhoTools(user.id, user.role as Role))) {
+  // Quem administra o DHO: Admin, ou Gestor lotado no DHO. `reports.manage`
+  // é permissão de papel (só ADMIN a tem) e por si só deixava o Gestor do
+  // próprio DHO de fora da Central.
+  if (!(await canAdministerDho(user.id, user.role as Role))) {
     return { user: null, error: "Apenas o DHO tem acesso à Central de Denúncias." };
   }
   return { user, error: null };

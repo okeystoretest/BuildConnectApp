@@ -35,6 +35,7 @@ import type { ReportItem } from "@/types/report";
 import type { FormListItem } from "@/types/form";
 
 export interface HrSectorViewProps {
+  /** Administra o DHO: Admin, ou Gestor lotado no DHO. Libera todas as abas. */
   canHrAdmin: boolean;
   users: ManagedUser[];
   documents: HrDocument[];
@@ -48,7 +49,7 @@ export interface HrSectorViewProps {
   assignSubjects: EvaluationSubject[];
   assignRaters: { id: string; name: string; sector: string }[];
   rounds: EfficacyRoundRow[];
-  /** Pode ler e tratar a Central de Denúncias (`reports.manage`). */
+  /** Pode ler e tratar a Central de Denúncias (quem administra o DHO). */
   canReports: boolean;
   /** Denúncias em tratativa (as encerradas há mais de 30 min ficam no histórico). */
   reports: ReportItem[];
@@ -79,11 +80,12 @@ export function HrSectorView({
   const [mapModalOpen, setMapModalOpen] = useState(false);
   const [docModalOpen, setDocModalOpen] = useState(false);
 
-  // Abas visíveis dependem do papel:
-  // - Admin (sector.hr): tudo, mas Avaliações (preenchimento) NÃO fica no DHO —
-  //   fica na aba Avaliações de cada setor. O DHO concentra só os Resultados.
-  // - Gestor (evaluations.view, sem sector.hr): só Resultados de Avaliações
-  //   (o preenchimento é feito no setor dele).
+  // Abas visíveis dependem de quem administra o DHO (a página decide):
+  // - Admin e Gestor lotado no DHO (canHrAdmin): tudo, mas Avaliações
+  //   (preenchimento) NÃO fica no DHO — fica na aba Avaliações de cada setor.
+  //   O DHO concentra só os Resultados.
+  // - Gestor de outro setor (evaluations.view, sem canHrAdmin): só Resultados
+  //   de Avaliações (o preenchimento é feito no setor dele).
   //
   // A antiga aba "Eficácia (360°)" saiu da barra: a atribuição de avaliadores
   // agora é o card "Atribuir Avaliações" dentro de Resultados de Avaliações, e

@@ -32,6 +32,7 @@ export const SECTOR_GROUPS: readonly SectorGroup[] = [
       { label: "PCP", href: "/setores/pcp", icon: "ClipboardList" },
       { label: "Almoxarifado", href: "/setores/almoxarifado", icon: "Package" },
       { label: "Corte", href: "/setores/corte", icon: "Scissors" },
+      { label: "Costura", href: "/setores/costura", icon: "Shirt" },
       { label: "Acabamento", href: "/setores/acabamento", icon: "Wand2" },
       { label: "Revisão", href: "/setores/revisao", icon: "CircleCheck" },
       { label: "Externo", href: "/setores/externo", icon: "ExternalLink" },

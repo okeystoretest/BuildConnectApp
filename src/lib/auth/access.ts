@@ -108,3 +108,23 @@ export async function canUseDhoTools(userId: string, role: Role): Promise<boolea
   if (role === "ADMIN") return true;
   return isDhoMember(userId);
 }
+
+/**
+ * Quem ADMINISTRA o DHO: as abas de gestão (Histórico do Colaborador, Mapas,
+ * Documentos, Central de Denúncias, Gestão de Usuários, WhatsApp) e o alcance
+ * a resultados de avaliação de qualquer setor.
+ *
+ * O ADMIN, e o GESTOR lotado no DHO. A matriz de permissões não sabe disso de
+ * propósito: `sector.hr`, `users.manage` e `reports.manage` continuam sendo do
+ * papel ADMIN, e este predicado é quem estende o alcance ao Gestor DO DHO —
+ * o Gestor de outro setor segue vendo só os resultados da própria equipe.
+ *
+ * Difere de `canUseDhoTools` em UM ponto: lá o Colaborador do DHO também
+ * entra (a página existe para ele); aqui, não — ele não gere ninguém.
+ */
+export async function canAdministerDho(userId: string, role: Role): Promise<boolean> {
+  if (role === "ADMIN") return true;
+  if (role !== "GESTOR") return false;
+  return isDhoMember(userId);
+}
+

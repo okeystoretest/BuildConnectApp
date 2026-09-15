@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth/require-user";
-import { canUseDhoTools } from "@/lib/auth/access";
+import { canAdministerDho, canUseDhoTools } from "@/lib/auth/access";
 import { canReachSector } from "@/lib/auth/scope";
 import { can } from "@/lib/permissions";
 import { getEvaluationDetail } from "@/lib/evaluation-data";
@@ -36,9 +36,9 @@ export async function fetchEvaluationDetail(
   if (!detail) return { ok: false, error: "Avaliação não encontrada." };
 
   // O setor do avaliado já vem no DTO; só falta o do ator. A consulta é pulada
-  // para DHO/Admin, que canReachSector libera sem olhar setor algum.
-  const ehHr = can(actor.role as Role, "sector.hr");
-  const ator = ehHr
+  // para quem administra o DHO, que canReachSector libera sem olhar setor algum.
+  const dhoAdmin = await canAdministerDho(actor.id, actor.role as Role);
+  const ator = dhoAdmin
     ? null
     : await prisma.user.findUnique({
         where: { id: actor.id },
@@ -46,7 +46,7 @@ export async function fetchEvaluationDetail(
       });
 
   const alcanca = canReachSector({
-    role: actor.role as Role,
+    dhoAdmin,
     actorSector: ator?.sector?.label ?? null,
     subjectSector: detail.subjectSector,
   });

@@ -15,6 +15,7 @@ import { initials } from "@/lib/utils";
 import { UNITS } from "@/lib/units";
 import { SECTOR_LABELS, SECTOR_TREE, getSubsectors } from "@/lib/sector-tree";
 import { ROLE_LABEL } from "@/lib/permissions";
+import { useRole } from "@/providers/role-provider";
 import { createUser, updateUser } from "@/lib/user-actions";
 import {
   MIN_PASSWORD_LENGTH,
@@ -77,6 +78,14 @@ function stateFromUser(user: ManagedUser): UserFormState {
 
 export function UserFormModal({ open, onClose, initial, onSaved }: UserFormModalProps) {
   const router = useRouter();
+  const { role: actorRole } = useRole();
+
+  // Só o Admin cria ou promove alguém a Admin. Para o Gestor do DHO a opção
+  // nem aparece — e a action recusa se vier por outro caminho.
+  const roleOptions = useMemo(
+    () => (actorRole === "ADMIN" ? ROLE_OPTIONS : ROLE_OPTIONS.filter((o) => o.value !== "ADMIN")),
+    [actorRole],
+  );
   const isEdit = Boolean(initial);
   const [form, setForm] = useState<UserFormState>(emptyState);
   const [errors, setErrors] = useState<UserFormErrors>({});
@@ -328,11 +337,12 @@ export function UserFormModal({ open, onClose, initial, onSaved }: UserFormModal
           <div>
             <p className="mb-1.5 text-xs font-medium text-foreground">Nível de acesso</p>
             <Segmented
-              options={ROLE_OPTIONS}
+              options={roleOptions}
               value={form.role}
               onChange={(role) => patch({ role })}
               ariaLabel="Nível de acesso"
             />
+            {errors.role && <p className="mt-1.5 text-xs text-danger">{errors.role}</p>}
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">

@@ -2,22 +2,19 @@
 
 import { z } from "zod";
 import { getCurrentUser } from "@/lib/auth/require-user";
-import { canUseDhoTools } from "@/lib/auth/access";
-import { can } from "@/lib/permissions";
+import { canAdministerDho } from "@/lib/auth/access";
 import type { Role } from "@/types";
 import { getEmployeeHistory, searchEmployeesByName } from "@/lib/hr-history-data";
 import type { EmployeeHistory, EmployeeSummary } from "@/types/hr";
 
 /**
- * Mesma régua das duas actions: `sector.hr` é permissão de papel (só ADMIN a
- * tem), e a lotação é outra pergunta — é ela que decide desde a restrição do
- * setor. Devolve o motivo da recusa, ou null quando pode seguir.
+ * Mesma régua das duas actions: quem administra o DHO — Admin, ou Gestor
+ * lotado no DHO. Devolve o motivo da recusa, ou null quando pode seguir.
  */
 async function requireDhoAdmin(): Promise<string | null> {
   const user = await getCurrentUser();
   if (!user) return "Sessão expirada.";
-  if (!can(user.role as Role, "sector.hr")) return "Acesso restrito ao DHO.";
-  if (!(await canUseDhoTools(user.id, user.role as Role))) return "Acesso restrito ao DHO.";
+  if (!(await canAdministerDho(user.id, user.role as Role))) return "Acesso restrito ao DHO.";
   return null;
 }
 

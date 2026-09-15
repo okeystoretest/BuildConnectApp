@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { LOGIN_EXPIRED_PATH } from "@/lib/auth/login-redirect";
 import { getVerifiedSession } from "@/lib/auth/require-user";
 import { can } from "@/lib/permissions";
-import { canUseDhoTools } from "@/lib/auth/access";
+import { canAdministerDho, canUseDhoTools } from "@/lib/auth/access";
 import { getManagedUsers } from "@/lib/users-data";
 import { getHrDocuments, getIntegrationMaps } from "@/lib/hr-content-data";
 import { getRecentEmployees } from "@/lib/hr-history-data";
@@ -25,7 +25,6 @@ export default async function HrSectorPage() {
   if (!session) redirect(LOGIN_EXPIRED_PATH);
 
   const role = session.role as Role;
-  const isAdmin = role === "ADMIN";
 
   /**
    * O DHO é do DHO. Quem não é lotado nele não entra, em papel nenhum — nem o
@@ -39,16 +38,20 @@ export default async function HrSectorPage() {
   if (!(await canUseDhoTools(session.userId, role))) notFound();
 
   // O RH concentra apenas os RESULTADOS das avaliações (o preenchimento fica na
-  // aba Avaliações de cada setor). Admin gerencia tudo; Gestor vê só os
-  // resultados do próprio setor.
-  const canHrAdmin = can(role, "sector.hr");
+  // aba Avaliações de cada setor). Quem administra o DHO — Admin e o Gestor
+  // lotado aqui — gerencia tudo; o Gestor de outro setor vê só os resultados
+  // do próprio setor. A régua é a lotação, não a permissão de papel: um Gestor
+  // do DHO com a mesma matriz do Gestor de Vendas ficava só com Resultados.
+  const canHrAdmin = await canAdministerDho(session.userId, role);
   const canEvaluations = can(role, "evaluations.view");
-  const canReports = can(role, "reports.manage");
+  // A Central de Denúncias é do DHO: quem administra o setor a trata.
+  const canReports = canHrAdmin;
   const canForms = can(role, "forms.manage");
   if (!canHrAdmin && !canEvaluations) notFound();
 
-  // Escopo de resultados: Admin vê tudo; Gestor vê só o setor dele.
-  const sectorScope = isAdmin ? null : session.sector ? [session.sector] : [];
+  // Escopo de resultados: quem administra o DHO vê tudo; o Gestor de outro
+  // setor vê só o setor dele.
+  const sectorScope = canHrAdmin ? null : session.sector ? [session.sector] : [];
 
   const [
     users,

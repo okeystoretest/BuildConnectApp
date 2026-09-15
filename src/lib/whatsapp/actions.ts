@@ -3,7 +3,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { dayMonthBR, timeLabelBR } from "@/lib/brasilia";
 import { getCurrentUser } from "@/lib/auth/require-user";
-import { can } from "@/lib/permissions";
+import { canAdministerDho } from "@/lib/auth/access";
 import { connectionInfo, resetSession, type ConnectionInfo } from "./connection";
 import { drainOutbox, scheduleOutboxTick } from "./outbox";
 import type { Role } from "@/types";
@@ -11,15 +11,15 @@ import type { Role } from "@/types";
 /**
  * Administração da conexão do WhatsApp.
  *
- * Tudo aqui exige `users.manage`. É a permissão certa e não `forms.manage`:
- * quem pareia o número, desvincula e lê o log de envios está mexendo na
- * credencial da empresa, não em formulário. Gestor cria pesquisa; só o admin
- * troca o chip.
+ * Tudo aqui exige administrar o DHO (Admin, ou Gestor lotado no DHO) — e não
+ * `forms.manage`: quem pareia o número, desvincula e lê o log de envios está
+ * mexendo na credencial da empresa, não em formulário. Gestor de qualquer
+ * setor cria pesquisa; só quem administra o DHO troca o chip.
  */
 
 async function requireAdmin(): Promise<boolean> {
   const user = await getCurrentUser();
-  return Boolean(user && can(user.role as Role, "users.manage"));
+  return Boolean(user && (await canAdministerDho(user.id, user.role as Role)));
 }
 
 export async function getWhatsappStatus(): Promise<ConnectionInfo> {

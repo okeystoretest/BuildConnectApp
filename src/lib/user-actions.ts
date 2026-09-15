@@ -5,10 +5,9 @@ import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth/require-user";
-import { canUseDhoTools } from "@/lib/auth/access";
+import { canAdministerDho } from "@/lib/auth/access";
 import { hashPassword } from "@/lib/auth/password";
 import { generatePassword } from "@/lib/auth/generate-password";
-import { can } from "@/lib/permissions";
 import type { Role } from "@/types";
 import { processAndStoreImage, ImageProcessingError } from "@/lib/storage/images";
 import { removeFile } from "@/lib/storage/files";
@@ -40,18 +39,39 @@ export interface UserActionResult {
   credentials?: { username: string; password: string };
 }
 
+/**
+ * Quem gerencia usuários: quem administra o DHO — Admin, ou Gestor lotado no
+ * DHO. A gestão de usuários é uma ferramenta do DHO, e o DHO é do DHO.
+ * Esconder o menu não bastaria: sem esta linha, um POST direto continuaria
+ * passando.
+ */
 async function requireManager() {
   const actor = await getCurrentUser();
   if (!actor) return { actor: null, error: "Sessão expirada. Faça login novamente." };
-  if (!can(actor.role as Role, "users.manage")) {
+  if (!(await canAdministerDho(actor.id, actor.role as Role))) {
     return { actor: null, error: "Você não tem permissão para gerenciar usuários." };
   }
-  // A gestão de usuários é uma ferramenta do DHO, e o DHO é do DHO. Esconder o
-  // menu não bastaria: sem esta linha, um POST direto continuaria passando.
-  if (!(await canUseDhoTools(actor.id, actor.role as Role))) {
-    return { actor: null, error: "As ferramentas do DHO são exclusivas do setor DHO." };
-  }
   return { actor, error: null };
+}
+
+/**
+ * Só o ADMIN toca em conta de ADMIN — criar, promover, editar ou excluir.
+ *
+ * O Gestor do DHO cadastra e edita todo mundo, mas sem esta trava ele
+ * promoveria a si mesmo a Admin com um POST e ganharia o resto do sistema.
+ * `targetRole` é o papel ATUAL do alvo (null ao criar); `nextRole`, o que
+ * está sendo gravado. Devolve o motivo da recusa, ou null quando pode seguir.
+ */
+function denyAdminTouch(
+  actorRole: Role,
+  targetRole: Role | null,
+  nextRole: Role | null,
+): string | null {
+  if (actorRole === "ADMIN") return null;
+  if (targetRole === "ADMIN" || nextRole === "ADMIN") {
+    return "Apenas o Admin pode criar, editar ou excluir contas de Admin.";
+  }
+  return null;
 }
 
 /** Resolve setor, unidade e subsetores por rótulo → ids. */
@@ -116,6 +136,9 @@ export async function createUser(formData: FormData): Promise<UserActionResult> 
     return { ok: false, error: "Revise os campos.", fieldErrors };
   }
   const data = parsed.data;
+
+  const vetado = denyAdminTouch(actor.role as Role, null, data.role);
+  if (vetado) return { ok: false, fieldErrors: { role: vetado } };
 
   // Senha gerada automaticamente no servidor — o admin não a digita.
   // Exibida uma única vez no modal de sucesso (retorno `credentials`).
@@ -218,11 +241,16 @@ export async function updateUser(formData: FormData): Promise<UserActionResult> 
   }
   const data = parsed.data;
 
-  // Situação atual, para saber se a edição exige derrubar as sessões abertas.
+  // Situação atual: decide se a edição exige derrubar as sessões abertas e se
+  // o ator pode tocar nesta conta.
   const atual = await prisma.user.findUnique({
     where: { id },
     select: { role: true },
   });
+  if (!atual) return { ok: false, error: "Usuário não encontrado." };
+
+  const vetado = denyAdminTouch(actor.role as Role, atual.role as Role, data.role);
+  if (vetado) return { ok: false, fieldErrors: { role: vetado } };
 
   // Senha só é trocada se informada manualmente na edição.
   const password = String(formData.get("password") ?? "");
@@ -253,7 +281,7 @@ export async function updateUser(formData: FormData): Promise<UserActionResult> 
     // Trocar a senha ou mudar o papel derruba as sessões abertas do usuário na
     // hora — sem isso, quem foi rebaixado continuaria com o papel antigo até o
     // token vencer, e a senha antiga seguiria valendo em outro navegador.
-    const revogarSessoes = Boolean(passwordHash) || (atual !== null && atual.role !== data.role);
+    const revogarSessoes = Boolean(passwordHash) || atual.role !== data.role;
 
     await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       await tx.user.update({
@@ -320,6 +348,7 @@ export async function deleteUser(id: string): Promise<UserActionResult> {
     const target = await prisma.user.findUnique({
       where: { id },
       select: {
+        role: true,
         avatarPath: true,
         requestedTickets: {
           select: { proofPath: true, images: { select: { filePath: true } } },
@@ -327,6 +356,9 @@ export async function deleteUser(id: string): Promise<UserActionResult> {
       },
     });
     if (!target) return { ok: false, error: "Usuário não encontrado." };
+
+    const vetado = denyAdminTouch(actor.role as Role, target.role as Role, null);
+    if (vetado) return { ok: false, error: vetado };
 
     await prisma.user.delete({ where: { id } });
 
