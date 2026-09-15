@@ -110,6 +110,10 @@ export async function middleware(request: NextRequest) {
 // errado; a rota de cron já se autentica sozinha pelo CRON_SECRET e hoje nunca
 // chega a executar — o middleware a redireciona antes.
 //
+// `api/integracao` é o webhook do Build.Flow: máquina falando com máquina,
+// autenticada por assinatura HMAC dentro da rota. Sem cookie, o middleware
+// a mandaria para /login e o aviso do Flow nunca chegaria.
+//
 // `api/uploads` fica de fora por MEMÓRIA e TEMPO, não por acesso. Rota coberta
 // pelo matcher tem o corpo inteiro bufferizado ANTES de o middleware rodar —
 // é o portão que derrubava os envios de vídeo (ver RESUMO-UPLOAD.md), hoje
@@ -117,6 +121,6 @@ export async function middleware(request: NextRequest) {
 // cookie é desperdício: a própria rota confere a sessão na primeira linha.
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|api/health|api/cron|api/uploads|uploads|favicon.png|favicon.ico).*)",
+    "/((?!_next/static|_next/image|api/health|api/cron|api/integracao|api/uploads|uploads|favicon.png|favicon.ico).*)",
   ],
 };

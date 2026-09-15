@@ -71,6 +71,21 @@ export function MyTicketDetailModal({ ticket, onClose }: MyTicketDetailModalProp
               {ticket.assignee ?? "Aguardando atribuição"}
             </dd>
           </div>
+          {ticket.proofUrl && (
+            <div>
+              <dt className="text-[11px] uppercase tracking-wide text-muted">Comprovante</dt>
+              <dd className="mt-0.5">
+                <a
+                  href={ticket.proofUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-sm text-primary underline"
+                >
+                  Ver comprovante de entrega
+                </a>
+              </dd>
+            </div>
+          )}
         </dl>
 
         {isDriverTicket && (

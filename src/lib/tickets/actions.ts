@@ -12,6 +12,9 @@ import {
 } from "@/lib/storage/images";
 import { OTHER_OPTION, getUnitAddress } from "@/lib/units";
 import { MAX_TICKET_IMAGES } from "@/types/ticket-form";
+import { listFlowDrivers, isFlowDriver } from "@/lib/flow/client";
+import { syncTicketToFlow } from "@/lib/flow/sync";
+import { flowEnv, FLOW_DISABLED_MESSAGE } from "@/lib/flow/env";
 
 /**
  * Abertura de chamado da Central de Motoristas.
@@ -20,18 +23,11 @@ import { MAX_TICKET_IMAGES } from "@/types/ticket-form";
  *  1. Autentica o solicitante.
  *  2. Valida os campos (Zod).
  *  3. Trata as fotos com sharp (→ .webp em disco) FORA da transação.
- *  4. Numera e grava ticket + imagens + notificação em transação única.
+ *  4. Numera e grava ticket + imagens em transação única.
  *  5. Em falha do banco, desfaz os arquivos já gravados (sem órfãos).
+ *  6. Envia ao Build.Flow, que é o dono do chamado daí em diante. Falha no
+ *     envio não derruba a abertura: o cron /api/cron/flow-sync reenvia.
  */
-
-/**
- * Subsetor que define quem é motorista: Logística › Motoristas.
- *
- * O select do formulário sai daqui — antes era uma lista de três nomes fixos
- * no código, que não correspondia a usuário nenhum do banco.
- */
-const DRIVER_SUBSECTOR_SLUG = "motoristas";
-const DRIVER_SECTOR_SLUG = "logistica";
 
 export interface DriverOption {
   id: string;
@@ -39,51 +35,20 @@ export interface DriverOption {
 }
 
 /**
- * Motoristas selecionáveis na abertura de chamado: usuários ATIVOS lotados em
- * Logística › Motoristas. Exige sessão — é a lista nominal do quadro de
- * pessoal, não deve sair para quem não está autenticado.
+ * Motoristas selecionáveis na abertura de chamado. Eles vivem no Build.Flow
+ * (usuários MOTORISTA de lá), não no Connect. Flow fora do ar = lista vazia,
+ * e o chamado nasce Em Aberto — o campo continua opcional. Exige sessão: é a
+ * lista nominal do quadro de pessoal.
  */
 export async function listDrivers(): Promise<DriverOption[]> {
   const user = await getCurrentUser();
   if (!user) return [];
-
-  const drivers = await prisma.user.findMany({
-    where: {
-      active: true,
-      subsectors: {
-        some: {
-          subsector: {
-            slug: DRIVER_SUBSECTOR_SLUG,
-            sector: { slug: DRIVER_SECTOR_SLUG },
-          },
-        },
-      },
-    },
-    select: { id: true, fullName: true },
-    orderBy: { fullName: "asc" },
-  });
-
-  return drivers.map((d) => ({ id: d.id, name: d.fullName }));
+  return listFlowDrivers();
 }
 
-/** `true` se o id corresponde a um motorista ativo. Revalidado no servidor. */
-async function isActiveDriver(userId: string): Promise<boolean> {
-  const found = await prisma.user.findFirst({
-    where: {
-      id: userId,
-      active: true,
-      subsectors: {
-        some: {
-          subsector: {
-            slug: DRIVER_SUBSECTOR_SLUG,
-            sector: { slug: DRIVER_SECTOR_SLUG },
-          },
-        },
-      },
-    },
-    select: { id: true },
-  });
-  return found !== null;
+/** `true` se o id é de um motorista ativo do Flow. Revalidado no servidor. */
+async function isActiveDriver(driverId: string): Promise<boolean> {
+  return isFlowDriver(driverId);
 }
 
 const driverTicketSchema = z
@@ -161,6 +126,9 @@ export async function createDriverTicket(
   if (!user) {
     return { ok: false, error: "Sessão expirada. Faça login novamente." };
   }
+
+  // Sem o Flow configurado o chamado não teria para onde ir. Falha explícita.
+  if (!flowEnv()) return { ok: false, error: FLOW_DISABLED_MESSAGE };
 
   // 2. Validação dos campos textuais.
   const raw = {
@@ -248,17 +216,11 @@ export async function createDriverTicket(
         data: {
           code,
           destination: "MOTORISTAS",
-          // Escolher um motorista JÁ atribui o chamado. Antes o campo era
-          // validado e descartado: o solicitante escolhia e nada acontecia.
-          // O solicitante fica registrado como atribuidor (ver
-          // `lib/ticket-visibility`).
-          ...(data.driverId
-            ? {
-                status: "ATRIBUIDO" as const,
-                assigneeId: data.driverId,
-                assignedById: user.id,
-              }
-            : { status: "PENDENTE" as const }),
+          // O motorista é do Flow, não do Connect: nada de assigneeId. O id
+          // escolhido fica em flowDriverId até o envio, que devolve o nome e o
+          // status certos.
+          status: "PENDENTE" as const,
+          flowDriverId: data.driverId || null,
           title,
           description: data.description,
           requesterId: user.id,
@@ -284,20 +246,13 @@ export async function createDriverTicket(
         });
       }
 
-      await tx.notification.create({
-        data: {
-          kind: "CHAMADO_MOTORISTAS",
-          title: "Novo chamado de Motoristas",
-          body: `${code} · ${title}`,
-          href: "/setores/motoristas",
-          audience: ["Motoristas", "Logística"],
-        },
-      });
-
       return created;
     });
 
-    revalidatePath("/setores/motoristas");
+    // Envia ao Flow AGORA. Falha não derruba a abertura: o Ticket fica marcado
+    // e o cron /api/cron/flow-sync reenvia.
+    await syncTicketToFlow(ticket.id);
+
     revalidatePath("/chamados");
     return { ok: true, code: ticket.code };
   } catch (error) {

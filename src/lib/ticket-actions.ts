@@ -8,7 +8,6 @@ import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth/require-user";
 import { can } from "@/lib/permissions";
 import type { Role } from "@/types";
-import { processAndStoreImage, ImageProcessingError } from "@/lib/storage/images";
 import { UPLOADS_ROOT, PUBLIC_PREFIX } from "@/lib/storage/config";
 
 export interface ActionResult {
@@ -103,76 +102,6 @@ export async function updateTicketStatus(input: {
   } catch (error) {
     console.error("[updateTicketStatus] falha:", error);
     return { ok: false, error: "Não foi possível atualizar o chamado." };
-  }
-}
-
-/**
- * Conclusão de chamado de Motoristas com comprovante de entrega.
- * O comprovante (foto) passa por sharp (→ .webp), grava-se distância e
- * finishedAt, e o status vai para CONCLUIDO. Se o banco falhar, o arquivo
- * gravado é removido.
- */
-export async function completeTicketWithProof(formData: FormData): Promise<ActionResult> {
-  const user = await getCurrentUser();
-  if (!user) return { ok: false, error: "Sessão expirada. Faça login novamente." };
-
-  const ticketId = String(formData.get("ticketId") ?? "");
-  if (!ticketId) return { ok: false, error: "Chamado inválido." };
-
-  // Gestão total OU o próprio responsável podem concluir.
-  const owner = await prisma.ticket.findUnique({
-    where: { id: ticketId },
-    select: { assigneeId: true },
-  });
-  if (!owner) return { ok: false, error: "Chamado não encontrado." };
-  if (!can(user.role as Role, "tickets.manage") && owner.assigneeId !== user.id) {
-    return { ok: false, error: "Você não tem permissão para concluir este chamado." };
-  }
-
-  const distanceRaw = String(formData.get("distanceKm") ?? "").replace(",", ".");
-  const distanceKm = distanceRaw ? Number(distanceRaw) : null;
-  if (distanceKm !== null && (Number.isNaN(distanceKm) || distanceKm < 0)) {
-    return { ok: false, error: "Distância inválida." };
-  }
-
-  const proof = formData.get("proof");
-  if (!(proof instanceof File) || proof.size === 0) {
-    return { ok: false, error: "Anexe o comprovante de entrega." };
-  }
-
-  let stored;
-  try {
-    stored = await processAndStoreImage(proof, "comprovantes");
-  } catch (e) {
-    if (e instanceof ImageProcessingError) return { ok: false, error: e.message };
-    console.error("[completeTicketWithProof] sharp:", e);
-    return { ok: false, error: "Falha ao processar o comprovante." };
-  }
-
-  try {
-    await prisma.$transaction(async (tx) => {
-      await tx.ticket.update({
-        where: { id: ticketId },
-        data: {
-          status: "CONCLUIDO",
-          finishedAt: new Date(),
-          distanceKm,
-          proofPath: stored.publicPath,
-        },
-      });
-      // Encerra a rota junto com o chamado, se houver Trip ativo. updateMany
-      // não falha quando não existe Trip (chamado sem tracking).
-      await tx.trip.updateMany({
-        where: { ticketId, status: "EM_ROTA" },
-        data: { status: "CONCLUIDA", finishedAt: new Date() },
-      });
-    });
-    revalidatePath("/setores/motoristas");
-    return { ok: true };
-  } catch (e) {
-    await unlink(stored.absolutePath).catch(() => {});
-    console.error("[completeTicketWithProof] db:", e);
-    return { ok: false, error: "Falha ao concluir o chamado." };
   }
 }
 

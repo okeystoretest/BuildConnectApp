@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/require-user";
 import { resolveAccessibleSlugs, canAccessSlug } from "@/lib/auth/access";
 import { getItTickets } from "@/lib/it-data-db";
-import { getDriverTickets } from "@/lib/driver-data-db";
 import type { Role } from "@/types";
 import type { ItTicket } from "@/types/it";
 
@@ -34,10 +33,11 @@ export async function GET(request: Request) {
   try {
     let tickets: ItTicket[];
     if (destination === "MOTORISTAS") {
-      if (!canAccessSlug(slugs, "motoristas")) {
-        return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
-      }
-      tickets = await getDriverTickets();
+      // O quadro de Motoristas mudou para o Build.Flow.
+      return NextResponse.json(
+        { error: "Chamados de Motoristas são geridos no Build.Flow." },
+        { status: 410 },
+      );
     } else if (destination === "TI") {
       if (!canAccessSlug(slugs, "ti")) {
         return NextResponse.json({ error: "Sem permissão." }, { status: 403 });

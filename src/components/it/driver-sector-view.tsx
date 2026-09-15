@@ -15,15 +15,12 @@ import { FileUploadModal } from "@/components/sector/file-upload-modal";
 import { LinkModal } from "@/components/sector/link-modal";
 import { SectorWelcomeVideo } from "@/components/sector/welcome-video";
 import type { SectorWelcomeVideo as SectorWelcomeVideoData } from "@/lib/welcome-video-data";
-import { DriverKanbanBoard } from "@/components/it/driver-kanban-board";
-import { ItDashboard } from "@/components/it/it-dashboard";
 import type { LinkItem, SectorContent } from "@/types/sector";
-import type { ItTicket, ItDashboardData } from "@/types/it";
-import type { DriverLogistics } from "@/lib/driver-data-db";
 
+// Chamados e Dashboard saíram daqui: os chamados de Motoristas são geridos no
+// Build.Flow (módulo Motorista de lá). O solicitante continua abrindo e
+// acompanhando em "Meus Chamados".
 const TABS: readonly TabItem[] = [
-  { id: "chamados", label: "Chamados" },
-  { id: "dashboard", label: "Dashboard" },
   { id: "documentos", label: "Documentos" },
   { id: "avaliacoes", label: "Avaliações" },
   { id: "sites", label: "Aplicativos" },
@@ -31,16 +28,13 @@ const TABS: readonly TabItem[] = [
 
 export interface DriverSectorViewProps {
   content: SectorContent;
-  tickets: ItTicket[];
-  dashboard: ItDashboardData;
-  logistics: DriverLogistics;
   evaluations?: SectorEvaluations | null;
   /** Vídeo de boas-vindas do setor (modal + card de gestão). */
   welcome?: SectorWelcomeVideoData | null;
 }
 
-export function DriverSectorView({ content, tickets, dashboard, logistics, evaluations, welcome }: DriverSectorViewProps) {
-  const [active, setActive] = useState("chamados");
+export function DriverSectorView({ content, evaluations, welcome }: DriverSectorViewProps) {
+  const [active, setActive] = useState("documentos");
   const [query, setQuery] = useState("");
   const [view, setView] = useState<ViewMode>("grid");
   const [docModalOpen, setDocModalOpen] = useState(false);
@@ -56,7 +50,7 @@ export function DriverSectorView({ content, tickets, dashboard, logistics, evalu
     <AppShell eyebrow="Setores · Logística" title="Motoristas">
       <PageHeader
         title="Motoristas"
-        description="Central de chamados e conteúdos da equipe de rota."
+        description="Conteúdos e avaliações da equipe de rota. Os chamados são geridos no Build.Flow."
         progress={{ label: "Concluído", value: content.completion }}
       />
 
@@ -77,22 +71,6 @@ export function DriverSectorView({ content, tickets, dashboard, logistics, evalu
       </div>
 
       <TabPanel tabId={active} className="mt-5">
-        {active === "chamados" && <DriverKanbanBoard tickets={tickets} />}
-
-        {active === "dashboard" && (
-          <ItDashboard
-            title="Build.Connect · Motoristas"
-            data={dashboard}
-            tickets={tickets}
-            extras={[
-              { label: "Quilometragem total", value: `${logistics.totalKm} km` },
-              { label: "Média por corrida", value: `${logistics.avgKmPerTrip} km` },
-              { label: "Entregas concluídas", value: String(logistics.deliveriesCompleted) },
-              { label: "Motoristas ativos", value: String(logistics.activeDrivers) },
-            ]}
-          />
-        )}
-
         {active === "documentos" && (
           <div className="space-y-4">
             <ContentToolbar

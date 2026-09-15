@@ -4,7 +4,6 @@ import { uploadSectorPhoto, uploadSectorVideo, uploadSectorDocument } from "@/li
 import { uploadWelcomeVideo } from "@/lib/welcome-video-actions";
 import { uploadPlatformWelcomeVideo } from "@/lib/platform-welcome-actions";
 import { uploadIntegrationMap } from "@/lib/hr-actions";
-import { completeTicketWithProof } from "@/lib/ticket-actions";
 import { createItTicket } from "@/lib/tickets/actions";
 import { submitAnonymousReport } from "@/lib/reports/actions";
 
@@ -40,7 +39,6 @@ const HANDLERS: Record<string, Handler> = {
   "boas-vindas-plataforma": uploadPlatformWelcomeVideo,
   "mapa-integracao": uploadIntegrationMap,
   chamado: createItTicket,
-  "chamado-comprovante": completeTicketWithProof,
   denuncia: submitAnonymousReport,
 };
 

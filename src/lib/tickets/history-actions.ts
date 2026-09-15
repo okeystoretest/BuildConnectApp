@@ -3,7 +3,6 @@
 import { getCurrentUser } from "@/lib/auth/require-user";
 import { resolveAccessibleSlugs, canAccessSlug } from "@/lib/auth/access";
 import { getItTicketsHistory } from "@/lib/it-data-db";
-import { getDriverTicketsHistory } from "@/lib/driver-data-db";
 import type { Role } from "@/types";
 import type { ItTicket } from "@/types/it";
 
@@ -29,17 +28,18 @@ export async function listTicketHistory(
     return { ok: false, tickets: [], error: "Sessão expirada. Faça login novamente." };
   }
 
+  // O histórico de Motoristas mudou para o Build.Flow.
+  if (destination === "MOTORISTAS") {
+    return { ok: false, tickets: [], error: "Chamados de Motoristas são geridos no Build.Flow." };
+  }
+
   const slugs = await resolveAccessibleSlugs(user.id, user.role as Role);
-  const slug = destination === "MOTORISTAS" ? "motoristas" : "ti";
-  if (!canAccessSlug(slugs, slug)) {
+  if (!canAccessSlug(slugs, "ti")) {
     return { ok: false, tickets: [], error: "Você não tem acesso a este quadro." };
   }
 
   try {
-    const tickets =
-      destination === "MOTORISTAS"
-        ? await getDriverTicketsHistory()
-        : await getItTicketsHistory();
+    const tickets = await getItTicketsHistory();
     return { ok: true, tickets };
   } catch (error) {
     console.error("[listTicketHistory] falha:", error);
