@@ -12,7 +12,6 @@ import {
 } from "@/lib/storage/images";
 import { OTHER_OPTION, getUnitAddress } from "@/lib/units";
 import { MAX_TICKET_IMAGES } from "@/types/ticket-form";
-import { listFlowDrivers, isFlowDriver } from "@/lib/flow/client";
 import { syncTicketToFlow } from "@/lib/flow/sync";
 import { flowEnv, FLOW_DISABLED_MESSAGE } from "@/lib/flow/env";
 
@@ -29,32 +28,8 @@ import { flowEnv, FLOW_DISABLED_MESSAGE } from "@/lib/flow/env";
  *     envio não derruba a abertura: o cron /api/cron/flow-sync reenvia.
  */
 
-export interface DriverOption {
-  id: string;
-  name: string;
-}
-
-/**
- * Motoristas selecionáveis na abertura de chamado. Eles vivem no Build.Flow
- * (usuários MOTORISTA de lá), não no Connect. Flow fora do ar = lista vazia,
- * e o chamado nasce Em Aberto — o campo continua opcional. Exige sessão: é a
- * lista nominal do quadro de pessoal.
- */
-export async function listDrivers(): Promise<DriverOption[]> {
-  const user = await getCurrentUser();
-  if (!user) return [];
-  return listFlowDrivers();
-}
-
-/** `true` se o id é de um motorista ativo do Flow. Revalidado no servidor. */
-async function isActiveDriver(driverId: string): Promise<boolean> {
-  return isFlowDriver(driverId);
-}
-
 const driverTicketSchema = z
   .object({
-    // Vazio = "Em aberto": o chamado nasce PENDENTE e é assumido no quadro.
-    driverId: z.string().trim().optional().default(""),
     departurePoint: z.string().trim().min(1, "Informe o ponto de partida."),
     departureStreet: z.string().trim().optional().default(""),
     departureNumber: z.string().trim().optional().default(""),
@@ -132,7 +107,6 @@ export async function createDriverTicket(
 
   // 2. Validação dos campos textuais.
   const raw = {
-    driverId: formData.get("driverId"),
     departurePoint: formData.get("departurePoint"),
     departureStreet: formData.get("departureStreet"),
     departureNumber: formData.get("departureNumber"),
@@ -157,16 +131,6 @@ export async function createDriverTicket(
     return { ok: false, error: "Revise os campos destacados.", fieldErrors };
   }
   const data = parsed.data;
-
-  // Motorista escolhido: revalida no servidor que o id é mesmo de um motorista
-  // ativo. O select pode ser adulterado; a lotação é o que decide.
-  if (data.driverId && !(await isActiveDriver(data.driverId))) {
-    return {
-      ok: false,
-      error: "Revise os campos destacados.",
-      fieldErrors: { driverId: "Motorista indisponível. Escolha outro ou deixe em aberto." },
-    };
-  }
 
   // Resolve o endereço de PARTIDA. Quando o ponto de partida é uma unidade
   // conhecida, o formulário não preenche os campos manuais (só exibe o
@@ -216,11 +180,11 @@ export async function createDriverTicket(
         data: {
           code,
           destination: "MOTORISTAS",
-          // O motorista é do Flow, não do Connect: nada de assigneeId. O id
-          // escolhido fica em flowDriverId até o envio, que devolve o nome e o
-          // status certos.
+          // Todo chamado nasce "Em aberto": o solicitante não escolhe
+          // motorista; a atribuição acontece no quadro do Build.Flow, que
+          // devolve nome e status pelo webhook.
           status: "PENDENTE" as const,
-          flowDriverId: data.driverId || null,
+          flowDriverId: null,
           title,
           description: data.description,
           requesterId: user.id,

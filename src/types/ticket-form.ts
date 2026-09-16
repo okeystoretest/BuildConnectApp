@@ -17,15 +17,6 @@ export const IT_CATEGORIES = [
 
 export type ItCategoryOption = (typeof IT_CATEGORIES)[number];
 
-/**
- * Rótulo da opção "sem motorista definido". O valor gravado é a string vazia:
- * o chamado nasce PENDENTE e é assumido no quadro de Motoristas.
- *
- * A lista de motoristas em si NÃO mora aqui — vem do banco, pelos usuários
- * lotados em Logística › Motoristas (ver `listDrivers` em `lib/tickets/actions`).
- */
-export const DRIVER_UNASSIGNED_LABEL = "Em aberto";
-
 /** Unidades cadastradas + "Outro" ao final. */
 export const DEPARTURE_POINTS = DEPARTURE_OPTIONS;
 
@@ -45,9 +36,11 @@ export interface ItTicketForm {
   images: readonly File[];
 }
 
+/**
+ * Não há campo de motorista: o chamado nasce sempre "Em aberto" e é atribuído
+ * no quadro do Build.Flow.
+ */
 export interface DriverTicketForm {
-  /** Id do motorista escolhido. Vazio = "Em aberto". */
-  driverId: string;
   departurePoint: string;
   /** Preenchidos apenas quando `departurePoint` é "Outro". */
   departureStreet: string;

@@ -40,29 +40,6 @@ async function flowFetch(path: string, init: RequestInit = {}): Promise<Response
   }
 }
 
-// ——— Motoristas (cache de 60s: o formulário abre muitas vezes) ———
-const DRIVERS_TTL_MS = 60_000;
-let driversCache: { at: number; list: { id: string; name: string }[] } | null = null;
-
-export async function listFlowDrivers(): Promise<{ id: string; name: string }[]> {
-  if (driversCache && Date.now() - driversCache.at < DRIVERS_TTL_MS) return driversCache.list;
-  try {
-    const res = await flowFetch("/api/integracao/connect/motoristas");
-    if (!res.ok) return [];
-    const data = (await res.json()) as { drivers?: { id: string; name: string }[] };
-    const list = data.drivers ?? [];
-    driversCache = { at: Date.now(), list };
-    return list;
-  } catch {
-    // Flow fora: o formulário abre sem a opção de escolher motorista.
-    return [];
-  }
-}
-
-export async function isFlowDriver(id: string): Promise<boolean> {
-  return (await listFlowDrivers()).some((d) => d.id === id);
-}
-
 // ——— Criação ———
 export async function createFlowTransport(
   payload: CreatePayload,

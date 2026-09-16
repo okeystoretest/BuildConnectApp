@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
@@ -8,10 +8,9 @@ import { Segmented } from "@/components/ui/segmented";
 import { ItTicketFields } from "./it-ticket-fields";
 import { DriverTicketFields } from "./driver-ticket-fields";
 import { OTHER_OPTION, UNITS } from "@/lib/units";
-import { createDriverTicket, listDrivers } from "@/lib/tickets/actions";
+import { createDriverTicket } from "@/lib/tickets/actions";
 import { Progress } from "@/components/ui/progress";
 import { useUploadProgress, uploadPhaseLabel } from "@/lib/use-upload-progress";
-import type { DriverOption } from "@/lib/tickets/actions";
 import { useToast } from "@/providers/toast-provider";
 import {
   SERVICE_TYPES,
@@ -29,7 +28,6 @@ const EMPTY_IT: ItTicketForm = { category: null, description: "", images: [] };
 
 const EMPTY_DRIVER: DriverTicketForm = {
   // Vazio = "Em aberto".
-  driverId: "",
   departurePoint: UNITS[0] ?? "",
   departureStreet: "",
   departureNumber: "",
@@ -70,34 +68,6 @@ export function NewTicketModal({ open, onClose }: NewTicketModalProps) {
   const [submitting, setSubmitting] = useState(false);
   const upload = useUploadProgress<ItTicketPayload>();
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [drivers, setDrivers] = useState<readonly DriverOption[] | null>(null);
-  const [driversLoading, setDriversLoading] = useState(false);
-
-  /**
-   * Motoristas carregados sob demanda: só quando a aba Motoristas é aberta, e
-   * uma única vez por sessão do modal. Abrir chamado de TI — o caso mais comum
-   * — não paga por uma consulta que aquela aba não usa.
-   */
-  useEffect(() => {
-    if (!open || destination !== "MOTORISTAS" || drivers !== null || driversLoading) return;
-    setDriversLoading(true);
-    let cancelled = false;
-    void listDrivers()
-      .then((list) => {
-        if (!cancelled) setDrivers(list);
-      })
-      .catch(() => {
-        // Falha de rede: cai na lista vazia, e o chamado sai "em aberto".
-        if (!cancelled) setDrivers([]);
-      })
-      .finally(() => {
-        if (!cancelled) setDriversLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, destination, drivers, driversLoading]);
-
   function reset() {
     setDestination("TI");
     setItForm(EMPTY_IT);
@@ -179,7 +149,6 @@ export function NewTicketModal({ open, onClose }: NewTicketModalProps) {
 
     // Motoristas: Server Action real com tratamento de imagens.
     const fd = new FormData();
-    fd.set("driverId", driverForm.driverId);
     fd.set("departurePoint", driverForm.departurePoint);
     fd.set("departureStreet", driverForm.departureStreet);
     fd.set("departureNumber", driverForm.departureNumber);
@@ -250,8 +219,6 @@ export function NewTicketModal({ open, onClose }: NewTicketModalProps) {
           <DriverTicketFields
             form={driverForm}
             errors={driverErrors}
-            drivers={drivers ?? []}
-            driversLoading={driversLoading}
             onChange={(patch) => {
               setDriverForm((prev) => ({ ...prev, ...patch }));
               setDriverErrors({});
