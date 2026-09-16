@@ -370,10 +370,11 @@ export function VideoBatchUploadModal({ slug, kind, open, onClose }: VideoBatchU
 
         {error && <p className="text-xs text-danger">{error}</p>}
 
-        <p className="text-[11px] text-muted">
-          Transcrição e filtros são adicionados depois, na edição de cada vídeo. MKV toca no
-          Chrome e no Edge; Firefox e Safari não reproduzem esse formato.
-        </p>
+        <ol className="list-decimal space-y-0.5 pl-4 text-[11px] text-muted">
+          <li>Selecione um ou mais vídeos — o nome do arquivo vira o título.</li>
+          <li>Ajuste os títulos, se quiser, e confira as miniaturas.</li>
+          <li>Clique em Enviar e aguarde: os vídeos sobem um de cada vez.</li>
+        </ol>
       </div>
     </Modal>
   );

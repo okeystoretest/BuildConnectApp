@@ -86,12 +86,13 @@ test("a miniatura é pequena: quadro único em JPEG, não uma imagem de galeria"
   assert.ok(MAX_BYTES.thumbnail < MAX_BYTES.image);
 });
 
-test("o corpo da requisição parou de reservar espaço para a instrução escrita", () => {
+test("o corpo da requisição é vídeo + miniatura + folga, sem espaço para instrução escrita", () => {
   // A instrução escrita foi retirada do módulo. O teto do corpo é ditado por
   // tempo (requestTimeout de 300 s), então cada MB reservado sem uso é um MB
-  // de envio que pode morrer em 502 sem aviso. 120 MB = vídeo (110) +
+  // de envio que pode morrer em 502 sem aviso. 145 MB = vídeo (135) +
   // miniatura (2) + folga.
-  assert.equal(MAX_REQUEST_BYTES, 120 * 1024 * 1024);
+  assert.equal(MAX_BYTES.video, 135 * 1024 * 1024);
+  assert.equal(MAX_REQUEST_BYTES, 145 * 1024 * 1024);
   assert.ok(!("instruction" in MAX_BYTES));
 });
 

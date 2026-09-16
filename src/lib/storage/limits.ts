@@ -14,7 +14,7 @@ import { formatBytes } from "@/lib/utils";
 
 export const MAX_BYTES = {
   /**
-   * 110 MB — e o que limita este número é TEMPO, não memória.
+   * 135 MB — e o que limita este número é TEMPO, não memória.
    *
    * A restrição de verdade não está em byte nenhum: está no `requestTimeout` do
    * Node, que vale **300 segundos** e que o `next start` não deixa configurar
@@ -27,11 +27,12 @@ export const MAX_BYTES = {
    * A medição vale porque `welcomeVideo.manage` é permissão só de Admin: quem
    * envia vídeo é sempre a mesma pessoa, e é a banda dela que decide.
    *
-   * A 4,8 Mbps, 110 MB levam ~184 s — 61% do limite, com folga para a variação
-   * normal da rede. Os 150 MB anteriores levariam ~251 s, e o pior envio que a
-   * interface permitia (150 + 50 + 5) levava ~344 s: passava em toda a
-   * conferência de tamanho e morria por tempo, que é exatamente o defeito que
-   * estes tetos existem para evitar.
+   * A 4,8 Mbps, 135 MB levam ~225 s — 75% do limite. É menos folga do que os
+   * 110 MB anteriores (~184 s, 61%) davam; numa rede um pouco mais lenta que a
+   * medida, um vídeo no teto já encosta nos 300 s. Os 150 MB de antes levariam
+   * ~251 s, e o pior envio que a interface permitia na época (150 + 50 + 5)
+   * levava ~344 s: passava em toda a conferência de tamanho e morria por
+   * tempo, que é exatamente o defeito que estes tetos existem para evitar.
    *
    * Memória continua confortável e deixou de ser o critério: ~290 MB de pico
    * contra os ~11 GB livres do host, sem limite por contêiner.
@@ -39,7 +40,7 @@ export const MAX_BYTES = {
    * Para subir este número, o caminho NÃO é editar aqui: é levantar o
    * `requestTimeout` com servidor próprio, ou fatiar o envio em pedaços.
    */
-  video: 110 * 1024 * 1024,
+  video: 135 * 1024 * 1024,
   image: 50 * 1024 * 1024,
   document: 50 * 1024 * 1024,
   pdf: 50 * 1024 * 1024,
@@ -85,7 +86,7 @@ export type UploadRule = keyof typeof MAX_BYTES;
  * o bodySizeLimit de 520 MB ter qualquer efeito.
  *
  * O número precisa caber o PIOR envio legítimo, não o maior arquivo: o modal
- * de vídeo manda vídeo e miniatura no mesmo FormData. 110 + 2 = 112 MB, e os
+ * de vídeo manda vídeo e miniatura no mesmo FormData. 135 + 2 = 137 MB, e os
  * 8 MB restantes são folga para o overhead do multipart — o cliente soma
  * bytes de ARQUIVO, mas o corpo HTTP carrega fronteiras e cabeçalhos por
  * cima. Sem essa folga, um envio aprovado no navegador seria recusado no
@@ -95,16 +96,16 @@ export type UploadRule = keyof typeof MAX_BYTES;
  * vez, cada um na sua própria requisição. A transcrição também vai sozinha,
  * pela tela de edição.
  *
- * O QUE DECIDE ESTE NÚMERO É TEMPO. A 4,8 Mbps medidos em produção, 120 MB
- * levam ~200 s, contra os 300 s do `requestTimeout` do Node — 67% do limite.
+ * O QUE DECIDE ESTE NÚMERO É TEMPO. A 4,8 Mbps medidos em produção, 145 MB
+ * levam ~243 s, contra os 300 s do `requestTimeout` do Node — 81% do limite.
  * Memória deixou de ser o critério: mesmo dobrada pela bufferização (middleware
- * + FormData), a conta dá ~240 MB contra ~11 GB livres no host.
+ * + FormData), a conta dá ~290 MB contra ~11 GB livres no host.
  *
  * Antes de subir isto, refaça a conta de tempo: um envio que não termina em
  * 300 s morre em 502 com um `ECONNRESET` mudo no log, e nenhuma conferência de
  * tamanho — nem aqui, nem no navegador — vai avisar o usuário.
  */
-export const MAX_REQUEST_BYTES = 120 * 1024 * 1024;
+export const MAX_REQUEST_BYTES = 145 * 1024 * 1024;
 
 export interface UploadItem {
   /** Como o campo aparece na tela, para a mensagem citar o certo. */
