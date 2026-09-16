@@ -39,43 +39,60 @@ test("a soma estoura mesmo com cada arquivo dentro do seu teto", () => {
   // de tetos estoura, que é a situação desejada (ver o invariante abaixo).
   const erro = validateUploadSizes([
     { label: "O vídeo", bytes: MAX_REQUEST_BYTES, max: MAX_REQUEST_BYTES },
-    { label: "A instrução escrita", bytes: 1, max: MAX_REQUEST_BYTES },
+    { label: "A miniatura", bytes: 1, max: MAX_REQUEST_BYTES },
   ]);
   assert.ok(erro, "deveria recusar pela soma");
   assert.match(erro, /somam/);
 });
 
 test("o pior envio LEGÍTIMO do modal de vídeo cabe no corpo da requisição", () => {
-  // Vídeo + instrução escrita + transcrição viajam juntos. Se a soma dos três
-  // tetos não coubesse, existiria um envio que passa em cada campo e é recusado
-  // pelo conjunto — usuário escolhendo três arquivos válidos e levando "não".
-  const pior = MAX_BYTES.video + MAX_BYTES.instruction + MAX_BYTES.transcript;
+  // Vídeo + miniatura viajam juntos: a miniatura é capturada no navegador e
+  // vai no mesmo FormData. A transcrição NÃO entra aqui — ela é enviada
+  // depois, sozinha, pela tela de edição. Se a soma dos dois tetos não
+  // coubesse, existiria um envio que passa em cada campo e é recusado pelo
+  // conjunto — usuário escolhendo um vídeo válido e levando "não".
+  const pior = MAX_BYTES.video + MAX_BYTES.thumbnail;
   assert.ok(
     pior <= MAX_REQUEST_BYTES,
-    `os três tetos somam ${pior} e o corpo aceita ${MAX_REQUEST_BYTES}`,
+    `os tetos somam ${pior} e o corpo aceita ${MAX_REQUEST_BYTES}`,
   );
   assert.equal(
     validateUploadSizes([
       { label: "O vídeo", bytes: MAX_BYTES.video, max: MAX_BYTES.video },
-      { label: "A instrução escrita", bytes: MAX_BYTES.instruction, max: MAX_BYTES.instruction },
-      { label: "A transcrição", bytes: MAX_BYTES.transcript, max: MAX_BYTES.transcript },
+      { label: "A miniatura", bytes: MAX_BYTES.thumbnail, max: MAX_BYTES.thumbnail },
     ]),
     null,
   );
 });
 
 test("o pior envio deixa FOLGA, não empate, para o overhead do multipart", () => {
-  // Quase escorreguei nisto ao recalcular os tetos: 110 + 25 + 5 = 140 com o
-  // corpo em 140 fecha a conta no papel e quebra na prática. O cliente soma
-  // bytes de ARQUIVO; o corpo HTTP leva fronteiras e cabeçalhos de parte por
-  // cima. No empate, um envio aprovado no navegador é recusado no servidor por
-  // alguns KB — e o usuário recebe um "não" que nenhuma tela consegue explicar.
-  const pior = MAX_BYTES.video + MAX_BYTES.instruction + MAX_BYTES.transcript;
+  // Quase escorreguei nisto ao recalcular os tetos: fechar a conta no papel
+  // quebra na prática. O cliente soma bytes de ARQUIVO; o corpo HTTP leva
+  // fronteiras e cabeçalhos de parte por cima. No empate, um envio aprovado no
+  // navegador é recusado no servidor por alguns KB — e o usuário recebe um
+  // "não" que nenhuma tela consegue explicar.
+  const pior = MAX_BYTES.video + MAX_BYTES.thumbnail;
   const folga = MAX_REQUEST_BYTES - pior;
   assert.ok(
     folga >= 1024 * 1024,
     `folga de ${folga} bytes entre o pior envio (${pior}) e o corpo (${MAX_REQUEST_BYTES}) — precisa de pelo menos 1 MB`,
   );
+});
+
+test("a miniatura é pequena: quadro único em JPEG, não uma imagem de galeria", () => {
+  // Ela pega carona no envio do vídeo, e cada MB dela é um MB a menos para o
+  // que de fato é grande. 2 MB cobre qualquer quadro 1280x720 com folga.
+  assert.ok(MAX_BYTES.thumbnail <= 2 * 1024 * 1024);
+  assert.ok(MAX_BYTES.thumbnail < MAX_BYTES.image);
+});
+
+test("o corpo da requisição parou de reservar espaço para a instrução escrita", () => {
+  // A instrução escrita foi retirada do módulo. O teto do corpo é ditado por
+  // tempo (requestTimeout de 300 s), então cada MB reservado sem uso é um MB
+  // de envio que pode morrer em 502 sem aviso. 120 MB = vídeo (110) +
+  // miniatura (2) + folga.
+  assert.equal(MAX_REQUEST_BYTES, 120 * 1024 * 1024);
+  assert.ok(!("instruction" in MAX_BYTES));
 });
 
 test("o erro do arquivo vem antes do erro da soma", () => {

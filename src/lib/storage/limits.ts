@@ -44,15 +44,14 @@ export const MAX_BYTES = {
   document: 50 * 1024 * 1024,
   pdf: 50 * 1024 * 1024,
   /**
-   * 25 MB, metade dos demais documentos — e a razão não é o arquivo, é a
-   * companhia.
+   * 2 MB — e a razão não é o arquivo, é a companhia.
    *
-   * A instrução escrita é o único documento que viaja no MESMO FormData de um
-   * vídeo. O que precisa caber em 300 s é a SOMA, então cada MB aqui é um MB a
-   * menos disponível para o vídeo. 25 MB é generoso para um PDF ou DOCX de
-   * instrução, e devolve 25 MB de orçamento para o que de fato é grande.
+   * A miniatura é capturada no navegador (um quadro do próprio vídeo, em
+   * JPEG) e viaja no MESMO FormData do vídeo. O que precisa caber em 300 s é
+   * a SOMA, então cada MB aqui é um MB a menos disponível para o vídeo. Um
+   * quadro 1280x720 em JPEG fica na casa dos 100–300 KB; 2 MB é folga larga.
    */
-  instruction: 25 * 1024 * 1024,
+  thumbnail: 2 * 1024 * 1024,
   /**
    * Transcrição é a exceção deliberada aos 50 MB dos demais documentos.
    *
@@ -61,6 +60,9 @@ export const MAX_BYTES = {
    * arquivo de 50 MB viraria uma linha de 50 MB no Postgres, carregada toda
    * vez que a tela do vídeo abrir. Cinco MB já são cerca de 2,5 milhões de
    * caracteres — muito além de qualquer transcrição real.
+   *
+   * Ela NÃO viaja junto com o vídeo: é enviada sozinha, pela tela de edição,
+   * então não entra na conta do MAX_REQUEST_BYTES.
    */
   transcript: 5 * 1024 * 1024,
 } as const;
@@ -83,22 +85,26 @@ export type UploadRule = keyof typeof MAX_BYTES;
  * o bodySizeLimit de 520 MB ter qualquer efeito.
  *
  * O número precisa caber o PIOR envio legítimo, não o maior arquivo: o modal
- * de vídeo manda vídeo, instrução escrita e transcrição no mesmo FormData.
- * 110 + 25 + 5 = 140 MB, e os 5 MB restantes são folga para o overhead do
- * multipart — o cliente soma bytes de ARQUIVO, mas o corpo HTTP carrega
- * fronteiras e cabeçalhos por cima. Sem essa folga, um envio aprovado no
- * navegador seria recusado no servidor por alguns KB.
+ * de vídeo manda vídeo e miniatura no mesmo FormData. 110 + 2 = 112 MB, e os
+ * 8 MB restantes são folga para o overhead do multipart — o cliente soma
+ * bytes de ARQUIVO, mas o corpo HTTP carrega fronteiras e cabeçalhos por
+ * cima. Sem essa folga, um envio aprovado no navegador seria recusado no
+ * servidor por alguns KB.
  *
- * O QUE DECIDE ESTE NÚMERO É TEMPO. A 4,8 Mbps medidos em produção, 145 MB
- * levam ~243 s, contra os 300 s do `requestTimeout` do Node — 81% do limite.
+ * O envio em lote NÃO muda esta conta: os até 15 vídeos da fila sobem um por
+ * vez, cada um na sua própria requisição. A transcrição também vai sozinha,
+ * pela tela de edição.
+ *
+ * O QUE DECIDE ESTE NÚMERO É TEMPO. A 4,8 Mbps medidos em produção, 120 MB
+ * levam ~200 s, contra os 300 s do `requestTimeout` do Node — 67% do limite.
  * Memória deixou de ser o critério: mesmo dobrada pela bufferização (middleware
- * + FormData), a conta dá ~290 MB contra ~11 GB livres no host.
+ * + FormData), a conta dá ~240 MB contra ~11 GB livres no host.
  *
  * Antes de subir isto, refaça a conta de tempo: um envio que não termina em
  * 300 s morre em 502 com um `ECONNRESET` mudo no log, e nenhuma conferência de
  * tamanho — nem aqui, nem no navegador — vai avisar o usuário.
  */
-export const MAX_REQUEST_BYTES = 145 * 1024 * 1024;
+export const MAX_REQUEST_BYTES = 120 * 1024 * 1024;
 
 export interface UploadItem {
   /** Como o campo aparece na tela, para a mensagem citar o certo. */

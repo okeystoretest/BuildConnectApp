@@ -81,7 +81,7 @@ export async function getSectorContent(
     tags: string[];
     kind: string;
     filePath: string | null;
-    instructionPath: string | null;
+    thumbnailPath: string | null;
     transcriptPath: string | null;
     transcriptText: string | null;
   }>) {
@@ -92,7 +92,7 @@ export async function getSectorContent(
       isNew: v.isNew,
       tags: v.tags,
       filePath: v.filePath ?? undefined,
-      instructionPath: v.instructionPath ?? undefined,
+      thumbnailPath: v.thumbnailPath ?? undefined,
       transcriptPath: v.transcriptPath ?? undefined,
       transcriptText: v.transcriptText ?? undefined,
     };

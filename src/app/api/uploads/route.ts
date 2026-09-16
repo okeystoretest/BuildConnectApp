@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth/require-user";
-import { uploadSectorPhoto, uploadSectorVideo, uploadSectorDocument } from "@/lib/sector-actions";
+import {
+  uploadSectorPhoto,
+  uploadSectorVideo,
+  uploadSectorDocument,
+  updateSectorVideo,
+} from "@/lib/sector-actions";
 import { uploadWelcomeVideo } from "@/lib/welcome-video-actions";
 import { uploadPlatformWelcomeVideo } from "@/lib/platform-welcome-actions";
 import { uploadIntegrationMap } from "@/lib/hr-actions";
@@ -35,6 +40,9 @@ const HANDLERS: Record<string, Handler> = {
   "setor-foto": uploadSectorPhoto,
   "setor-video": uploadSectorVideo,
   "setor-documento": uploadSectorDocument,
+  // Edição do vídeo (título, tags, transcrição): passa por aqui pelo mesmo
+  // motivo dos demais — a transcrição é arquivo e o XHR dá progresso.
+  "setor-video-editar": updateSectorVideo,
   "boas-vindas-setor": uploadWelcomeVideo,
   "boas-vindas-plataforma": uploadPlatformWelcomeVideo,
   "mapa-integracao": uploadIntegrationMap,

@@ -8,8 +8,16 @@ export interface EditableMediaActionsProps {
   title: string;
   tags?: readonly string[];
   suggestions?: readonly string[];
+  /** Presente só para vídeos: habilita o campo de transcrição na edição. */
+  transcript?: { hasCurrent: boolean };
   variant?: "overlay" | "inline";
   className?: string;
+  /** true enquanto `onSave` roda no servidor; o modal fica aberto e travado. */
+  saving?: boolean;
+  saveError?: string | null;
+  /** Controlado por fora quando o pai precisa fechar o modal após salvar. */
+  editing?: boolean;
+  onEditingChange?: (open: boolean) => void;
   onSave?: (value: MediaEditValue) => void;
   onDelete?: () => void;
 }
@@ -22,12 +30,19 @@ export function EditableMediaActions({
   title,
   tags = [],
   suggestions = [],
+  transcript,
   variant = "overlay",
   className,
+  saving,
+  saveError,
+  editing,
+  onEditingChange,
   onSave,
   onDelete,
 }: EditableMediaActionsProps) {
-  const [editing, setEditing] = useState(false);
+  const [internalEditing, setInternalEditing] = useState(false);
+  const open = editing ?? internalEditing;
+  const setOpen = onEditingChange ?? setInternalEditing;
 
   return (
     <>
@@ -35,15 +50,18 @@ export function EditableMediaActions({
         name={title}
         variant={variant}
         className={className}
-        onEdit={() => setEditing(true)}
+        onEdit={() => setOpen(true)}
         onDelete={onDelete}
       />
 
       <MediaEditModal
-        open={editing}
-        onClose={() => setEditing(false)}
+        open={open}
+        onClose={() => setOpen(false)}
         initial={{ title, tags }}
         suggestions={suggestions}
+        transcript={transcript}
+        saving={saving}
+        serverError={saveError}
         onSave={(value) => onSave?.(value)}
       />
     </>

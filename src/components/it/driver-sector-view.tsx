@@ -118,7 +118,6 @@ export function DriverSectorView({ content, evaluations, welcome }: DriverSector
 
       <FileUploadModal
         slug="motoristas"
-        kind="documento"
         open={docModalOpen}
         onClose={() => setDocModalOpen(false)}
       />

@@ -20,11 +20,15 @@ import { MAX_BYTES } from "./limits";
 // Os tetos vêm de ./limits, que o navegador também importa: conferir antes de
 // enviar é o que evita minutos de espera terminando em erro genérico.
 const RULES: Record<
-  "video" | "document" | "pdf" | "instruction" | "transcript",
+  "video" | "document" | "pdf" | "transcript",
   { mimes: Set<string>; extensions?: Set<string>; maxBytes: number; label: string }
 > = {
   video: {
     mimes: new Set(["video/mp4", "video/webm", "video/quicktime", "video/x-matroska"]),
+    // .mkv chega sem MIME do Firefox e do Explorador do Windows: não há tipo
+    // registrado para Matroska na maioria dos sistemas. Sem o fallback por
+    // extensão, "Formato inválido" era a resposta a um formato aceito.
+    extensions: new Set([".mkv"]),
     maxBytes: MAX_BYTES.video,
     label: "Vídeo",
   },
@@ -44,17 +48,6 @@ const RULES: Record<
     mimes: new Set(["application/pdf"]),
     maxBytes: MAX_BYTES.pdf,
     label: "PDF",
-  },
-  // Documento anexo "Instrução Escrita" de um vídeo — abre em nova aba.
-  instruction: {
-    mimes: new Set([
-      "application/pdf",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "application/msword",
-    ]),
-    extensions: new Set([".pdf", ".doc", ".docx"]),
-    maxBytes: MAX_BYTES.instruction,
-    label: "Instrução escrita",
   },
   // Transcrição do vídeo — texto puro, legendas .vtt ou .srt.
   transcript: {
@@ -78,7 +71,6 @@ const RULE_EXTENSIONS: Record<keyof typeof RULES, ReadonlySet<string>> = {
   video: new Set([".mp4", ".webm", ".mov", ".mkv"]),
   document: new Set([".pdf", ".doc", ".docx", ".xls", ".xlsx", ".png"]),
   pdf: new Set([".pdf"]),
-  instruction: new Set([".pdf", ".doc", ".docx"]),
   transcript: new Set([".txt", ".vtt", ".srt", ".md"]),
 };
 

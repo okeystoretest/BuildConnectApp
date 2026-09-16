@@ -14,6 +14,7 @@ import {
   FileStorageError,
 } from "@/lib/storage/files";
 import { toAbsolutePath } from "@/lib/storage/config";
+import { MAX_BYTES } from "@/lib/storage/limits";
 import { resolveAppScope } from "@/lib/app-scope";
 
 export interface ActionResult {
@@ -43,7 +44,7 @@ async function requireAdmin() {
   const user = await getCurrentUser();
   if (!user) return { user: null, error: "Sessão expirada. Faça login novamente." };
   if ((user.role as Role) !== "ADMIN") {
-    return { user: null, error: "Apenas administradores podem gerenciar os aplicativos." };
+    return { user: null, error: "Apenas administradores podem fazer isso." };
   }
   return { user, error: null };
 }
@@ -154,11 +155,20 @@ export async function uploadSectorPhoto(formData: FormData): Promise<ActionResul
 // Upload de vídeo / workshop / instrução em vídeo
 // ──────────────────────────────────────────────
 
+/** Um vídeo por requisição; no lote, o navegador chama isto N vezes, em fila. */
+const videoUploadSchema = z.object({
+  slug: z.string().min(1),
+  title: z.string().trim().min(1, "Informe o título do vídeo."),
+  kind: z.enum(["VIDEO", "WORKSHOP", "INSTRUCAO"]).catch("VIDEO"),
+});
+
 /**
- * Envia o vídeo e, opcionalmente, seus dois anexos:
- *  - "Instrução Escrita": documento (PDF/DOC/DOCX) aberto em nova aba.
- *  - "Transcrição do Vídeo": arquivo de texto (.txt/.md/.vtt/.srt) cujo
- *    conteúdo é extraído e persistido para exibição junto ao player.
+ * Envia o vídeo e, opcionalmente, a miniatura capturada no navegador (um
+ * quadro do próprio vídeo, em JPEG). A miniatura passa pelo sharp e vira
+ * .webp como qualquer imagem de conteúdo.
+ *
+ * A transcrição NÃO entra aqui: ela é enviada depois, pela tela de edição
+ * (`updateSectorVideo`). O envio nasce só com o que o lote precisa.
  *
  * Qualquer falha após gravar arquivos remove os já escritos no disco —
  * o banco nunca fica apontando para arquivo inexistente, nem o contrário.
@@ -167,17 +177,25 @@ export async function uploadSectorVideo(formData: FormData): Promise<ActionResul
   const { user, error } = await requireUploader();
   if (!user) return { ok: false, error: error ?? undefined };
 
-  const slug = String(formData.get("slug") ?? "");
-  const title = String(formData.get("title") ?? "").trim();
-  const kindRaw = String(formData.get("kind") ?? "VIDEO");
-  const kind = ["VIDEO", "WORKSHOP", "INSTRUCAO"].includes(kindRaw) ? kindRaw : "VIDEO";
+  const parsed = videoUploadSchema.safeParse({
+    slug: formData.get("slug"),
+    title: formData.get("title"),
+    kind: formData.get("kind") ?? "VIDEO",
+  });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  }
+  const { slug, title, kind } = parsed.data;
   const file = formData.get("file");
-  const instructionFile = formData.get("instructionFile");
-  const transcriptFile = formData.get("transcriptFile");
+  const thumbnailFile = formData.get("thumbnailFile");
 
-  if (!title) return { ok: false, error: "Informe o título do vídeo." };
   if (!(file instanceof File) || file.size === 0) {
     return { ok: false, error: "Selecione um arquivo de vídeo." };
+  }
+  // A miniatura é opcional (o navegador pode não decodificar o vídeo), mas
+  // quando vem tem o teto próprio — bem abaixo do de imagem de galeria.
+  if (thumbnailFile instanceof File && thumbnailFile.size > MAX_BYTES.thumbnail) {
+    return { ok: false, error: "Miniatura acima do limite." };
   }
 
   const subsectorId = await subsectorIdFromSlug(slug);
@@ -190,30 +208,23 @@ export async function uploadSectorVideo(formData: FormData): Promise<ActionResul
   }
 
   let videoPath: string;
-  let instructionPath: string | null = null;
-  let transcriptPath: string | null = null;
-  let transcriptText: string | null = null;
+  let thumbnailPath: string | null = null;
 
   try {
     const storedVideo = await storeFile(file, "video", "conteudo");
     written.push(storedVideo.absolutePath);
     videoPath = storedVideo.publicPath;
 
-    if (instructionFile instanceof File && instructionFile.size > 0) {
-      const stored = await storeFile(instructionFile, "instruction", "conteudo");
+    if (thumbnailFile instanceof File && thumbnailFile.size > 0) {
+      const stored = await processAndStoreImage(thumbnailFile, "conteudo");
       written.push(stored.absolutePath);
-      instructionPath = stored.publicPath;
-    }
-
-    if (transcriptFile instanceof File && transcriptFile.size > 0) {
-      const stored = await storeFile(transcriptFile, "transcript", "conteudo");
-      written.push(stored.absolutePath);
-      transcriptPath = stored.publicPath;
-      transcriptText = (await extractTranscriptText(transcriptFile)) || null;
+      thumbnailPath = stored.publicPath;
     }
   } catch (e) {
     await rollback();
-    if (e instanceof FileStorageError) return { ok: false, error: e.message };
+    if (e instanceof FileStorageError || e instanceof ImageProcessingError) {
+      return { ok: false, error: e.message };
+    }
     console.error("[uploadSectorVideo] storage:", e);
     return { ok: false, error: "Falha ao enviar os arquivos do vídeo." };
   }
@@ -224,11 +235,9 @@ export async function uploadSectorVideo(formData: FormData): Promise<ActionResul
       data: {
         subsectorId,
         title,
-        kind: kind as "VIDEO" | "WORKSHOP" | "INSTRUCAO",
+        kind,
         filePath: videoPath,
-        instructionPath,
-        transcriptPath,
-        transcriptText,
+        thumbnailPath,
         isNew: true,
         order: count,
       },
@@ -240,6 +249,153 @@ export async function uploadSectorVideo(formData: FormData): Promise<ActionResul
     console.error("[uploadSectorVideo] db:", e);
     return { ok: false, error: "Falha ao salvar o vídeo." };
   }
+}
+
+// ──────────────────────────────────────────────
+// Edição e exclusão de vídeo (título, tags, transcrição)
+// ──────────────────────────────────────────────
+
+const videoUpdateSchema = z.object({
+  slug: z.string().min(1),
+  id: z.string().min(1),
+  title: z.string().trim().min(1, "O título não pode ficar vazio."),
+  // Tags viram as pílulas de filtro da aba. Sem repetição, caixa ignorada.
+  tags: z.array(z.string().trim().min(1).max(40)).max(20),
+  /** "keep" mantém a transcrição atual; "remove" apaga; "replace" troca pelo arquivo enviado. */
+  transcriptMode: z.enum(["keep", "replace", "remove"]).catch("keep"),
+});
+
+/**
+ * Tela de edição do vídeo: título, tags e transcrição.
+ *
+ * A transcrição chega aqui, e só aqui — o envio em lote não a aceita. O
+ * arquivo novo é gravado ANTES de tocar no banco; a transcrição antiga só sai
+ * do disco DEPOIS que o banco confirmou. Falha no meio: o arquivo novo é
+ * removido e a antiga continua válida.
+ */
+export async function updateSectorVideo(formData: FormData): Promise<ActionResult> {
+  const { user, error } = await requireUploader();
+  if (!user) return { ok: false, error: error ?? undefined };
+
+  const parsed = videoUpdateSchema.safeParse({
+    slug: formData.get("slug"),
+    id: formData.get("id"),
+    title: formData.get("title"),
+    tags: formData.getAll("tags").map(String),
+    transcriptMode: formData.get("transcriptMode") ?? "keep",
+  });
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  }
+  const { slug, id, title, transcriptMode } = parsed.data;
+  const tags = dedupeTags(parsed.data.tags);
+  const transcriptFile = formData.get("transcriptFile");
+
+  const subsectorId = await subsectorIdFromSlug(slug);
+  if (!subsectorId) return { ok: false, error: "Setor não encontrado." };
+
+  const current = await prisma.video.findFirst({
+    where: { id, subsectorId },
+    select: { transcriptPath: true },
+  });
+  if (!current) return { ok: false, error: "Vídeo não encontrado." };
+
+  // `undefined` deixa a coluna como está no update do Prisma.
+  let transcriptPath: string | null | undefined;
+  let transcriptText: string | null | undefined;
+  let novoAbsoluto: string | null = null;
+
+  if (transcriptMode === "replace") {
+    if (!(transcriptFile instanceof File) || transcriptFile.size === 0) {
+      return { ok: false, error: "Selecione o arquivo da transcrição." };
+    }
+    try {
+      const stored = await storeFile(transcriptFile, "transcript", "conteudo");
+      novoAbsoluto = stored.absolutePath;
+      transcriptPath = stored.publicPath;
+      transcriptText = (await extractTranscriptText(transcriptFile)) || null;
+    } catch (e) {
+      if (e instanceof FileStorageError) return { ok: false, error: e.message };
+      console.error("[updateSectorVideo] storage:", e);
+      return { ok: false, error: "Falha ao enviar a transcrição." };
+    }
+  } else if (transcriptMode === "remove") {
+    transcriptPath = null;
+    transcriptText = null;
+  }
+
+  try {
+    await prisma.video.update({
+      where: { id },
+      data: { title, tags, transcriptPath, transcriptText },
+    });
+  } catch (e) {
+    if (novoAbsoluto) await removeFile(novoAbsoluto);
+    console.error("[updateSectorVideo] db:", e);
+    return { ok: false, error: "Falha ao salvar as alterações." };
+  }
+
+  // Banco confirmado: a transcrição antiga pode sair do disco.
+  if (transcriptMode !== "keep" && current.transcriptPath) {
+    const antigo = toAbsolutePath(current.transcriptPath);
+    if (antigo) await removeFile(antigo);
+  }
+
+  revalidatePath(`/setores/${slug}`);
+  return { ok: true };
+}
+
+/** Mesma tag em caixa diferente conta uma vez; a primeira grafia fica. */
+function dedupeTags(tags: readonly string[]): string[] {
+  const seen = new Map<string, string>();
+  for (const tag of tags) {
+    const key = tag.toLowerCase();
+    if (!seen.has(key)) seen.set(key, tag);
+  }
+  return [...seen.values()];
+}
+
+/**
+ * Exclui o vídeo: registro (o progresso cai em cascata) e, depois, os
+ * arquivos — vídeo, miniatura e transcrição. Ordem deliberada: registro sem
+ * arquivo é um card quebrado; arquivo sem registro é só espaço em disco.
+ */
+export async function deleteSectorVideo(input: {
+  slug: string;
+  id: string;
+}): Promise<ActionResult> {
+  const { user, error } = await requireAdmin();
+  if (!user) return { ok: false, error: error ?? undefined };
+
+  const parsed = z.object({ slug: z.string().min(1), id: z.string().min(1) }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Dados inválidos." };
+  const { slug, id } = parsed.data;
+
+  const subsectorId = await subsectorIdFromSlug(slug);
+  if (!subsectorId) return { ok: false, error: "Setor não encontrado." };
+
+  const video = await prisma.video.findFirst({
+    where: { id, subsectorId },
+    select: { filePath: true, thumbnailPath: true, transcriptPath: true },
+  });
+  if (!video) return { ok: false, error: "Vídeo não encontrado." };
+
+  try {
+    await prisma.video.delete({ where: { id } });
+  } catch (e) {
+    console.error("[deleteSectorVideo] db:", e);
+    return { ok: false, error: "Falha ao excluir o vídeo." };
+  }
+
+  await Promise.all(
+    [video.filePath, video.thumbnailPath, video.transcriptPath]
+      .map((publicPath) => (publicPath ? toAbsolutePath(publicPath) : null))
+      .filter((abs): abs is string => Boolean(abs))
+      .map((abs) => removeFile(abs)),
+  );
+
+  revalidatePath(`/setores/${slug}`);
+  return { ok: true };
 }
 
 // ──────────────────────────────────────────────

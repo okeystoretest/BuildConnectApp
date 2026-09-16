@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { Tabs, TabPanel, type TabItem } from "@/components/ui/tabs";
@@ -13,6 +13,9 @@ import { DocumentGrid } from "@/components/sector/document-grid";
 import { LinksPanel } from "@/components/sector/links-panel";
 import { UploadAction } from "@/components/sector/upload-action";
 import { FileUploadModal } from "@/components/sector/file-upload-modal";
+import { VideoBatchUploadModal } from "@/components/sector/video-batch-upload-modal";
+import { FilterPills } from "@/components/sector/filter-pills";
+import { deriveFilters, matchesFilters } from "@/lib/video-filters";
 import { LinkModal } from "@/components/sector/link-modal";
 import { SectorWelcomeVideo } from "@/components/sector/welcome-video";
 import type { SectorWelcomeVideo as SectorWelcomeVideoData } from "@/lib/welcome-video-data";
@@ -57,7 +60,10 @@ export function ItSectorView({
   const [active, setActive] = useState("chamados");
   const [query, setQuery] = useState("");
   const [view, setView] = useState<ViewMode>("grid");
-  const [fileModal, setFileModal] = useState<"instrucao-video" | "documento" | null>(null);
+  const [videoModalOpen, setVideoModalOpen] = useState(false);
+  const [docModalOpen, setDocModalOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [activeFilters, setActiveFilters] = useState<readonly string[]>([]);
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [editingLink, setEditingLink] = useState<LinkItem | null>(null);
 
@@ -82,8 +88,8 @@ export function ItSectorView({
         : undefined;
 
   function openUpload() {
-    if (active === "instrucoes-video") setFileModal("instrucao-video");
-    else if (active === "documentos") setFileModal("documento");
+    if (active === "instrucoes-video") setVideoModalOpen(true);
+    else if (active === "documentos") setDocModalOpen(true);
   }
 
   function openLinkModal(link: LinkItem | null) {
@@ -91,9 +97,19 @@ export function ItSectorView({
     setLinkModalOpen(true);
   }
 
-  const filteredVideos = content.videos.filter((v) =>
-    v.title.toLowerCase().includes(query.trim().toLowerCase()),
+  // Pílulas = tags em uso nos vídeos; mesma regra da página de setor.
+  const filters = useMemo(() => deriveFilters(content.videos), [content.videos]);
+  const filteredVideos = content.videos.filter(
+    (v) =>
+      v.title.toLowerCase().includes(query.trim().toLowerCase()) &&
+      matchesFilters(v, activeFilters),
   );
+
+  function toggleFilter(filter: string) {
+    setActiveFilters((prev) =>
+      prev.includes(filter) ? prev.filter((f) => f !== filter) : [...prev, filter],
+    );
+  }
 
   return (
     <AppShell
@@ -135,7 +151,23 @@ export function ItSectorView({
               view={view}
               onViewChange={setView}
               showFilter
+              filtersOpen={filtersOpen}
+              onToggleFilters={() => setFiltersOpen((v) => !v)}
             />
+            {filtersOpen &&
+              (filters.length > 0 ? (
+                <FilterPills
+                  filters={filters}
+                  onChange={() => {}}
+                  active={activeFilters}
+                  onToggle={toggleFilter}
+                />
+              ) : (
+                <p className="text-xs text-muted">
+                  Nenhum filtro ainda. Os filtros nascem das tags atribuídas na edição de cada
+                  vídeo.
+                </p>
+              ))}
             {filteredVideos.length === 0 ? (
               <EmptyState
                 title="Nenhum vídeo encontrado"
@@ -144,7 +176,7 @@ export function ItSectorView({
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {filteredVideos.map((video) => (
-                  <VideoCard key={video.id} video={video} />
+                  <VideoCard key={video.id} slug="ti" video={video} suggestions={filters} />
                 ))}
               </div>
             )}
@@ -183,14 +215,15 @@ export function ItSectorView({
         {active === "ia" && showAi && aiSettings && <AiSettingsPanel settings={aiSettings} />}
       </TabPanel>
 
-      {fileModal && (
-        <FileUploadModal
+      {videoModalOpen && (
+        <VideoBatchUploadModal
           slug="ti"
-          kind={fileModal}
-          open={fileModal !== null}
-          onClose={() => setFileModal(null)}
+          kind="instrucao-video"
+          open
+          onClose={() => setVideoModalOpen(false)}
         />
       )}
+      <FileUploadModal slug="ti" open={docModalOpen} onClose={() => setDocModalOpen(false)} />
       <LinkModal
         slug="ti"
         link={editingLink}

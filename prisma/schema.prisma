@@ -324,12 +324,16 @@ model Video {
   filePath String?
   order    Int       @default(0)
 
-  // Conteúdo auxiliar da instrução em vídeo. Sempre caminho de arquivo,
-  // nunca binário. `transcriptText` guarda o texto já extraído do arquivo
-  // de transcrição para exibição imediata no modal, sem I/O na renderização.
-  instructionPath String?
-  transcriptPath  String?
-  transcriptText  String? @db.Text
+  // Miniatura (.webp) capturada no navegador na hora do envio: um quadro do
+  // próprio vídeo. Nula nos vídeos enviados antes do recurso e quando o
+  // navegador não conseguiu decodificar o arquivo para capturar.
+  thumbnailPath String?
+
+  // Transcrição do vídeo, enviada pela tela de edição. Sempre caminho de
+  // arquivo, nunca binário. `transcriptText` guarda o texto já extraído para
+  // exibição imediata no modal, sem I/O na renderização.
+  transcriptPath String?
+  transcriptText String? @db.Text
 
   subsectorId String
   subsector   Subsector @relation(fields: [subsectorId], references: [id], onDelete: Cascade)

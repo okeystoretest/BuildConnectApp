@@ -109,7 +109,7 @@ const nextConfig = {
     // ACOMPANHA MAX_REQUEST_BYTES em src/lib/storage/limits.ts. Este arquivo é
     // ESM puro e não importa TypeScript, então os dois números vivem
     // separados: mexeu em um, mexa no outro.
-    middlewareClientMaxBodySize: "145mb",
+    middlewareClientMaxBodySize: "120mb",
     serverActions: {
       // O limite padrão de corpo de Server Action é 1 MB. Todo upload do
       // sistema (foto, vídeo, documento, avatar) passa por Server Action com
@@ -117,19 +117,21 @@ const nextConfig = {
       // "Body exceeded 1 MB limit". Em dev ninguém percebe: as fotos de teste
       // são pequenas.
       //
-      // 145 MB cobre o pior envio legítimo do modal de vídeo — vídeo (110) +
-      // instrução escrita (25) + transcrição (5) = 140, mais folga para o
-      // overhead do multipart.
+      // 120 MB cobre o pior envio legítimo do modal de vídeo — vídeo (110) +
+      // miniatura capturada no navegador (2) = 112, mais folga para o
+      // overhead do multipart. A transcrição vai sozinha, pela tela de
+      // edição, e o envio em lote sobe um vídeo por requisição: nenhum dos
+      // dois entra nesta conta.
       //
       // O NÚMERO É DITADO POR TEMPO, não por memória. O `requestTimeout` do
       // Node vale 300 s e o `next start` não deixa mexer nele; a 4,8 Mbps
-      // medidos em produção, 145 MB levam ~243 s. O teto anterior de 215 MB
-      // permitia um envio de ~344 s, que morria em 502 com um ECONNRESET mudo
-      // depois de o usuário esperar quase seis minutos.
+      // medidos em produção, 120 MB levam ~200 s. Um teto de 215 MB, que já
+      // valeu aqui, permitia um envio de ~344 s, que morria em 502 com um
+      // ECONNRESET mudo depois de o usuário esperar quase seis minutos.
       //
       // A memória, que já foi o critério, hoje sobra: mesmo bufferizado duas
-      // vezes (aqui e no middleware acima), dá ~290 MB contra ~11 GB livres.
-      bodySizeLimit: "145mb",
+      // vezes (aqui e no middleware acima), dá ~240 MB contra ~11 GB livres.
+      bodySizeLimit: "120mb",
     },
   },
 };

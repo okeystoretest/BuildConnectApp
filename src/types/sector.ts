@@ -18,8 +18,8 @@ export interface VideoItem {
   tags?: readonly string[];
   /** Caminho público do arquivo de vídeo (reproduzido no modal). */
   filePath?: string;
-  /** Caminho público do documento "Instrução Escrita" (abre em nova aba). */
-  instructionPath?: string;
+  /** Miniatura (.webp) capturada no envio. Sem ela, o card usa o placeholder. */
+  thumbnailPath?: string;
   /** Texto completo da transcrição, exibido ao lado do player. */
   transcriptText?: string;
   /** Caminho público do arquivo de transcrição enviado. */

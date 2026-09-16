@@ -172,7 +172,6 @@ export function HrSectorView({
       <MapUploadModal open={mapModalOpen} onClose={() => setMapModalOpen(false)} />
       <FileUploadModal
         slug="rh"
-        kind="documento"
         open={docModalOpen}
         onClose={() => setDocModalOpen(false)}
       />

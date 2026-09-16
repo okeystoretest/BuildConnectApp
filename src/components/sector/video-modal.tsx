@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ExternalLink, FileText, VideoOff, X } from "lucide-react";
+import { FileText, VideoOff, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { usePortalTarget } from "@/components/ui/use-portal-target";
@@ -19,7 +19,7 @@ export interface VideoModalProps {
  *
  * Regra do módulo: a transcrição NUNCA cobre o player. Ela abre em uma
  * coluna lateral (empilhada abaixo no mobile) e o vídeo segue visível e
- * reproduzindo. A instrução escrita é um arquivo — abre em nova aba.
+ * reproduzindo.
  */
 export function VideoModal({ video, open, onClose }: VideoModalProps) {
   const [showTranscript, setShowTranscript] = useState(false);
@@ -49,7 +49,6 @@ export function VideoModal({ video, open, onClose }: VideoModalProps) {
   if (!open || !target) return null;
 
   const hasTranscript = Boolean(video.transcriptText?.trim());
-  const hasInstruction = Boolean(video.instructionPath);
 
   /*
    * O overlay VAI POR PORTAL, e isso não é detalhe de organização: era a
@@ -112,11 +111,12 @@ export function VideoModal({ video, open, onClose }: VideoModalProps) {
             {video.filePath ? (
               <video
                 src={video.filePath}
+                poster={video.thumbnailPath}
                 controls
                 autoPlay
                 playsInline
-                // `max-h-[70vh]` para o player não empurrar os botões de
-                // transcrição e instrução escrita para fora em tela baixa.
+                // `max-h-[70vh]` para o player não empurrar o botão de
+                // transcrição para fora em tela baixa.
                 className="aspect-video max-h-[70vh] w-full rounded-xl bg-black"
               />
             ) : (
@@ -136,27 +136,6 @@ export function VideoModal({ video, open, onClose }: VideoModalProps) {
                 <FileText className="h-4 w-4" />
                 {showTranscript ? "Ocultar Transcrição" : "Mostrar Transcrição"}
               </Button>
-
-              {hasInstruction ? (
-                <a
-                  href={video.instructionPath}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="focus-ring inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border bg-surface-2 px-4 text-sm font-medium text-foreground transition-colors hover:border-border-strong"
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  Instrução Escrita
-                </a>
-              ) : (
-                <Button
-                  variant="secondary"
-                  disabled
-                  title="Nenhuma instrução escrita enviada para este vídeo."
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  Instrução Escrita
-                </Button>
-              )}
             </div>
           </div>
 

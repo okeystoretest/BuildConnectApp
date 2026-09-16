@@ -16,6 +16,8 @@ import { LinksPanel } from "./links-panel";
 import { UploadAction } from "./upload-action";
 import { PhotoUploadModal } from "./photo-upload-modal";
 import { FileUploadModal } from "./file-upload-modal";
+import { VideoBatchUploadModal, type VideoUploadKind } from "./video-batch-upload-modal";
+import { deriveFilters, matchesFilters } from "@/lib/video-filters";
 import { LinkModal } from "./link-modal";
 import { SectorWelcomeVideo } from "./welcome-video";
 import type { SectorWelcomeVideo as SectorWelcomeVideoData } from "@/lib/welcome-video-data";
@@ -133,22 +135,20 @@ export function SectorPage({
   const [query, setQuery] = useState("");
   const [view, setView] = useState<ViewMode>("grid");
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [filters, setFilters] = useState<readonly string[]>([]);
   const [activeFilters, setActiveFilters] = useState<readonly string[]>([]);
   const [photoModalOpen, setPhotoModalOpen] = useState(false);
-  const [fileModal, setFileModal] = useState<
-    "video" | "workshop" | "instrucao-video" | "documento" | null
-  >(null);
+  const [videoModal, setVideoModal] = useState<VideoUploadKind | null>(null);
+  const [documentModalOpen, setDocumentModalOpen] = useState(false);
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [editingLink, setEditingLink] = useState<LinkItem | null>(null);
 
   /** Abre o modal de upload correto para a aba atual. */
   function openUpload(tabId: TabId) {
     if (tabId === "fotos") return setPhotoModalOpen(true);
-    if (tabId === "videos") return setFileModal("video");
-    if (tabId === "workshop") return setFileModal("workshop");
-    if (tabId === "instrucoes-video") return setFileModal("instrucao-video");
-    if (tabId === "documentos") return setFileModal("documento");
+    if (tabId === "videos") return setVideoModal("video");
+    if (tabId === "workshop") return setVideoModal("workshop");
+    if (tabId === "instrucoes-video") return setVideoModal("instrucao-video");
+    if (tabId === "documentos") return setDocumentModalOpen(true);
   }
 
   function openLinkModal(link: LinkItem | null) {
@@ -161,10 +161,16 @@ export function SectorPage({
   const filterable = FILTERABLE.includes(activeId);
 
   const videos = activeId === "workshop" ? sector.workshops : sector.videos;
-  const filteredVideos = useMemo(
-    () => videos.filter((v) => v.title.toLowerCase().includes(query.trim().toLowerCase())),
-    [videos, query],
-  );
+  // As pílulas são as tags em uso nos vídeos da aba: atribuir uma tag na
+  // edição é o que faz a pílula existir. Também servem de sugestão na edição.
+  const filters = useMemo(() => deriveFilters(videos), [videos]);
+  const filteredVideos = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return videos.filter(
+      (v) =>
+        v.title.toLowerCase().includes(q) && (!filterable || matchesFilters(v, activeFilters)),
+    );
+  }, [videos, query, filterable, activeFilters]);
 
   function toggleFilter(filter: string) {
     setActiveFilters((prev) =>
@@ -174,13 +180,18 @@ export function SectorPage({
 
   const filterBar =
     filterable && filtersOpen ? (
-      <FilterPills
-        filters={filters}
-        onChange={setFilters}
-        active={activeFilters}
-        onToggle={toggleFilter}
-        canManage={can("content.upload")}
-      />
+      filters.length > 0 ? (
+        <FilterPills
+          filters={filters}
+          onChange={() => {}}
+          active={activeFilters}
+          onToggle={toggleFilter}
+        />
+      ) : (
+        <p className="text-xs text-muted">
+          Nenhum filtro ainda. Os filtros nascem das tags atribuídas na edição de cada vídeo.
+        </p>
+      )
     ) : null;
 
   return (
@@ -234,18 +245,28 @@ export function SectorPage({
             {filteredVideos.length === 0 ? (
               <EmptyState
                 title="Nenhum vídeo encontrado"
-                description="Ajuste a busca para ver outros conteúdos desta área."
+                description="Ajuste a busca ou os filtros para ver outros conteúdos desta área."
               />
             ) : view === "grid" ? (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {filteredVideos.map((video) => (
-                  <VideoCard key={video.id} video={video} />
+                  <VideoCard
+                    key={video.id}
+                    slug={sector.slug}
+                    video={video}
+                    suggestions={filters}
+                  />
                 ))}
               </div>
             ) : (
               <div className="space-y-3">
                 {filteredVideos.map((video) => (
-                  <VideoListRow key={video.id} video={video} />
+                  <VideoListRow
+                    key={video.id}
+                    slug={sector.slug}
+                    video={video}
+                    suggestions={filters}
+                  />
                 ))}
               </div>
             )}
@@ -307,14 +328,19 @@ export function SectorPage({
         open={photoModalOpen}
         onClose={() => setPhotoModalOpen(false)}
       />
-      {fileModal && (
-        <FileUploadModal
+      {videoModal && (
+        <VideoBatchUploadModal
           slug={sector.slug}
-          kind={fileModal}
-          open={fileModal !== null}
-          onClose={() => setFileModal(null)}
+          kind={videoModal}
+          open
+          onClose={() => setVideoModal(null)}
         />
       )}
+      <FileUploadModal
+        slug={sector.slug}
+        open={documentModalOpen}
+        onClose={() => setDocumentModalOpen(false)}
+      />
       <LinkModal
         slug={sector.slug}
         link={editingLink}
