@@ -1,6 +1,7 @@
 "use server";
 
 import { z } from "zod";
+import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth/require-user";
@@ -59,6 +60,8 @@ export async function submitVideoComprehension(input: {
 
   try {
     await prisma.videoComprehension.create({ data: { userId: user.id, videoId, answer } });
+    // A pendência nasce em Minhas Avaliações dos Gestores.
+    revalidatePath("/minhas-avaliacoes");
     return { ok: true };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
@@ -121,6 +124,8 @@ export async function gradeVideoComprehension(input: {
       },
     });
     if (count === 0) return { ok: false, error: "Outro gestor acabou de avaliar esta resposta." };
+    revalidatePath("/minhas-avaliacoes");
+    revalidatePath("/setores/rh");
     return { ok: true };
   } catch (error) {
     console.error("[gradeVideoComprehension] falha:", error);

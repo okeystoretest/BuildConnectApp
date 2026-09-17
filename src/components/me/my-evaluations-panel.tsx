@@ -1,17 +1,18 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { ClipboardList, FileText, UserCheck, Users } from "lucide-react";
+import { ClipboardList, FileText, MonitorPlay, UserCheck, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { EvaluationFormModal } from "@/components/hr/evaluation-form-modal";
 import { FormResponseModal } from "@/components/forms/form-response-modal";
+import { ComprehensionGradeModal } from "@/components/me/comprehension-grade-modal";
 import { submitRoundEvaluation } from "@/lib/evaluation-rounds-actions";
 import { getAssignedForm } from "@/lib/forms/response-actions";
 import { usePendingEvaluations } from "@/providers/pending-evaluations-provider";
 import { useToast } from "@/providers/toast-provider";
-import type { EvalForm, MyEvaluationTask } from "@/types/evaluation";
+import type { EvalForm, MyEvaluationTask, VideoComprehensionTask } from "@/types/evaluation";
 import type { FormDraft } from "@/types/form";
 
 export interface MyEvaluationsPanelProps {
@@ -30,18 +31,27 @@ interface ActiveTask {
  *  - FEEDBACK: você foi designado para avaliar outra pessoa.
  *  - AUTOAVALIACAO: as avaliações sobre você fecharam; registre a sua.
  *  - FORMULARIO: formulário do DHO atribuído a você.
+ *  - COMPREENSAO_VIDEO: você é Gestor e um colaborador do seu setor respondeu
+ *    à pergunta de compreensão de uma Instrução em Vídeo — dê a nota.
  * O usuário responde só o próprio formulário; a consolidação (com o nome de
  * cada avaliador) é vista pelo DHO na aba de Resultados.
  */
 export function MyEvaluationsPanel({ tasks, forms }: MyEvaluationsPanelProps) {
   const [active, setActive] = useState<ActiveTask | null>(null);
   const [activeForm, setActiveForm] = useState<FormDraft | null>(null);
+  const [activeComprehension, setActiveComprehension] = useState<VideoComprehensionTask | null>(
+    null,
+  );
   const [loadingFormId, setLoadingFormId] = useState<string | null>(null);
   const [, startLoad] = useTransition();
   const { refresh: refreshPendingCount } = usePendingEvaluations();
   const { error } = useToast();
 
   function start(task: MyEvaluationTask) {
+    if (task.kind === "COMPREENSAO_VIDEO") {
+      if (task.comprehension) setActiveComprehension(task.comprehension);
+      return;
+    }
     // Formulário do DHO: a estrutura não vem com a lista (seria carregar todo
     // formulário de todo mundo a cada abertura da página) — busca-se ao abrir.
     if (task.kind === "FORMULARIO") {
@@ -70,7 +80,7 @@ export function MyEvaluationsPanel({ tasks, forms }: MyEvaluationsPanelProps) {
       <EmptyState
         icon={<ClipboardList className="h-5 w-5" />}
         title="Nenhuma pendência"
-        description="Quando você for designado para avaliar alguém, precisar fazer sua autoavaliação ou receber um formulário do DHO, aparece aqui."
+        description="Quando você for designado para avaliar alguém, precisar fazer sua autoavaliação, receber um formulário do DHO ou tiver uma resposta de vídeo da sua equipe para avaliar, aparece aqui."
       />
     );
   }
@@ -83,9 +93,10 @@ export function MyEvaluationsPanel({ tasks, forms }: MyEvaluationsPanelProps) {
 
       {tasks.map((t) => {
         const isForm = t.kind === "FORMULARIO";
+        const isComprehension = t.kind === "COMPREENSAO_VIDEO";
         return (
           <div
-            key={`${t.kind}-${t.formId ?? t.roundId}`}
+            key={`${t.kind}-${t.formId ?? t.comprehension?.comprehensionId ?? t.roundId}`}
             className="flex items-center justify-between gap-4 rounded-xl border border-border bg-surface p-4"
           >
             <div className="flex min-w-0 items-center gap-3">
@@ -95,7 +106,9 @@ export function MyEvaluationsPanel({ tasks, forms }: MyEvaluationsPanelProps) {
                   (t.self ? "bg-primary/15 text-primary" : "bg-accent/15 text-accent")
                 }
               >
-                {isForm ? (
+                {isComprehension ? (
+                  <MonitorPlay className="h-5 w-5" />
+                ) : isForm ? (
                   <FileText className="h-5 w-5" />
                 ) : t.self ? (
                   <UserCheck className="h-5 w-5" />
@@ -111,21 +124,41 @@ export function MyEvaluationsPanel({ tasks, forms }: MyEvaluationsPanelProps) {
                       ? "Sua autoavaliação"
                       : `Avaliar ${t.subjectName}`}
                 </p>
-                <p className="text-xs text-muted">{t.typeTitle}</p>
+                <p className="truncate text-xs text-muted">
+                  {isComprehension && t.comprehension
+                    ? `${t.typeTitle} · ${t.comprehension.videoTitle}`
+                    : t.typeTitle}
+                </p>
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-3">
               <Badge tone={t.self ? "primary" : "accent"}>
-                {isForm ? "Formulário" : t.self ? "Autoavaliação" : "Feedback"}
+                {isComprehension
+                  ? "Compreensão"
+                  : isForm
+                    ? "Formulário"
+                    : t.self
+                      ? "Autoavaliação"
+                      : "Feedback"}
               </Badge>
               <Button
                 size="sm"
                 onClick={() => start(t)}
                 disabled={
-                  isForm ? loadingFormId === t.formId : !forms[t.typeSlug]
+                  isComprehension
+                    ? false
+                    : isForm
+                      ? loadingFormId === t.formId
+                      : !forms[t.typeSlug]
                 }
               >
-                {isForm ? (loadingFormId === t.formId ? "Abrindo" : "Responder") : "Preencher"}
+                {isComprehension
+                  ? "Avaliar"
+                  : isForm
+                    ? loadingFormId === t.formId
+                      ? "Abrindo"
+                      : "Responder"
+                    : "Preencher"}
               </Button>
             </div>
           </div>
@@ -154,6 +187,17 @@ export function MyEvaluationsPanel({ tasks, forms }: MyEvaluationsPanelProps) {
               answers: payload.answers,
             })
           }
+        />
+      )}
+
+      {activeComprehension && (
+        <ComprehensionGradeModal
+          task={activeComprehension}
+          onClose={() => setActiveComprehension(null)}
+          onGraded={() => {
+            setActiveComprehension(null);
+            refreshPendingCount();
+          }}
         />
       )}
 

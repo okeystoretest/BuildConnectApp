@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/db/prisma";
 import { MATRIZ_DECISAO_SLUG, MULTI_RATER_SLUGS } from "@/lib/evaluation-rounds-config";
 import { averageOf, classifyMatriz } from "@/lib/matriz-decisao";
+import {
+  countPendingComprehensionTasks,
+  getPendingComprehensionTasks,
+} from "@/lib/video-comprehension-data";
 import type {
   AssignableEvaluationType,
   EfficacyRoundRow,
@@ -351,6 +355,21 @@ export async function getMyEvaluationTasks(userId: string): Promise<MyEvaluation
     });
   }
 
+  // 4) Respostas de compreensão (Instruções em Vídeo) que cabem a este
+  //    usuário avaliar como Gestor do setor do autor (ou Admin/DHO no fallback).
+  const comprehensions = await getPendingComprehensionTasks(userId);
+  for (const c of comprehensions) {
+    tasks.push({
+      kind: "COMPREENSAO_VIDEO",
+      roundId: "",
+      comprehension: c,
+      typeSlug: "compreensao-video",
+      typeTitle: "Compreensão de vídeo",
+      subjectName: c.authorName,
+      self: false,
+    });
+  }
+
   return tasks;
 }
 
@@ -379,15 +398,16 @@ export async function getRaterRoster(
  *
  * Espelha exatamente `getMyEvaluationTasks`, em contagem: feedbacks designados
  * em rodada ainda coletando, a autoavaliação de rodadas que já fecharam o
- * feedback e ainda não receberam a resposta do próprio avaliado, e os
- * formulários do DHO atribuídos e não respondidos.
+ * feedback e ainda não receberam a resposta do próprio avaliado, os
+ * formulários do DHO atribuídos e não respondidos, e as respostas de
+ * compreensão de vídeo que cabem a este usuário avaliar.
  *
  * Conta em vez de montar os DTOs porque roda a cada requisição de página, para
  * qualquer tela: são três contagens sobre índice, sem carregar formulário,
  * nome de avaliado nem título de instrumento.
  */
 export async function countMyPendingEvaluations(userId: string): Promise<number> {
-  const [feedback, selfAssessment, forms] = await Promise.all([
+  const [feedback, selfAssessment, forms, comprehensions] = await Promise.all([
     prisma.evaluationAssignment.count({
       where: {
         raterId: userId,
@@ -405,7 +425,8 @@ export async function countMyPendingEvaluations(userId: string): Promise<number>
     prisma.formAssignment.count({
       where: { userId, status: "PENDENTE", form: { status: "PUBLICADO" } },
     }),
+    countPendingComprehensionTasks(userId),
   ]);
 
-  return feedback + selfAssessment + forms;
+  return feedback + selfAssessment + forms + comprehensions;
 }
