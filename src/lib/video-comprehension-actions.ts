@@ -12,6 +12,7 @@ import {
   COMPREHENSION_GRADE_MAX,
   COMPREHENSION_MAX,
   COMPREHENSION_MIN,
+  hasComprehension,
 } from "@/lib/video-comprehension";
 import type { Role } from "@/types";
 
@@ -26,12 +27,9 @@ const submitSchema = z.object({
 });
 
 /**
- * Resposta à pergunta de compreensão, escrita ao concluir uma Instrução em
- * Vídeo. Uma por usuário por vídeo; não se edita depois de enviada.
- *
- * Só vídeos da ferramenta Instruções em Vídeo: subsetor PADRAO e qualquer
- * tipo que não seja WORKSHOP — a aba é identificada assim, não pelo `kind`
- * (há vídeos `VIDEO` antigos nela).
+ * Resposta à pergunta de compreensão de uma Instrução em Vídeo. Uma por
+ * usuário por vídeo; não se edita depois de enviada. É ela que marca o vídeo
+ * como ASSISTIDO — os 80 % reproduzidos só liberam a pergunta.
  */
 export async function submitVideoComprehension(input: {
   videoId: string;
@@ -54,12 +52,30 @@ export async function submitVideoComprehension(input: {
     select: { kind: true, subsector: { select: { kind: true } } },
   });
   if (!video) return { ok: false, error: "Vídeo não encontrado." };
-  if (video.kind === "WORKSHOP" || video.subsector.kind !== "PADRAO") {
+  if (!hasComprehension(video)) {
     return { ok: false, error: "Este vídeo não tem avaliação de compreensão." };
   }
 
+  // A pergunta só é oferecida depois dos 80 %: sem `reachedAt`, a chamada não
+  // veio do player.
+  const progress = await prisma.contentProgress.findUnique({
+    where: { userId_videoId: { userId: user.id, videoId } },
+    select: { reachedAt: true },
+  });
+  if (!progress?.reachedAt) {
+    return { ok: false, error: "Assista ao vídeo antes de responder." };
+  }
+
   try {
-    await prisma.videoComprehension.create({ data: { userId: user.id, videoId, answer } });
+    const now = new Date();
+    await prisma.$transaction([
+      prisma.videoComprehension.create({ data: { userId: user.id, videoId, answer } }),
+      // Responder é o que conclui o vídeo.
+      prisma.contentProgress.update({
+        where: { userId_videoId: { userId: user.id, videoId } },
+        data: { completed: true, completedAt: now },
+      }),
+    ]);
     // A pendência nasce em Minhas Avaliações dos Gestores.
     revalidatePath("/minhas-avaliacoes");
     return { ok: true };

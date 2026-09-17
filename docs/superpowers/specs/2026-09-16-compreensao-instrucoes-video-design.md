@@ -5,19 +5,20 @@ Data: 2026-09-16.
 ## Objetivo
 
 1. O botão "Marcar como assistido" sai de **todos** os vídeos (card e lista, em
-   toda aba de vídeo). Um vídeo passa a contar como assistido quando o usuário
-   **reproduz pelo menos 80 % da duração** — automaticamente.
+   toda aba de vídeo). O player rastreia quando o usuário **reproduz pelo menos
+   80 % da duração**.
 2. Na ferramenta **Instruções em Vídeo** (todo setor que a tem: setores padrão e
-   Retaguarda/TI), ao concluir o vídeo o usuário responde "Você compreendeu a
-   atividade? Pode explicar um pouco?" em texto livre. A resposta vai para
+   Retaguarda/TI), os 80 % **liberam a pergunta** "Você compreendeu a
+   atividade? Pode explicar um pouco?" (texto livre) — e é **responder que
+   marca o vídeo como assistido** (revisão de 17/09). A resposta vai para
    **Minhas Avaliações** dos Gestores do setor do usuário, que dão **nota de 0 a
    10**. Depois da nota, resposta e nota aparecem em **DHO › Resultados de
    Avaliações**, num card próprio.
 3. A aba Instruções em Vídeo passa a exibir **4 vídeos por linha** ocupando a
    tela como o Cronograma, com **16 por página** (4 linhas).
 
-Vídeos da Coleção e Workshop (vitrines): perdem o botão e ganham só a
-conclusão automática. Sem formulário, sem 4 colunas, sem paginação.
+Vídeos da Coleção e Workshop (vitrines): perdem o botão e concluem sozinhos
+aos 80 % — não há pergunta. Sem formulário, sem 4 colunas, sem paginação.
 
 ## Contexto que decidiu o desenho
 
@@ -49,9 +50,11 @@ model ContentProgress {
   // Progresso parcial do vídeo: união dos trechos reproduzidos
   // ([[início, fim], ...] em segundos) e o total derivado. Guardar só o total
   // deixaria uma segunda sessão contar de novo o que a primeira já contou.
-  // `completed` continua sendo o que conta como assistido.
+  // `reachedAt` marca os 80 %: nas vitrines conclui; nas Instruções só libera
+  // a pergunta. `completed` continua sendo o que conta como assistido.
   watchedIntervals Json?
   watchedSeconds   Int?
+  reachedAt        DateTime?
 }
 
 model VideoComprehension {
@@ -95,14 +98,16 @@ progress-data, pending-content, hr-history).
 - A cada ~10 s, ao pausar, terminar, esconder a aba e fechar:
   `saveVideoProgress({ videoId, intervals, duration })` — o cliente manda os
   trechos desta sessão e o **servidor faz a união** com `watchedIntervals`
-  gravado, recalcula `watchedSeconds` e marca `completed` quando
-  `watchedSeconds >= 0.8 * duration`. No cliente, a soma "crédito anterior +
-  sessão" só antecipa a gravação; quem decide é o servidor. A duração vem do
-  próprio `<video>` (metadados) — o servidor não tem ffmpeg.
+  gravado, recalcula `watchedSeconds` e grava `reachedAt` quando
+  `watchedSeconds >= 0.8 * duration`. Vitrine: isso também marca `completed`.
+  Instruções em Vídeo: `completed` só em `submitVideoComprehension` (que exige
+  `reachedAt`). No cliente, a soma "crédito anterior + sessão" só antecipa a
+  gravação; quem decide é o servidor. A duração vem do próprio `<video>`
+  (metadados) — o servidor não tem ffmpeg.
 - Concluído uma vez, não volta atrás (não há mais "desmarcar").
 - `WatchToggle` some. No card e na lista entra um selo somente-leitura:
-  "✓ Assistido" · "Em andamento" (quando há parcial) · nada (não começou). Na
-  aba de Instruções, "Responder" quando assistido sem resposta.
+  "Em andamento" (parcial) · "Responder" (Instruções: 80 % sem resposta) ·
+  "✓ Assistido" · "✓ Avaliada" (Instruções: nota dada) · nada (não começou).
 
 `setContentProgress` (marcar/desmarcar) sai com o botão. Documentos não usam
 essa action (não há botão de "lido").
@@ -113,10 +118,10 @@ essa action (não há botão de "lido").
   `true` na aba `instrucoes-video`; a TI também). `VideoItem` ganha
   `comprehension?: "PENDENTE" | "ENVIADA" | "AVALIADA"` (ausente = nunca
   respondeu). Também `watchedSeconds?`.
-- Gatilho: no instante em que o servidor confirma a conclusão (80 %), uma
-  única vez, e só se `comprehension` estiver ativo e o usuário ainda não tiver
-  respondido. Não no `ended`: quem arrasta a barra até o fim sem assistir não
-  ganha a pergunta (nem o "assistido"). O player pausa; o formulário aparece
+- Gatilho: no instante em que o servidor confirma os 80 %, uma única vez, e
+  só se `comprehension` estiver ativo e o usuário ainda não tiver respondido.
+  Não no `ended`: quem arrasta a barra até o fim sem assistir não ganha a
+  pergunta. Enviar a resposta é o que conclui o vídeo. O player pausa; o formulário aparece
   **dentro do modal do player**, abaixo do vídeo (sem overlay sobre overlay):
   a frase padrão, `Textarea`, "Enviar" e "Responder depois".
 - "Responder depois": o card fica com "Responder"; clicar no card reabre o

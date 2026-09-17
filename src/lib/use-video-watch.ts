@@ -14,28 +14,29 @@ const MAX_STEP_SECONDS = 2;
 
 export interface UseVideoWatchOptions {
   videoId: string;
-  /** Já concluído no servidor: nada a rastrear. */
-  completed: boolean;
+  /** Já cruzou os 80 % no servidor: nada mais a rastrear. */
+  reached: boolean;
   /** Segundos já creditados em sessões anteriores (para o aviso de 80 % local). */
   initialWatchedSeconds: number;
-  /** Chamado uma vez, quando o servidor confirma a conclusão. */
-  onCompleted?: () => void;
+  /** Chamado uma vez, quando o servidor confirma os 80 %. */
+  onReached?: (result: { completed: boolean }) => void;
 }
 
 /**
  * Rastreia os trechos REALMENTE reproduzidos de um `<video>` com controles
  * nativos e grava no servidor: a cada 10 s enquanto toca, ao pausar, ao
- * terminar, ao esconder a aba e ao desmontar. A conclusão (80 %) é decidida
- * pelo servidor, que une estes trechos aos das sessões anteriores; aqui só
- * se antecipa a gravação quando a soma local sugere que cruzou.
+ * terminar, ao esconder a aba e ao desmontar. Os 80 % são decididos pelo
+ * servidor, que une estes trechos aos das sessões anteriores e diz se isso
+ * concluiu o vídeo (vitrines) ou só liberou a pergunta (Instruções em Vídeo);
+ * aqui só se antecipa a gravação quando a soma local sugere que cruzou.
  */
 export function useVideoWatch({
   videoId,
-  completed: initialCompleted,
+  reached: initialReached,
   initialWatchedSeconds,
-  onCompleted,
+  onReached,
 }: UseVideoWatchOptions) {
-  const [completed, setCompleted] = useState(initialCompleted);
+  const [reached, setReached] = useState(initialReached);
   const saved = useRef(false);
   const pending = useRef<Promise<unknown> | null>(null);
 
@@ -45,16 +46,16 @@ export function useVideoWatch({
   const dirty = useRef(false);
   const inFlight = useRef(false);
   const again = useRef(false);
-  const completedRef = useRef(initialCompleted);
+  const reachedRef = useRef(initialReached);
   // A gravação antecipada dispara uma vez; se o servidor discordar (o crédito
   // anterior sobrepunha esta sessão), o ciclo de 10 s segue normalmente.
   const anticipated = useRef(false);
-  const onCompletedRef = useRef(onCompleted);
-  onCompletedRef.current = onCompleted;
+  const onReachedRef = useRef(onReached);
+  onReachedRef.current = onReached;
 
   const flush = useCallback(() => {
-    // Concluído não volta atrás e não precisa de mais gravações.
-    if (completedRef.current) return;
+    // Os 80 % não voltam atrás e não precisam de mais gravações.
+    if (reachedRef.current) return;
     if (!dirty.current || !Number.isFinite(duration.current) || duration.current <= 0) return;
     if (inFlight.current) {
       again.current = true;
@@ -71,10 +72,10 @@ export function useVideoWatch({
       .then((res) => {
         if (!res.ok) return;
         saved.current = true;
-        if (res.completed && !completedRef.current) {
-          completedRef.current = true;
-          setCompleted(true);
-          onCompletedRef.current?.();
+        if (res.reached && !reachedRef.current) {
+          reachedRef.current = true;
+          setReached(true);
+          onReachedRef.current?.({ completed: Boolean(res.completed) });
         }
       })
       .finally(() => {
@@ -128,7 +129,7 @@ export function useVideoWatch({
       // Soma local (crédito anterior + esta sessão) só antecipa a gravação;
       // quem decide é o servidor, que conhece os trechos de verdade.
       if (
-        !completedRef.current &&
+        !reachedRef.current &&
         !anticipated.current &&
         isComplete(initialWatchedSeconds + watchedSeconds(intervals.current), duration.current)
       ) {
@@ -151,7 +152,7 @@ export function useVideoWatch({
   }, []);
 
   return {
-    completed,
+    reached,
     settle,
     flush,
     videoProps: {

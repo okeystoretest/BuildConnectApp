@@ -63,7 +63,13 @@ export async function getSectorContent(
           { document: { subsectorId: sub.id } },
         ],
       },
-      select: { videoId: true, documentId: true, completed: true, watchedSeconds: true },
+      select: {
+        videoId: true,
+        documentId: true,
+        completed: true,
+        watchedSeconds: true,
+        reachedAt: true,
+      },
     }),
     prisma.videoComprehension.findMany({
       where: { userId, video: { subsectorId: sub.id } },
@@ -74,10 +80,12 @@ export async function getSectorContent(
   const doneVideo = new Set<string>();
   const doneDoc = new Set<string>();
   const partialVideo = new Map<string, number>();
+  const readyVideo = new Set<string>();
   for (const p of progress) {
     if (p.videoId) {
       if (p.completed) doneVideo.add(p.videoId);
       if (p.watchedSeconds != null) partialVideo.set(p.videoId, p.watchedSeconds);
+      if (p.reachedAt) readyVideo.add(p.videoId);
     }
     if (p.documentId && p.completed) doneDoc.add(p.documentId);
   }
@@ -105,6 +113,7 @@ export async function getSectorContent(
       title: v.title,
       watched: doneVideo.has(v.id),
       watchedSeconds: partialVideo.get(v.id),
+      questionReady: readyVideo.has(v.id),
       comprehension: comprehensionOf.get(v.id),
       isNew: v.isNew,
       tags: v.tags,

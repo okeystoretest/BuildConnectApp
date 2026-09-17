@@ -16,10 +16,15 @@ export type ComprehensionStatus = "ENVIADA" | "AVALIADA";
 export interface VideoItem {
   id: string;
   title: string;
-  /** Concluído: 80 % da duração reproduzidos. */
+  /**
+   * Assistido. Nas vitrines, 80 % da duração reproduzidos; nas Instruções em
+   * Vídeo, a resposta de compreensão enviada.
+   */
   watched: boolean;
   /** Segundos únicos já reproduzidos (progresso parcial). Ausente = não começou. */
   watchedSeconds?: number;
+  /** Cruzou os 80 %: a pergunta de compreensão está liberada. */
+  questionReady?: boolean;
   /** Ausente = ainda não respondeu à pergunta de compreensão. */
   comprehension?: ComprehensionStatus;
   isNew?: boolean;

@@ -17,6 +17,7 @@ import { toAbsolutePath } from "@/lib/storage/config";
 import { MAX_BYTES } from "@/lib/storage/limits";
 import { resolveAppScope } from "@/lib/app-scope";
 import { isComplete, mergeIntervals, parseIntervals, watchedSeconds } from "@/lib/video-watch";
+import { hasComprehension } from "@/lib/video-comprehension";
 
 export interface ActionResult {
   ok: boolean;
@@ -77,8 +78,14 @@ const videoProgressSchema = z.object({
 });
 
 /**
- * Grava o progresso parcial e conclui o vídeo quando 80 % da duração foi
- * reproduzida. Não existe "desmarcar": concluído uma vez, fica concluído.
+ * Grava o progresso parcial e marca quando 80 % da duração foi reproduzida.
+ *
+ * O que os 80 % significam depende do vídeo:
+ *  - Vitrines (Coleção, Workshop): concluem o vídeo — não há pergunta.
+ *  - Instruções em Vídeo: só LIBERAM a pergunta de compreensão (`reachedAt`);
+ *    o vídeo conta como assistido ao enviar a resposta
+ *    (`submitVideoComprehension`).
+ * Não existe "desmarcar": concluído uma vez, fica concluído.
  *
  * O cliente manda os trechos que tocou; a UNIÃO com o que já estava gravado é
  * feita aqui — é o que impede uma segunda sessão de contar de novo o que a
@@ -89,7 +96,7 @@ export async function saveVideoProgress(input: {
   videoId: string;
   intervals: readonly (readonly [number, number])[];
   duration: number;
-}): Promise<ActionResult & { completed?: boolean; watchedSeconds?: number }> {
+}): Promise<ActionResult & { completed?: boolean; reached?: boolean; watchedSeconds?: number }> {
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "Sessão expirada. Faça login novamente." };
 
@@ -102,18 +109,27 @@ export async function saveVideoProgress(input: {
   );
 
   try {
+    const video = await prisma.video.findUnique({
+      where: { id: videoId },
+      select: { kind: true, subsector: { select: { kind: true } } },
+    });
+    if (!video) return { ok: false, error: "Vídeo não encontrado." };
+    const asksComprehension = hasComprehension(video);
+
     const where = { userId_videoId: { userId: user.id, videoId } };
     const existing = await prisma.contentProgress.findUnique({
       where,
-      select: { completed: true, watchedIntervals: true },
+      select: { completed: true, reachedAt: true, watchedIntervals: true },
     });
     const merged = mergeIntervals(parseIntervals(existing?.watchedIntervals), incoming);
     const seconds = Math.floor(watchedSeconds(merged));
-    const completed = Boolean(existing?.completed) || isComplete(seconds, duration);
+    const reached = existing?.reachedAt != null || isComplete(seconds, duration);
+    const completed = Boolean(existing?.completed) || (reached && !asksComprehension);
     const watchedIntervals = merged.map(([a, b]) => [
       Math.round(a * 10) / 10,
       Math.round(b * 10) / 10,
     ]);
+    const now = new Date();
 
     if (existing) {
       await prisma.contentProgress.update({
@@ -122,16 +138,24 @@ export async function saveVideoProgress(input: {
           watchedIntervals,
           watchedSeconds: seconds,
           completed,
+          ...(reached && !existing.reachedAt ? { reachedAt: now } : {}),
           // A data de conclusão é a do momento em que cruzou os 80 %.
-          ...(completed && !existing.completed ? { completedAt: new Date() } : {}),
+          ...(completed && !existing.completed ? { completedAt: now } : {}),
         },
       });
     } else {
       await prisma.contentProgress.create({
-        data: { userId: user.id, videoId, watchedIntervals, watchedSeconds: seconds, completed },
+        data: {
+          userId: user.id,
+          videoId,
+          watchedIntervals,
+          watchedSeconds: seconds,
+          completed,
+          reachedAt: reached ? now : null,
+        },
       });
     }
-    return { ok: true, completed, watchedSeconds: seconds };
+    return { ok: true, completed, reached, watchedSeconds: seconds };
   } catch (error) {
     console.error("[saveVideoProgress] falha:", error);
     return { ok: false, error: "Não foi possível salvar seu progresso." };

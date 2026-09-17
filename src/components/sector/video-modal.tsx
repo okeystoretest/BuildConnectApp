@@ -15,8 +15,9 @@ export interface VideoModalProps {
   open: boolean;
   onClose: () => void;
   /**
-   * Instruções em Vídeo: ao concluir (80 %), pergunta se a pessoa compreendeu.
-   * Falso nas vitrines (Coleção, Workshop), que só rastreiam a conclusão.
+   * Instruções em Vídeo: aos 80 %, pergunta se a pessoa compreendeu — e é a
+   * resposta que conclui o vídeo. Falso nas vitrines (Coleção, Workshop),
+   * onde os 80 % concluem sozinhos.
    */
   comprehension?: boolean;
   /** Abrir já com a pergunta visível (o card estava em "Responder"). */
@@ -95,19 +96,22 @@ function VideoModalContent({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [answered, setAnswered] = useState(false);
   const [asking, setAsking] = useState(askNow);
+  // Vitrine: os 80 % concluem. Instruções: concluir é responder.
+  const [completed, setCompleted] = useState(video.watched);
   const changed = useRef(false);
 
   const askable = comprehension && !video.comprehension && !answered;
 
   const watch = useVideoWatch({
     videoId: video.id,
-    completed: video.watched,
+    reached: Boolean(video.questionReady) || video.watched,
     initialWatchedSeconds: video.watchedSeconds ?? 0,
-    onCompleted: () => {
+    onReached: ({ completed: done }) => {
       changed.current = true;
+      if (done) setCompleted(true);
       if (!askable) return;
-      // A pergunta aparece no instante da conclusão; o vídeo pausa para a
-      // pessoa responder com atenção — pode dar play de novo se quiser.
+      // A pergunta aparece no instante dos 80 %; o vídeo pausa para a pessoa
+      // responder com atenção — pode dar play de novo se quiser.
       videoRef.current?.pause();
       setAsking(true);
     },
@@ -217,7 +221,7 @@ function VideoModalContent({
                 <FileText className="h-4 w-4" />
                 {showTranscript ? "Ocultar Transcrição" : "Mostrar Transcrição"}
               </Button>
-              {watch.completed && (
+              {completed && (
                 <span className="inline-flex items-center gap-1 text-xs font-medium text-primary">
                   <CheckCircle2 className="h-3.5 w-3.5" /> Assistido
                 </span>
@@ -231,6 +235,7 @@ function VideoModalContent({
                   onSubmitted={() => {
                     changed.current = true;
                     setAnswered(true);
+                    setCompleted(true);
                     setAsking(false);
                   }}
                   onLater={() => setAsking(false)}
@@ -239,8 +244,8 @@ function VideoModalContent({
             )}
             {answered && (
               <p className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/10 px-3 py-2 text-xs text-primary">
-                <CheckCircle2 className="h-3.5 w-3.5" /> Resposta enviada. O gestor do seu setor
-                vai avaliar.
+                <CheckCircle2 className="h-3.5 w-3.5" /> Resposta enviada — vídeo concluído. O
+                gestor do seu setor vai avaliar.
               </p>
             )}
           </div>

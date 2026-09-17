@@ -13,14 +13,14 @@ import { useToast } from "@/providers/toast-provider";
 import type { VideoItem } from "@/types/sector";
 
 /**
- * Situação do vídeo para o usuário. Só leitura: "assistido" é decidido pelo
- * player (80 % da duração), não por clique.
+ * Situação do vídeo para o usuário. Só leitura: "assistido" não é clique.
  *
- *  - Assistido: concluiu.
  *  - Em andamento: começou e ainda não chegou aos 80 %.
- *  - Responder (só Instruções em Vídeo): concluiu e ainda não respondeu à
- *    pergunta de compreensão — clicar abre o player já com a pergunta.
- *  - Resposta enviada / Avaliada: estados da resposta.
+ *  - Responder (só Instruções em Vídeo): chegou aos 80 % e ainda não
+ *    respondeu à pergunta de compreensão — clicar abre o player já com a
+ *    pergunta. É a resposta que conclui o vídeo.
+ *  - Assistido: concluiu (vitrine: 80 %; Instruções: respondeu).
+ *  - Avaliada: o Gestor já deu a nota à resposta.
  */
 function WatchBadge({
   video,
@@ -34,7 +34,7 @@ function WatchBadge({
   const base =
     "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-medium";
 
-  if (comprehension && video.watched && !video.comprehension) {
+  if (comprehension && video.questionReady && !video.watched && !video.comprehension) {
     return (
       <button
         type="button"
@@ -53,13 +53,6 @@ function WatchBadge({
   }
   if (comprehension && video.comprehension === "AVALIADA") {
     return <span className={cn(base, "border-primary/25 bg-primary/15 text-primary")}>✓ Avaliada</span>;
-  }
-  if (comprehension && video.comprehension === "ENVIADA") {
-    return (
-      <span className={cn(base, "border-primary/25 bg-primary/15 text-primary")}>
-        ✓ Resposta enviada
-      </span>
-    );
   }
   if (video.watched) {
     return <span className={cn(base, "border-primary/25 bg-primary/15 text-primary")}>✓ Assistido</span>;

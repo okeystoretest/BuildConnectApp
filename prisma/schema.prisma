@@ -540,10 +540,13 @@ model ContentProgress {
   // reproduzidos ([[início, fim], ...], em segundos) — guardar só o total
   // deixaria uma segunda sessão contar de novo o que a primeira já contou.
   // `watchedSeconds` é o total derivado, para exibição. Nulos nos documentos e
-  // nos registros anteriores ao rastreio. `completed` continua sendo o que
-  // conta como assistido — vira true aos 80 % da duração.
+  // nos registros anteriores ao rastreio. `reachedAt` marca quando cruzou os
+  // 80 % da duração: nas vitrines isso já conclui (`completed`); nas
+  // Instruções em Vídeo só libera a pergunta de compreensão, e `completed`
+  // vira true ao enviar a resposta.
   watchedIntervals Json?
   watchedSeconds   Int?
+  reachedAt        DateTime?
 
   @@unique([userId, videoId])
   @@unique([userId, documentId])
