@@ -81,6 +81,10 @@ model User {
 
   // Relações de atividade.
   contentProgress    ContentProgress[]
+  // Respostas de compreensão das Instruções em Vídeo: as que este usuário
+  // escreveu e as que ele avaliou como Gestor.
+  videoComprehensions      VideoComprehension[] @relation("VideoComprehensionAuthor")
+  videoComprehensionGrades VideoComprehension[] @relation("VideoComprehensionGrader")
   contentPosts       ContentPost[]      @relation("ContentPostOwner")
   authoredPosts      ContentPost[]      @relation("ContentPostAuthor")
   // Roteiros de card que este usuário gerou ou editou por último.
@@ -338,7 +342,8 @@ model Video {
   subsectorId String
   subsector   Subsector @relation(fields: [subsectorId], references: [id], onDelete: Cascade)
 
-  progress ContentProgress[]
+  progress       ContentProgress[]
+  comprehensions VideoComprehension[]
 
   createdAt DateTime @default(now())
 
@@ -531,9 +536,41 @@ model ContentProgress {
   completed   Boolean   @default(true)
   completedAt DateTime  @default(now())
 
+  // Segundos únicos já reproduzidos do vídeo (progresso parcial). Só vídeo;
+  // nulo nos documentos e nos registros anteriores ao rastreio. `completed`
+  // continua sendo o que conta como assistido — vira true aos 80 % da duração.
+  watchedSeconds Int?
+
   @@unique([userId, videoId])
   @@unique([userId, documentId])
   @@index([userId])
+}
+
+// Resposta de compreensão de uma Instrução em Vídeo: o usuário escreve ao
+// concluir o vídeo; um Gestor do setor dele dá a nota (0–10); o DHO lê o
+// resultado. Uma por usuário por vídeo. Quem avalia NÃO é gravado no envio —
+// é resolvido na leitura pelo setor do autor, então trocar o Gestor do setor
+// redireciona as pendências sem migração.
+model VideoComprehension {
+  id      String @id @default(cuid())
+  userId  String
+  user    User   @relation("VideoComprehensionAuthor", fields: [userId], references: [id], onDelete: Cascade)
+  videoId String
+  video   Video  @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  answer      String   @db.Text
+  submittedAt DateTime @default(now())
+
+  // Nota do Gestor (0–10). Nula enquanto pendente.
+  grade         Int?
+  graderComment String?   @db.Text
+  gradedById    String?
+  gradedBy      User?     @relation("VideoComprehensionGrader", fields: [gradedById], references: [id], onDelete: SetNull)
+  gradedAt      DateTime?
+
+  @@unique([userId, videoId])
+  @@index([gradedAt])
+  @@index([videoId])
 }
 
 // ─────────────────────────────────────────────────────────────
