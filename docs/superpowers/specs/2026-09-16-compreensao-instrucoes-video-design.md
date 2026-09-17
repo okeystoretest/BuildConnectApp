@@ -46,10 +46,12 @@ conclusão automática. Sem formulário, sem 4 colunas, sem paginação.
 ```prisma
 model ContentProgress {
   // ...campos atuais...
-  // Segundos únicos já reproduzidos (progresso parcial). Só para vídeo; nulo
-  // nos registros antigos e nos documentos. `completed` continua sendo o que
-  // conta como assistido.
-  watchedSeconds Int?
+  // Progresso parcial do vídeo: união dos trechos reproduzidos
+  // ([[início, fim], ...] em segundos) e o total derivado. Guardar só o total
+  // deixaria uma segunda sessão contar de novo o que a primeira já contou.
+  // `completed` continua sendo o que conta como assistido.
+  watchedIntervals Json?
+  watchedSeconds   Int?
 }
 
 model VideoComprehension {
@@ -90,12 +92,12 @@ progress-data, pending-content, hr-history).
 - No player: a cada `timeupdate`, se o vídeo não estiver pausado e o salto for
   pequeno (< 2 s — seek não conta), acrescenta `[último, atual]`. Ao `seeking`
   o "último" é rearmado.
-- A cada ~10 s e ao fechar/pausar: `saveVideoProgress({ videoId, watchedSeconds })`
-  (server action) — persiste o parcial. Ao reabrir, os segundos gravados entram
-  como crédito inicial (o player não sabe QUAIS segundos foram; considera o
-  total). Os 80 % são checados no cliente com `watchedSeconds` acumulado e
-  confirmados no servidor: a action recebe `watchedSeconds` e `duration` e
-  marca `completed` quando `watchedSeconds >= 0.8 * duration`. A duração vem do
+- A cada ~10 s, ao pausar, terminar, esconder a aba e fechar:
+  `saveVideoProgress({ videoId, intervals, duration })` — o cliente manda os
+  trechos desta sessão e o **servidor faz a união** com `watchedIntervals`
+  gravado, recalcula `watchedSeconds` e marca `completed` quando
+  `watchedSeconds >= 0.8 * duration`. No cliente, a soma "crédito anterior +
+  sessão" só antecipa a gravação; quem decide é o servidor. A duração vem do
   próprio `<video>` (metadados) — o servidor não tem ffmpeg.
 - Concluído uma vez, não volta atrás (não há mais "desmarcar").
 - `WatchToggle` some. No card e na lista entra um selo somente-leitura:
@@ -111,11 +113,12 @@ essa action (não há botão de "lido").
   `true` na aba `instrucoes-video`; a TI também). `VideoItem` ganha
   `comprehension?: "PENDENTE" | "ENVIADA" | "AVALIADA"` (ausente = nunca
   respondeu). Também `watchedSeconds?`.
-- Gatilho: no instante em que os 80 % são cruzados **ou** no `ended`, o que
-  vier antes, uma única vez, e só se `comprehension` estiver ativo e o usuário
-  ainda não tiver respondido. O player pausa; o formulário aparece **dentro do
-  modal do player**, abaixo do vídeo (sem overlay sobre overlay): a frase
-  padrão, `Textarea`, "Enviar" e "Responder depois".
+- Gatilho: no instante em que o servidor confirma a conclusão (80 %), uma
+  única vez, e só se `comprehension` estiver ativo e o usuário ainda não tiver
+  respondido. Não no `ended`: quem arrasta a barra até o fim sem assistir não
+  ganha a pergunta (nem o "assistido"). O player pausa; o formulário aparece
+  **dentro do modal do player**, abaixo do vídeo (sem overlay sobre overlay):
+  a frase padrão, `Textarea`, "Enviar" e "Responder depois".
 - "Responder depois": o card fica com "Responder"; clicar no card reabre o
   player já com o formulário visível (não precisa reassistir).
 - `submitVideoComprehension({ videoId, answer })`: usuário logado; vídeo
