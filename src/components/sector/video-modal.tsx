@@ -2,16 +2,27 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { FileText, VideoOff, X } from "lucide-react";
+import { CheckCircle2, FileText, VideoOff, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { usePortalTarget } from "@/components/ui/use-portal-target";
+import { useVideoWatch } from "@/lib/use-video-watch";
+import { ComprehensionForm } from "./comprehension-form";
 import type { VideoItem } from "@/types/sector";
 
 export interface VideoModalProps {
   video: VideoItem;
   open: boolean;
   onClose: () => void;
+  /**
+   * Instruções em Vídeo: ao concluir (80 %), pergunta se a pessoa compreendeu.
+   * Falso nas vitrines (Coleção, Workshop), que só rastreiam a conclusão.
+   */
+  comprehension?: boolean;
+  /** Abrir já com a pergunta visível (o card estava em "Responder"). */
+  askNow?: boolean;
+  /** Progresso ou resposta gravados: quem abriu recarrega a página ao fechar. */
+  onChanged?: () => void;
 }
 
 /**
@@ -20,9 +31,18 @@ export interface VideoModalProps {
  * Regra do módulo: a transcrição NUNCA cobre o player. Ela abre em uma
  * coluna lateral (empilhada abaixo no mobile) e o vídeo segue visível e
  * reproduzindo.
+ *
+ * Só monta o conteúdo quando aberto: o rastreio de progresso vive no player e
+ * nasce/morre com ele (grava ao desmontar).
  */
-export function VideoModal({ video, open, onClose }: VideoModalProps) {
-  const [showTranscript, setShowTranscript] = useState(false);
+export function VideoModal({
+  video,
+  open,
+  onClose,
+  comprehension,
+  askNow,
+  onChanged,
+}: VideoModalProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const target = usePortalTarget(open, rootRef);
 
@@ -41,12 +61,71 @@ export function VideoModal({ video, open, onClose }: VideoModalProps) {
     };
   }, [open, onClose]);
 
-  // Reabrir em outro vídeo não deve herdar a transcrição aberta.
-  useEffect(() => {
-    if (!open) setShowTranscript(false);
-  }, [open]);
-
   if (!open || !target) return null;
+
+  return createPortal(
+    <VideoModalContent
+      video={video}
+      onClose={onClose}
+      comprehension={Boolean(comprehension)}
+      askNow={Boolean(askNow)}
+      onChanged={onChanged}
+      rootRef={rootRef}
+    />,
+    target,
+  );
+}
+
+function VideoModalContent({
+  video,
+  onClose,
+  comprehension,
+  askNow,
+  onChanged,
+  rootRef,
+}: {
+  video: VideoItem;
+  onClose: () => void;
+  comprehension: boolean;
+  askNow: boolean;
+  onChanged?: () => void;
+  rootRef: React.RefObject<HTMLDivElement>;
+}) {
+  const [showTranscript, setShowTranscript] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [answered, setAnswered] = useState(false);
+  const [asking, setAsking] = useState(askNow);
+  const changed = useRef(false);
+
+  const askable = comprehension && !video.comprehension && !answered;
+
+  const watch = useVideoWatch({
+    videoId: video.id,
+    completed: video.watched,
+    initialWatchedSeconds: video.watchedSeconds ?? 0,
+    onCompleted: () => {
+      changed.current = true;
+      if (!askable) return;
+      // A pergunta aparece no instante da conclusão; o vídeo pausa para a
+      // pessoa responder com atenção — pode dar play de novo se quiser.
+      videoRef.current?.pause();
+      setAsking(true);
+    },
+  });
+
+  // Ao fechar, quem abriu recarrega a página se algo mudou no servidor. O
+  // rastreio grava ao desmontar (cleanup dele roda antes deste); `settle`
+  // espera essa gravação chegar antes de recarregar.
+  const onChangedRef = useRef(onChanged);
+  onChangedRef.current = onChanged;
+  const settle = watch.settle;
+  useEffect(() => {
+    return () => {
+      void settle().then((saved) => {
+        if (saved || changed.current) onChangedRef.current?.();
+      });
+    };
+  }, [settle]);
 
   const hasTranscript = Boolean(video.transcriptText?.trim());
 
@@ -68,7 +147,7 @@ export function VideoModal({ video, open, onClose }: VideoModalProps) {
    * centralização no invólucro de dentro, com `min-h-full`: centraliza quando
    * cabe, e vira topo-alinhado com rolagem quando não cabe.
    */
-  return createPortal(
+  return (
     <div
       ref={rootRef}
       role="dialog"
@@ -110,11 +189,13 @@ export function VideoModal({ video, open, onClose }: VideoModalProps) {
           <div className="min-w-0">
             {video.filePath ? (
               <video
+                ref={videoRef}
                 src={video.filePath}
                 poster={video.thumbnailPath}
                 controls
-                autoPlay
+                autoPlay={!askNow}
                 playsInline
+                {...watch.videoProps}
                 // `max-h-[70vh]` para o player não empurrar o botão de
                 // transcrição para fora em tela baixa.
                 className="aspect-video max-h-[70vh] w-full rounded-xl bg-black"
@@ -126,7 +207,7 @@ export function VideoModal({ video, open, onClose }: VideoModalProps) {
               </div>
             )}
 
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap items-center gap-3">
               <Button
                 variant="secondary"
                 onClick={() => setShowTranscript((v) => !v)}
@@ -136,7 +217,32 @@ export function VideoModal({ video, open, onClose }: VideoModalProps) {
                 <FileText className="h-4 w-4" />
                 {showTranscript ? "Ocultar Transcrição" : "Mostrar Transcrição"}
               </Button>
+              {watch.completed && (
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-primary">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Assistido
+                </span>
+              )}
             </div>
+
+            {asking && askable && (
+              <div className="mt-4">
+                <ComprehensionForm
+                  videoId={video.id}
+                  onSubmitted={() => {
+                    changed.current = true;
+                    setAnswered(true);
+                    setAsking(false);
+                  }}
+                  onLater={() => setAsking(false)}
+                />
+              </div>
+            )}
+            {answered && (
+              <p className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/10 px-3 py-2 text-xs text-primary">
+                <CheckCircle2 className="h-3.5 w-3.5" /> Resposta enviada. O gestor do seu setor
+                vai avaliar.
+              </p>
+            )}
           </div>
 
           {showTranscript && hasTranscript && (
@@ -152,7 +258,6 @@ export function VideoModal({ video, open, onClose }: VideoModalProps) {
         </div>
         </div>
       </div>
-    </div>,
-    target,
+    </div>
   );
 }

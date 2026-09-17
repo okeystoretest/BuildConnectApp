@@ -536,10 +536,14 @@ model ContentProgress {
   completed   Boolean   @default(true)
   completedAt DateTime  @default(now())
 
-  // Segundos únicos já reproduzidos do vídeo (progresso parcial). Só vídeo;
-  // nulo nos documentos e nos registros anteriores ao rastreio. `completed`
-  // continua sendo o que conta como assistido — vira true aos 80 % da duração.
-  watchedSeconds Int?
+  // Progresso parcial do vídeo. `watchedIntervals` é a união dos trechos
+  // reproduzidos ([[início, fim], ...], em segundos) — guardar só o total
+  // deixaria uma segunda sessão contar de novo o que a primeira já contou.
+  // `watchedSeconds` é o total derivado, para exibição. Nulos nos documentos e
+  // nos registros anteriores ao rastreio. `completed` continua sendo o que
+  // conta como assistido — vira true aos 80 % da duração.
+  watchedIntervals Json?
+  watchedSeconds   Int?
 
   @@unique([userId, videoId])
   @@unique([userId, documentId])

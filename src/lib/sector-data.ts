@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { formatBytes } from "@/lib/utils";
 import { resolveAppScope } from "@/lib/app-scope";
 import type {
+  ComprehensionStatus,
   SectorContent,
   VideoItem,
   PhotoItem,
@@ -51,24 +52,38 @@ export async function getSectorContent(
     select: { id: true, label: true, url: true, iconPath: true },
   });
 
-  // Estado do usuário: o que já concluiu neste subsetor.
-  const progress = await prisma.contentProgress.findMany({
-    where: {
-      userId,
-      completed: true,
-      OR: [
-        { video: { subsectorId: sub.id } },
-        { document: { subsectorId: sub.id } },
-      ],
-    },
-    select: { videoId: true, documentId: true },
-  });
+  // Estado do usuário: o que já concluiu (ou começou) neste subsetor, e as
+  // respostas de compreensão que já enviou.
+  const [progress, comprehensions] = await Promise.all([
+    prisma.contentProgress.findMany({
+      where: {
+        userId,
+        OR: [
+          { video: { subsectorId: sub.id } },
+          { document: { subsectorId: sub.id } },
+        ],
+      },
+      select: { videoId: true, documentId: true, completed: true, watchedSeconds: true },
+    }),
+    prisma.videoComprehension.findMany({
+      where: { userId, video: { subsectorId: sub.id } },
+      select: { videoId: true, gradedAt: true },
+    }),
+  ]);
 
   const doneVideo = new Set<string>();
   const doneDoc = new Set<string>();
+  const partialVideo = new Map<string, number>();
   for (const p of progress) {
-    if (p.videoId) doneVideo.add(p.videoId);
-    if (p.documentId) doneDoc.add(p.documentId);
+    if (p.videoId) {
+      if (p.completed) doneVideo.add(p.videoId);
+      if (p.watchedSeconds != null) partialVideo.set(p.videoId, p.watchedSeconds);
+    }
+    if (p.documentId && p.completed) doneDoc.add(p.documentId);
+  }
+  const comprehensionOf = new Map<string, ComprehensionStatus>();
+  for (const c of comprehensions) {
+    comprehensionOf.set(c.videoId, c.gradedAt ? "AVALIADA" : "ENVIADA");
   }
 
   // Vídeos separados por tipo (VIDEO/INSTRUCAO vão para "videos"; WORKSHOP à parte).
@@ -89,6 +104,8 @@ export async function getSectorContent(
       id: v.id,
       title: v.title,
       watched: doneVideo.has(v.id),
+      watchedSeconds: partialVideo.get(v.id),
+      comprehension: comprehensionOf.get(v.id),
       isNew: v.isNew,
       tags: v.tags,
       filePath: v.filePath ?? undefined,

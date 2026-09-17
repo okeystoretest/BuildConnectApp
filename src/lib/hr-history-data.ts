@@ -109,7 +109,8 @@ export async function getEmployeeHistory(userId: string): Promise<EmployeeHistor
   // --- Catálogo de conteúdo e progresso do colaborador ---
   const [completed, videos, documents] = await Promise.all([
     prisma.contentProgress.findMany({
-      where: { userId },
+      // `completed: false` é progresso parcial de vídeo — ainda não conta.
+      where: { userId, completed: true },
       select: { videoId: true, documentId: true },
     }),
     prisma.video.findMany({ select: { id: true, title: true } }),

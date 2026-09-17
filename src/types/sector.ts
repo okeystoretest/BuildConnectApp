@@ -10,10 +10,18 @@ export type TabId =
   | "avaliacoes"
   | "cronograma";
 
+/** Situação da resposta de compreensão (Instruções em Vídeo) do usuário logado. */
+export type ComprehensionStatus = "ENVIADA" | "AVALIADA";
+
 export interface VideoItem {
   id: string;
   title: string;
+  /** Concluído: 80 % da duração reproduzidos. */
   watched: boolean;
+  /** Segundos únicos já reproduzidos (progresso parcial). Ausente = não começou. */
+  watchedSeconds?: number;
+  /** Ausente = ainda não respondeu à pergunta de compreensão. */
+  comprehension?: ComprehensionStatus;
   isNew?: boolean;
   tags?: readonly string[];
   /** Caminho público do arquivo de vídeo (reproduzido no modal). */

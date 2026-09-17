@@ -2,46 +2,72 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Play, Loader2, Captions } from "lucide-react";
+import { Play, Captions, MessageSquareText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EditableMediaActions } from "./editable-media-actions";
 import type { MediaEditValue } from "./media-edit-modal";
 import { VideoModal } from "./video-modal";
-import { setContentProgress, deleteSectorVideo } from "@/lib/sector-actions";
+import { deleteSectorVideo } from "@/lib/sector-actions";
 import { useUploadProgress } from "@/lib/use-upload-progress";
 import { useToast } from "@/providers/toast-provider";
 import type { VideoItem } from "@/types/sector";
 
-/** Badge de status que também alterna "assistido" ao ser clicado. */
-function WatchToggle({ videoId, watched }: { videoId: string; watched: boolean }) {
-  const router = useRouter();
-  const [pending, start] = useTransition();
+/**
+ * Situação do vídeo para o usuário. Só leitura: "assistido" é decidido pelo
+ * player (80 % da duração), não por clique.
+ *
+ *  - Assistido: concluiu.
+ *  - Em andamento: começou e ainda não chegou aos 80 %.
+ *  - Responder (só Instruções em Vídeo): concluiu e ainda não respondeu à
+ *    pergunta de compreensão — clicar abre o player já com a pergunta.
+ *  - Resposta enviada / Avaliada: estados da resposta.
+ */
+function WatchBadge({
+  video,
+  comprehension,
+  onAnswer,
+}: {
+  video: VideoItem;
+  comprehension: boolean;
+  onAnswer: () => void;
+}) {
+  const base =
+    "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-medium";
 
-  function toggle(e: React.MouseEvent) {
-    e.stopPropagation();
-    start(async () => {
-      const res = await setContentProgress({ type: "video", id: videoId, done: !watched });
-      if (res.ok) router.refresh();
-    });
+  if (comprehension && video.watched && !video.comprehension) {
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onAnswer();
+        }}
+        className={cn(
+          base,
+          "focus-ring border-accent/30 bg-accent/15 text-accent transition-colors hover:bg-accent/25",
+        )}
+      >
+        <MessageSquareText className="h-3 w-3" /> Responder
+      </button>
+    );
   }
-
-  return (
-    <button
-      type="button"
-      onClick={toggle}
-      disabled={pending}
-      aria-label={watched ? "Marcar como não assistido" : "Marcar como assistido"}
-      className={cn(
-        "focus-ring inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-medium transition-colors",
-        watched
-          ? "border-primary/25 bg-primary/15 text-primary hover:bg-primary/25"
-          : "border-border bg-surface-3 text-muted hover:text-foreground",
-      )}
-    >
-      {pending && <Loader2 className="h-3 w-3 animate-spin" />}
-      {watched ? "✓ Assistido" : "Marcar assistido"}
-    </button>
-  );
+  if (comprehension && video.comprehension === "AVALIADA") {
+    return <span className={cn(base, "border-primary/25 bg-primary/15 text-primary")}>✓ Avaliada</span>;
+  }
+  if (comprehension && video.comprehension === "ENVIADA") {
+    return (
+      <span className={cn(base, "border-primary/25 bg-primary/15 text-primary")}>
+        ✓ Resposta enviada
+      </span>
+    );
+  }
+  if (video.watched) {
+    return <span className={cn(base, "border-primary/25 bg-primary/15 text-primary")}>✓ Assistido</span>;
+  }
+  if (video.watchedSeconds) {
+    return <span className={cn(base, "border-border bg-surface-3 text-muted")}>Em andamento</span>;
+  }
+  return null;
 }
 
 /** Selo de transcrição disponível. */
@@ -135,10 +161,33 @@ export interface VideoCardProps {
   video: VideoItem;
   /** Tags em uso no setor, oferecidas como sugestão na edição. */
   suggestions?: readonly string[];
+  /**
+   * Instruções em Vídeo: ao concluir, pergunta de compreensão. As vitrines
+   * (Coleção, Workshop) não passam — só rastreiam a conclusão.
+   */
+  comprehension?: boolean;
 }
 
-export function VideoCard({ slug, video, suggestions }: VideoCardProps) {
-  const [playing, setPlaying] = useState(false);
+/** Abrir/fechar o player, com a variante "abrir já na pergunta". */
+function usePlayer() {
+  const router = useRouter();
+  const [state, setState] = useState<{ open: boolean; askNow: boolean }>({
+    open: false,
+    askNow: false,
+  });
+  return {
+    open: state.open,
+    askNow: state.askNow,
+    play: () => setState({ open: true, askNow: false }),
+    answer: () => setState({ open: true, askNow: true }),
+    close: () => setState({ open: false, askNow: false }),
+    // Progresso ou resposta gravados: o selo do card vem do servidor.
+    changed: () => router.refresh(),
+  };
+}
+
+export function VideoCard({ slug, video, suggestions, comprehension = false }: VideoCardProps) {
+  const player = usePlayer();
   const { deleting, ...admin } = useVideoAdmin(slug, video);
 
   return (
@@ -154,12 +203,12 @@ export function VideoCard({ slug, video, suggestions }: VideoCardProps) {
         {/* Irmão do botão de play, não filho: <button> dentro de <button> é
             HTML inválido e o React avisa no console. */}
         <span className="absolute left-3 top-3 z-10">
-          <WatchToggle videoId={video.id} watched={video.watched} />
+          <WatchBadge video={video} comprehension={comprehension} onAnswer={player.answer} />
         </span>
 
         <button
           type="button"
-          onClick={() => setPlaying(true)}
+          onClick={player.play}
           aria-label={`Reproduzir: ${video.title}`}
           className="bc-stripes focus-ring relative flex aspect-video w-full items-center justify-center overflow-hidden bg-surface-2"
         >
@@ -176,13 +225,20 @@ export function VideoCard({ slug, video, suggestions }: VideoCardProps) {
         </div>
       </article>
 
-      <VideoModal video={video} open={playing} onClose={() => setPlaying(false)} />
+      <VideoModal
+        video={video}
+        open={player.open}
+        askNow={player.askNow}
+        comprehension={comprehension}
+        onClose={player.close}
+        onChanged={player.changed}
+      />
     </>
   );
 }
 
-export function VideoListRow({ slug, video, suggestions }: VideoCardProps) {
-  const [playing, setPlaying] = useState(false);
+export function VideoListRow({ slug, video, suggestions, comprehension = false }: VideoCardProps) {
+  const player = usePlayer();
   const { deleting, ...admin } = useVideoAdmin(slug, video);
 
   return (
@@ -195,7 +251,7 @@ export function VideoListRow({ slug, video, suggestions }: VideoCardProps) {
       >
         <button
           type="button"
-          onClick={() => setPlaying(true)}
+          onClick={player.play}
           aria-label={`Reproduzir: ${video.title}`}
           className="bc-stripes focus-ring relative flex h-12 w-20 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-surface-2"
         >
@@ -208,7 +264,7 @@ export function VideoListRow({ slug, video, suggestions }: VideoCardProps) {
           <TranscriptBadge video={video} className="mt-1" />
         </div>
 
-        <WatchToggle videoId={video.id} watched={video.watched} />
+        <WatchBadge video={video} comprehension={comprehension} onAnswer={player.answer} />
 
         <EditableMediaActions
           {...admin}
@@ -217,7 +273,14 @@ export function VideoListRow({ slug, video, suggestions }: VideoCardProps) {
         />
       </article>
 
-      <VideoModal video={video} open={playing} onClose={() => setPlaying(false)} />
+      <VideoModal
+        video={video}
+        open={player.open}
+        askNow={player.askNow}
+        comprehension={comprehension}
+        onClose={player.close}
+        onChanged={player.changed}
+      />
     </>
   );
 }

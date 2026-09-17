@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   addInterval,
   isComplete,
+  mergeIntervals,
+  parseIntervals,
   watchedSeconds,
   COMPLETION_RATIO,
   type Interval,
@@ -74,4 +76,31 @@ test("duração desconhecida ou zero nunca conclui", () => {
   assert.equal(isComplete(50, 0), false);
   assert.equal(isComplete(50, Number.NaN), false);
   assert.equal(isComplete(50, Number.POSITIVE_INFINITY), false);
+});
+
+test("parseIntervals aceita só listas de pares numéricos válidos e descarta o resto", () => {
+  assert.deepEqual(parseIntervals([[0, 10], [20, 30]]), [
+    [0, 10],
+    [20, 30],
+  ]);
+  assert.deepEqual(parseIntervals(null), []);
+  assert.deepEqual(parseIntervals("x"), []);
+  assert.deepEqual(parseIntervals([[5, 1], ["a", 2], [1], [0, 3]]), [[0, 3]]);
+});
+
+test("mergeIntervals une duas listas já normalizadas", () => {
+  const merged = mergeIntervals(
+    [
+      [0, 10],
+      [30, 40],
+    ],
+    [
+      [5, 12],
+      [40, 45],
+    ],
+  );
+  assert.deepEqual(merged, [
+    [0, 12],
+    [30, 45],
+  ]);
 });

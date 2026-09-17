@@ -16,6 +16,7 @@ import {
 import { toAbsolutePath } from "@/lib/storage/config";
 import { MAX_BYTES } from "@/lib/storage/limits";
 import { resolveAppScope } from "@/lib/app-scope";
+import { isComplete, mergeIntervals, parseIntervals, watchedSeconds } from "@/lib/video-watch";
 
 export interface ActionResult {
   ok: boolean;
@@ -64,49 +65,76 @@ async function appScopeIdFromSlug(slug: string): Promise<string | null> {
 }
 
 // ──────────────────────────────────────────────
-// Progresso: marcar/desmarcar conteúdo concluído
+// Progresso de vídeo: conclusão automática aos 80 %
 // ──────────────────────────────────────────────
 
-const progressSchema = z.object({
-  type: z.enum(["video", "document"]),
-  id: z.string().min(1),
-  done: z.boolean(),
+const videoProgressSchema = z.object({
+  videoId: z.string().min(1),
+  /** Trechos reproduzidos nesta sessão: [[início, fim], ...] em segundos. */
+  intervals: z.array(z.tuple([z.number().finite(), z.number().finite()])).max(2000),
+  /** Duração do vídeo, lida dos metadados pelo navegador. */
+  duration: z.number().positive().finite(),
 });
 
-export async function setContentProgress(input: {
-  type: "video" | "document";
-  id: string;
-  done: boolean;
-}): Promise<ActionResult> {
+/**
+ * Grava o progresso parcial e conclui o vídeo quando 80 % da duração foi
+ * reproduzida. Não existe "desmarcar": concluído uma vez, fica concluído.
+ *
+ * O cliente manda os trechos que tocou; a UNIÃO com o que já estava gravado é
+ * feita aqui — é o que impede uma segunda sessão de contar de novo o que a
+ * primeira já contou. O servidor não tem ffmpeg, então a duração vem do
+ * próprio `<video>`.
+ */
+export async function saveVideoProgress(input: {
+  videoId: string;
+  intervals: readonly (readonly [number, number])[];
+  duration: number;
+}): Promise<ActionResult & { completed?: boolean; watchedSeconds?: number }> {
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "Sessão expirada. Faça login novamente." };
 
-  const parsed = progressSchema.safeParse(input);
+  const parsed = videoProgressSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Dados inválidos." };
-  const { type, id, done } = parsed.data;
-
-  const field = type === "video" ? "videoId" : "documentId";
+  const { videoId, duration } = parsed.data;
+  // Ninguém assiste além do fim: trechos fora da duração são cortados.
+  const incoming = parseIntervals(parsed.data.intervals).map(
+    ([a, b]) => [Math.min(a, duration), Math.min(b, duration)] as const,
+  );
 
   try {
-    if (done) {
-      // Upsert idempotente pela combinação (userId, <tipo>Id).
-      await prisma.contentProgress.upsert({
-        where:
-          type === "video"
-            ? { userId_videoId: { userId: user.id, videoId: id } }
-            : { userId_documentId: { userId: user.id, documentId: id } },
-        update: { completed: true, completedAt: new Date() },
-        create: { userId: user.id, [field]: id, completed: true },
+    const where = { userId_videoId: { userId: user.id, videoId } };
+    const existing = await prisma.contentProgress.findUnique({
+      where,
+      select: { completed: true, watchedIntervals: true },
+    });
+    const merged = mergeIntervals(parseIntervals(existing?.watchedIntervals), incoming);
+    const seconds = Math.floor(watchedSeconds(merged));
+    const completed = Boolean(existing?.completed) || isComplete(seconds, duration);
+    const watchedIntervals = merged.map(([a, b]) => [
+      Math.round(a * 10) / 10,
+      Math.round(b * 10) / 10,
+    ]);
+
+    if (existing) {
+      await prisma.contentProgress.update({
+        where,
+        data: {
+          watchedIntervals,
+          watchedSeconds: seconds,
+          completed,
+          // A data de conclusão é a do momento em que cruzou os 80 %.
+          ...(completed && !existing.completed ? { completedAt: new Date() } : {}),
+        },
       });
     } else {
-      await prisma.contentProgress.deleteMany({
-        where: { userId: user.id, [field]: id },
+      await prisma.contentProgress.create({
+        data: { userId: user.id, videoId, watchedIntervals, watchedSeconds: seconds, completed },
       });
     }
-    return { ok: true };
+    return { ok: true, completed, watchedSeconds: seconds };
   } catch (error) {
-    console.error("[setContentProgress] falha:", error);
-    return { ok: false, error: "Não foi possível atualizar seu progresso." };
+    console.error("[saveVideoProgress] falha:", error);
+    return { ok: false, error: "Não foi possível salvar seu progresso." };
   }
 }
 

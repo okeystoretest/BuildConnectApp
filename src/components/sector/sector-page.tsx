@@ -255,6 +255,7 @@ export function SectorPage({
                     slug={sector.slug}
                     video={video}
                     suggestions={filters}
+                    comprehension={activeId === "instrucoes-video"}
                   />
                 ))}
               </div>
@@ -266,6 +267,7 @@ export function SectorPage({
                     slug={sector.slug}
                     video={video}
                     suggestions={filters}
+                    comprehension={activeId === "instrucoes-video"}
                   />
                 ))}
               </div>

@@ -46,6 +46,30 @@ export function addInterval(list: readonly Interval[], start: number, end: numbe
   return result;
 }
 
+/** Une duas listas (a segunda pode vir desordenada ou sobreposta). */
+export function mergeIntervals(base: readonly Interval[], extra: readonly Interval[]): Interval[] {
+  let result: Interval[] = [...base];
+  for (const [a, b] of extra) result = addInterval(result, a, b);
+  return result;
+}
+
+/**
+ * Lê intervalos vindos de fora (JSON do banco, payload do cliente): só pares
+ * numéricos finitos com início < fim entram; o resto é descartado em silêncio.
+ * O resultado já é normalizado (ordenado e sem sobreposição).
+ */
+export function parseIntervals(raw: unknown): Interval[] {
+  if (!Array.isArray(raw)) return [];
+  let result: Interval[] = [];
+  for (const item of raw) {
+    if (!Array.isArray(item) || item.length !== 2) continue;
+    const [a, b] = item as unknown[];
+    if (typeof a !== "number" || typeof b !== "number") continue;
+    result = addInterval(result, a, b);
+  }
+  return result;
+}
+
 /** Total de segundos únicos reproduzidos. */
 export function watchedSeconds(list: readonly Interval[]): number {
   let total = 0;

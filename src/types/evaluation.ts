@@ -335,14 +335,55 @@ export type MatrizZone =
 
 /** Tarefa na aba "Minhas avaliações" do usuário logado. */
 export interface MyEvaluationTask {
-  kind: "FEEDBACK" | "AUTOAVALIACAO" | "FORMULARIO";
-  /** Rodada de avaliação. Vazio nas tarefas de formulário. */
+  kind: "FEEDBACK" | "AUTOAVALIACAO" | "FORMULARIO" | "COMPREENSAO_VIDEO";
+  /** Rodada de avaliação. Vazio nas tarefas de formulário e de compreensão. */
   roundId: string;
   /** Formulário do DHO. Preenchido só quando kind === "FORMULARIO". */
   formId?: string;
+  /** Resposta de compreensão. Preenchida só quando kind === "COMPREENSAO_VIDEO". */
+  comprehension?: VideoComprehensionTask;
   typeSlug: string;
   typeTitle: string;
   /** Nome do avaliado (ou "Você" na autoavaliação). */
   subjectName: string;
   self: boolean;
+}
+
+/**
+ * Resposta de compreensão de uma Instrução em Vídeo aguardando a nota do
+ * Gestor (tarefa em Minhas Avaliações).
+ */
+export interface VideoComprehensionTask {
+  comprehensionId: string;
+  authorName: string;
+  videoTitle: string;
+  /** Caminho público do vídeo, para o Gestor assistir antes de dar a nota. */
+  videoPath?: string;
+  answer: string;
+  submittedAtLabel: string;
+}
+
+/** Um registro avaliado (DHO › Resultados › Compreensão de Vídeos). */
+export interface VideoComprehensionEntry {
+  id: string;
+  videoTitle: string;
+  submittedAtLabel: string;
+  answer: string;
+  /** 0–10. */
+  grade: number;
+  graderName: string;
+  gradedAtLabel: string;
+  graderComment?: string;
+}
+
+/** Um colaborador com suas respostas avaliadas. */
+export interface VideoComprehensionSubject {
+  subjectId: string;
+  subjectName: string;
+  sector: string;
+  count: number;
+  /** Média das notas, uma casa decimal. */
+  average: number;
+  lastLabel: string;
+  entries: VideoComprehensionEntry[];
 }

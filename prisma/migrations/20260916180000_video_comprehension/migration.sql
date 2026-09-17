@@ -1,6 +1,7 @@
 -- Instruções em Vídeo: conclusão automática aos 80 % (progresso parcial em
 -- ContentProgress) e resposta de compreensão avaliada pelo Gestor (0–10).
-ALTER TABLE "ContentProgress" ADD COLUMN "watchedSeconds" INTEGER;
+ALTER TABLE "ContentProgress" ADD COLUMN "watchedIntervals" JSONB,
+ADD COLUMN "watchedSeconds" INTEGER;
 
 CREATE TABLE "VideoComprehension" (
     "id" TEXT NOT NULL,

@@ -176,7 +176,13 @@ export function ItSectorView({
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {filteredVideos.map((video) => (
-                  <VideoCard key={video.id} slug="ti" video={video} suggestions={filters} />
+                  <VideoCard
+                    key={video.id}
+                    slug="ti"
+                    video={video}
+                    suggestions={filters}
+                    comprehension
+                  />
                 ))}
               </div>
             )}
