@@ -14,8 +14,8 @@ Data: 2026-09-16.
    **Minhas Avaliações** dos Gestores do setor do usuário, que dão **nota de 0 a
    10**. Depois da nota, resposta e nota aparecem em **DHO › Resultados de
    Avaliações**, num card próprio.
-3. A aba Instruções em Vídeo passa a exibir **4 vídeos por linha** ocupando a
-   tela como o Cronograma, com **16 por página** (4 linhas).
+3. A aba Instruções em Vídeo exibe **3 vídeos por linha** com **9 por página**
+   (3 linhas) — revisão de 17/09; antes eram 4×4 na página larga.
 
 Vídeos da Coleção e Workshop (vitrines): só perdem o botão. **Não há regra de
 conclusão** nas vitrines — sem pergunta, sem selo, sem 4 colunas, sem paginação.
@@ -148,9 +148,8 @@ essa action (não há botão de "lido").
 
 ## 6. Layout e paginação (Instruções em Vídeo)
 
-- `SectorPage`: `wide` também quando `activeId === "instrucoes-video"`; grade
-  `sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4`. Mesmo na TI.
-- `paginate(filteredVideos, page, 16)` em grade e lista; `<Pagination noun="vídeos">`
+- Grade `sm:grid-cols-2 lg:grid-cols-3` na largura padrão da página. Mesmo na TI.
+- `paginate(filteredVideos, page, 9)` em grade e lista; `<Pagination noun="vídeos">`
   no rodapé. `page` volta a 1 ao mudar busca, filtros ou aba. Só na aba de
   Instruções — Coleção e Workshop seguem sem paginação.
 

@@ -116,17 +116,16 @@ export function ItSectorView({
     setPage(1);
   }
 
-  // 16 por página (4 linhas de 4), sobre a lista já filtrada.
+  // 9 por página (3 linhas de 3), sobre a lista já filtrada.
   const videoPage = paginate(filteredVideos, page, INSTRUCOES_PAGE_SIZE);
 
   return (
     <AppShell
       eyebrow="Setores · Retaguarda"
       title="Retaguarda"
-      // O quadro de Chamados e as Instruções em Vídeo (4 por linha) ocupam a
-      // tela toda — como o Cronograma: a largura cresce quando a barra
-      // lateral é recolhida.
-      wide={active === "chamados" || active === "instrucoes-video"}
+      // Só o quadro de Chamados ocupa a tela toda — como o Cronograma: a
+      // largura das colunas cresce quando a barra lateral é recolhida.
+      wide={active === "chamados"}
     >
       <PageHeader
         title="Retaguarda"
@@ -187,7 +186,7 @@ export function ItSectorView({
                 description="Envie vídeos de instrução para a equipe de TI."
               />
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {videoPage.items.map((video) => (
                   <VideoCard
                     key={video.id}

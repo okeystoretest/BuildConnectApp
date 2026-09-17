@@ -6,7 +6,6 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Tabs, TabPanel, type TabItem } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useRole } from "@/providers/role-provider";
-import { cn } from "@/lib/utils";
 import type { LinkItem, SectorContent, TabId } from "@/types/sector";
 import { ContentToolbar, type ViewMode } from "./content-toolbar";
 import { FilterPills } from "./filter-pills";
@@ -213,9 +212,9 @@ export function SectorPage({
     <AppShell
       eyebrow={`Setores · ${sector.parent}`}
       title={sector.name}
-      // Cronograma e Instruções em Vídeo (4 por linha) ocupam a tela toda; as
-      // demais abas mantêm a largura de leitura confortável.
-      wide={activeId === "cronograma" || instrucoes}
+      // Só o Cronograma ocupa a tela toda; as demais abas mantêm a largura
+      // de leitura confortável.
+      wide={activeId === "cronograma"}
     >
       <PageHeader
         title={sector.name}
@@ -269,13 +268,7 @@ export function SectorPage({
                 description="Ajuste a busca ou os filtros para ver outros conteúdos desta área."
               />
             ) : view === "grid" ? (
-              <div
-                className={cn(
-                  "grid gap-4 sm:grid-cols-2 lg:grid-cols-3",
-                  // 4 por linha na página larga das Instruções, como o Cronograma.
-                  instrucoes && "xl:grid-cols-4",
-                )}
-              >
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {shownVideos.map((video) => (
                   <VideoCard
                     key={video.id}
