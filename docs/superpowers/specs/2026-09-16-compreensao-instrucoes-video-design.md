@@ -5,29 +5,27 @@ Data: 2026-09-16.
 ## Objetivo
 
 1. O botão "Marcar como assistido" sai de **todos** os vídeos (card e lista, em
-   toda aba de vídeo). O player rastreia quando o usuário **reproduz pelo menos
-   80 % da duração**.
+   toda aba de vídeo).
 2. Na ferramenta **Instruções em Vídeo** (todo setor que a tem: setores padrão e
-   Retaguarda/TI), os 80 % **liberam a pergunta** "Você compreendeu a
-   atividade? Pode explicar um pouco?" (texto livre) — e é **responder que
-   marca o vídeo como assistido** (revisão de 17/09). A resposta vai para
+   Retaguarda/TI), **chegar ao fim do vídeo** abre a pergunta "Você compreendeu
+   a atividade? Pode explicar um pouco?" (texto livre) — e é **responder que
+   marca o vídeo como assistido** (revisão de 17/09; a regra dos 80 % foi
+   descartada). A resposta vai para
    **Minhas Avaliações** dos Gestores do setor do usuário, que dão **nota de 0 a
    10**. Depois da nota, resposta e nota aparecem em **DHO › Resultados de
    Avaliações**, num card próprio.
 3. A aba Instruções em Vídeo passa a exibir **4 vídeos por linha** ocupando a
    tela como o Cronograma, com **16 por página** (4 linhas).
 
-Vídeos da Coleção e Workshop (vitrines): perdem o botão e concluem sozinhos
-aos 80 % — não há pergunta. Sem formulário, sem 4 colunas, sem paginação.
+Vídeos da Coleção e Workshop (vitrines): só perdem o botão. **Não há regra de
+conclusão** nas vitrines — sem pergunta, sem selo, sem 4 colunas, sem paginação.
 
 ## Contexto que decidiu o desenho
 
 - O player ([video-modal.tsx](../../../src/components/sector/video-modal.tsx))
-  usa `<video controls>` nativo. Medir `currentTime / duration` seria burlável
-  arrastando a barra; o projeto já enfrentou isso no `GatedVideo` (boas-vindas)
-  e resolveu tirando os controles. Aqui os controles ficam — rever um trecho de
-  instrução é uso legítimo — e a medida passa a ser **segundos únicos
-  efetivamente reproduzidos** (união dos intervalos tocados).
+  usa `<video controls>` nativo. O gatilho é o evento `ended`; a resposta
+  escrita (avaliada pelo Gestor) é o filtro de compreensão — não há rastreio
+  de trechos reproduzidos.
 - "Assistido" já é `ContentProgress` e alimenta a barra "Concluído" do setor e o
   conteúdo pendente. A semântica não muda; só o gatilho.
 - A aba Instruções em Vídeo é identificada pela **aba**, não pelo `kind`:
@@ -47,14 +45,10 @@ aos 80 % — não há pergunta. Sem formulário, sem 4 colunas, sem paginação.
 ```prisma
 model ContentProgress {
   // ...campos atuais...
-  // Progresso parcial do vídeo: união dos trechos reproduzidos
-  // ([[início, fim], ...] em segundos) e o total derivado. Guardar só o total
-  // deixaria uma segunda sessão contar de novo o que a primeira já contou.
-  // `reachedAt` marca os 80 %: nas vitrines conclui; nas Instruções só libera
-  // a pergunta. `completed` continua sendo o que conta como assistido.
-  watchedIntervals Json?
-  watchedSeconds   Int?
-  reachedAt        DateTime?
+  // Quando o vídeo chegou ao fim para este usuário: libera a pergunta de
+  // compreensão. `completed` continua sendo o que conta como assistido — vira
+  // true ao enviar a resposta.
+  endedAt DateTime?
 }
 
 model VideoComprehension {
@@ -80,34 +74,20 @@ model VideoComprehension {
 }
 ```
 
-`ContentProgress.completed` passa a ser gravado com `completed: false` enquanto
-o progresso é parcial, e `completed: true` ao cruzar 80 %. Leituras que hoje
+`ContentProgress` passa a existir com `completed: false` (chegou ao fim, não
+respondeu) e vira `completed: true` ao enviar a resposta. Leituras que hoje
 tratam "existe linha = assistido" passam a olhar `completed` (sector-data,
 progress-data, pending-content, hr-history).
 
-## 2. Player e conclusão automática
+## 2. Player e fim do vídeo
 
-`VideoModal` ganha rastreio:
-
-- `lib/video-watch.ts` (puro, testado): `addInterval(intervals, start, end)`
-  mantém a união de intervalos; `watchedSeconds(intervals)`;
-  `isComplete(watched, duration)` = `watched >= 0.8 * duration`.
-- No player: a cada `timeupdate`, se o vídeo não estiver pausado e o salto for
-  pequeno (< 2 s — seek não conta), acrescenta `[último, atual]`. Ao `seeking`
-  o "último" é rearmado.
-- A cada ~10 s, ao pausar, terminar, esconder a aba e fechar:
-  `saveVideoProgress({ videoId, intervals, duration })` — o cliente manda os
-  trechos desta sessão e o **servidor faz a união** com `watchedIntervals`
-  gravado, recalcula `watchedSeconds` e grava `reachedAt` quando
-  `watchedSeconds >= 0.8 * duration`. Vitrine: isso também marca `completed`.
-  Instruções em Vídeo: `completed` só em `submitVideoComprehension` (que exige
-  `reachedAt`). No cliente, a soma "crédito anterior + sessão" só antecipa a
-  gravação; quem decide é o servidor. A duração vem do próprio `<video>`
-  (metadados) — o servidor não tem ffmpeg.
+- `<video onEnded>` (só na aba de Instruções): `markVideoEnded({ videoId })`
+  grava `endedAt` (uma vez) e abre a pergunta se ainda não respondida. Nas
+  vitrines o evento não faz nada.
 - Concluído uma vez, não volta atrás (não há mais "desmarcar").
-- `WatchToggle` some. No card e na lista entra um selo somente-leitura:
-  "Em andamento" (parcial) · "Responder" (Instruções: 80 % sem resposta) ·
-  "✓ Assistido" · "✓ Avaliada" (Instruções: nota dada) · nada (não começou).
+- `WatchToggle` some. Na aba de Instruções entra um selo somente-leitura:
+  "Responder" (chegou ao fim, sem resposta) · "✓ Assistido" (respondeu) ·
+  "✓ Avaliada" (nota dada) · nada (não terminou). Vitrines não mostram selo.
 
 `setContentProgress` (marcar/desmarcar) sai com o botão. Documentos não usam
 essa action (não há botão de "lido").
@@ -116,20 +96,18 @@ essa action (não há botão de "lido").
 
 - `VideoCard`/`VideoListRow` recebem `comprehension?: boolean` (a página passa
   `true` na aba `instrucoes-video`; a TI também). `VideoItem` ganha
-  `comprehension?: "PENDENTE" | "ENVIADA" | "AVALIADA"` (ausente = nunca
-  respondeu). Também `watchedSeconds?`.
-- Gatilho: no instante em que o servidor confirma os 80 %, uma única vez, e
-  só se `comprehension` estiver ativo e o usuário ainda não tiver respondido.
-  Não no `ended`: quem arrasta a barra até o fim sem assistir não ganha a
-  pergunta. Enviar a resposta é o que conclui o vídeo. O player pausa; o formulário aparece
+  `comprehension?: "ENVIADA" | "AVALIADA"` (ausente = nunca respondeu) e
+  `ended?: boolean`.
+- Gatilho: o `ended` do vídeo, só se `comprehension` estiver ativo e o usuário
+  ainda não tiver respondido. Enviar a resposta é o que conclui o vídeo. O formulário aparece
   **dentro do modal do player**, abaixo do vídeo (sem overlay sobre overlay):
   a frase padrão, `Textarea`, "Enviar" e "Responder depois".
 - "Responder depois": o card fica com "Responder"; clicar no card reabre o
   player já com o formulário visível (não precisa reassistir).
 - `submitVideoComprehension({ videoId, answer })`: usuário logado; vídeo
-  existente, `kind ≠ WORKSHOP`, subsetor de setor `PADRAO`; resposta 10–4000
-  caracteres; `create` — se já existe, devolve erro "Você já respondeu".
-  `revalidatePath` da página do setor.
+  existente, `kind ≠ WORKSHOP`, subsetor de setor `PADRAO`; exige `endedAt`;
+  resposta 10–4000 caracteres; `create` + `completed: true` na mesma
+  transação — se já existe, devolve erro "Você já respondeu".
 - Quem avalia não é gravado no envio: é resolvido na leitura (§4). Assim,
   trocar o Gestor de um setor redireciona as pendências sem migração.
 
@@ -188,14 +166,12 @@ essa action (não há botão de "lido").
 
 ## 8. Testes
 
-- `video-watch.test.ts`: união de intervalos (sobreposição, contíguos, seek
-  para trás), 80 % com arredondamento, duração inválida.
 - `video-comprehension-scope.test.ts`: gestor do setor; autor gestor → DHO/Admin;
   sem setor → DHO/Admin; setor sem gestor → DHO/Admin; autor nunca se avalia.
 - `paginate` já testado; `typecheck`, `lint`, `test` verdes por commit.
 
 ## Fora de escopo
 
-- Transcodificação/duração no servidor; anti-"aba em segundo plano".
+- Rastreio de trechos reproduzidos / percentual assistido (descartado em 17/09).
 - Reabrir uma resposta já enviada ou já avaliada.
 - Notificação por WhatsApp/push ao Gestor (o contador vermelho é o aviso).

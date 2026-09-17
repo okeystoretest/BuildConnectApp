@@ -16,7 +16,6 @@ import {
 import { toAbsolutePath } from "@/lib/storage/config";
 import { MAX_BYTES } from "@/lib/storage/limits";
 import { resolveAppScope } from "@/lib/app-scope";
-import { isComplete, mergeIntervals, parseIntervals, watchedSeconds } from "@/lib/video-watch";
 import { hasComprehension } from "@/lib/video-comprehension";
 
 export interface ActionResult {
@@ -66,47 +65,24 @@ async function appScopeIdFromSlug(slug: string): Promise<string | null> {
 }
 
 // ──────────────────────────────────────────────
-// Progresso de vídeo: conclusão automática aos 80 %
+// Progresso de vídeo: chegou ao fim
 // ──────────────────────────────────────────────
 
-const videoProgressSchema = z.object({
-  videoId: z.string().min(1),
-  /** Trechos reproduzidos nesta sessão: [[início, fim], ...] em segundos. */
-  intervals: z.array(z.tuple([z.number().finite(), z.number().finite()])).max(2000),
-  /** Duração do vídeo, lida dos metadados pelo navegador. */
-  duration: z.number().positive().finite(),
-});
+const videoEndedSchema = z.object({ videoId: z.string().min(1) });
 
 /**
- * Grava o progresso parcial e marca quando 80 % da duração foi reproduzida.
- *
- * O que os 80 % significam depende do vídeo:
- *  - Vitrines (Coleção, Workshop): concluem o vídeo — não há pergunta.
- *  - Instruções em Vídeo: só LIBERAM a pergunta de compreensão (`reachedAt`);
- *    o vídeo conta como assistido ao enviar a resposta
- *    (`submitVideoComprehension`).
- * Não existe "desmarcar": concluído uma vez, fica concluído.
- *
- * O cliente manda os trechos que tocou; a UNIÃO com o que já estava gravado é
- * feita aqui — é o que impede uma segunda sessão de contar de novo o que a
- * primeira já contou. O servidor não tem ffmpeg, então a duração vem do
- * próprio `<video>`.
+ * O player chegou ao fim de uma Instrução em Vídeo (`ended`): libera a
+ * pergunta de compreensão (`endedAt`). O vídeo conta como assistido ao enviar
+ * a resposta (`submitVideoComprehension`). Vitrines (Coleção, Workshop) não
+ * têm regra de conclusão — a chamada é recusada.
  */
-export async function saveVideoProgress(input: {
-  videoId: string;
-  intervals: readonly (readonly [number, number])[];
-  duration: number;
-}): Promise<ActionResult & { completed?: boolean; reached?: boolean; watchedSeconds?: number }> {
+export async function markVideoEnded(input: { videoId: string }): Promise<ActionResult> {
   const user = await getCurrentUser();
   if (!user) return { ok: false, error: "Sessão expirada. Faça login novamente." };
 
-  const parsed = videoProgressSchema.safeParse(input);
+  const parsed = videoEndedSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Dados inválidos." };
-  const { videoId, duration } = parsed.data;
-  // Ninguém assiste além do fim: trechos fora da duração são cortados.
-  const incoming = parseIntervals(parsed.data.intervals).map(
-    ([a, b]) => [Math.min(a, duration), Math.min(b, duration)] as const,
-  );
+  const { videoId } = parsed.data;
 
   try {
     const video = await prisma.video.findUnique({
@@ -114,50 +90,28 @@ export async function saveVideoProgress(input: {
       select: { kind: true, subsector: { select: { kind: true } } },
     });
     if (!video) return { ok: false, error: "Vídeo não encontrado." };
-    const asksComprehension = hasComprehension(video);
+    if (!hasComprehension(video)) {
+      return { ok: false, error: "Este vídeo não tem avaliação de compreensão." };
+    }
 
     const where = { userId_videoId: { userId: user.id, videoId } };
     const existing = await prisma.contentProgress.findUnique({
       where,
-      select: { completed: true, reachedAt: true, watchedIntervals: true },
+      select: { endedAt: true },
     });
-    const merged = mergeIntervals(parseIntervals(existing?.watchedIntervals), incoming);
-    const seconds = Math.floor(watchedSeconds(merged));
-    const reached = existing?.reachedAt != null || isComplete(seconds, duration);
-    const completed = Boolean(existing?.completed) || (reached && !asksComprehension);
-    const watchedIntervals = merged.map(([a, b]) => [
-      Math.round(a * 10) / 10,
-      Math.round(b * 10) / 10,
-    ]);
-    const now = new Date();
-
     if (existing) {
-      await prisma.contentProgress.update({
-        where,
-        data: {
-          watchedIntervals,
-          watchedSeconds: seconds,
-          completed,
-          ...(reached && !existing.reachedAt ? { reachedAt: now } : {}),
-          // A data de conclusão é a do momento em que cruzou os 80 %.
-          ...(completed && !existing.completed ? { completedAt: now } : {}),
-        },
-      });
+      if (!existing.endedAt) {
+        await prisma.contentProgress.update({ where, data: { endedAt: new Date() } });
+      }
     } else {
+      // `completed: false` até a resposta chegar.
       await prisma.contentProgress.create({
-        data: {
-          userId: user.id,
-          videoId,
-          watchedIntervals,
-          watchedSeconds: seconds,
-          completed,
-          reachedAt: reached ? now : null,
-        },
+        data: { userId: user.id, videoId, endedAt: new Date(), completed: false },
       });
     }
-    return { ok: true, completed, reached, watchedSeconds: seconds };
+    return { ok: true };
   } catch (error) {
-    console.error("[saveVideoProgress] falha:", error);
+    console.error("[markVideoEnded] falha:", error);
     return { ok: false, error: "Não foi possível salvar seu progresso." };
   }
 }

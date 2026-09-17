@@ -29,7 +29,7 @@ const submitSchema = z.object({
 /**
  * Resposta à pergunta de compreensão de uma Instrução em Vídeo. Uma por
  * usuário por vídeo; não se edita depois de enviada. É ela que marca o vídeo
- * como ASSISTIDO — os 80 % reproduzidos só liberam a pergunta.
+ * como ASSISTIDO — chegar ao fim só libera a pergunta.
  */
 export async function submitVideoComprehension(input: {
   videoId: string;
@@ -56,14 +56,14 @@ export async function submitVideoComprehension(input: {
     return { ok: false, error: "Este vídeo não tem avaliação de compreensão." };
   }
 
-  // A pergunta só é oferecida depois dos 80 %: sem `reachedAt`, a chamada não
+  // A pergunta só é oferecida no fim do vídeo: sem `endedAt`, a chamada não
   // veio do player.
   const progress = await prisma.contentProgress.findUnique({
     where: { userId_videoId: { userId: user.id, videoId } },
-    select: { reachedAt: true },
+    select: { endedAt: true },
   });
-  if (!progress?.reachedAt) {
-    return { ok: false, error: "Assista ao vídeo antes de responder." };
+  if (!progress?.endedAt) {
+    return { ok: false, error: "Assista ao vídeo até o fim antes de responder." };
   }
 
   try {

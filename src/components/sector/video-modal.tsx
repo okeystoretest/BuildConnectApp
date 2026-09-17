@@ -6,7 +6,7 @@ import { CheckCircle2, FileText, VideoOff, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { usePortalTarget } from "@/components/ui/use-portal-target";
-import { useVideoWatch } from "@/lib/use-video-watch";
+import { markVideoEnded } from "@/lib/sector-actions";
 import { ComprehensionForm } from "./comprehension-form";
 import type { VideoItem } from "@/types/sector";
 
@@ -15,9 +15,9 @@ export interface VideoModalProps {
   open: boolean;
   onClose: () => void;
   /**
-   * Instruções em Vídeo: aos 80 %, pergunta se a pessoa compreendeu — e é a
-   * resposta que conclui o vídeo. Falso nas vitrines (Coleção, Workshop),
-   * onde os 80 % concluem sozinhos.
+   * Instruções em Vídeo: ao chegar ao fim, pergunta se a pessoa compreendeu —
+   * e é a resposta que conclui o vídeo. Falso nas vitrines (Coleção,
+   * Workshop), que não têm regra de conclusão.
    */
   comprehension?: boolean;
   /** Abrir já com a pergunta visível (o card estava em "Responder"). */
@@ -33,8 +33,8 @@ export interface VideoModalProps {
  * coluna lateral (empilhada abaixo no mobile) e o vídeo segue visível e
  * reproduzindo.
  *
- * Só monta o conteúdo quando aberto: o rastreio de progresso vive no player e
- * nasce/morre com ele (grava ao desmontar).
+ * Só monta o conteúdo quando aberto: o estado da sessão (pergunta aberta,
+ * resposta enviada) nasce/morre com ele.
  */
 export function VideoModal({
   video,
@@ -96,40 +96,33 @@ function VideoModalContent({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [answered, setAnswered] = useState(false);
   const [asking, setAsking] = useState(askNow);
-  // Vitrine: os 80 % concluem. Instruções: concluir é responder.
-  const [completed, setCompleted] = useState(video.watched);
+  const [ended, setEnded] = useState(Boolean(video.ended) || video.watched);
   const changed = useRef(false);
 
   const askable = comprehension && !video.comprehension && !answered;
+  // Instruções: concluir é responder. Vitrines não têm regra de conclusão.
+  const completed = comprehension && (video.watched || answered);
 
-  const watch = useVideoWatch({
-    videoId: video.id,
-    reached: Boolean(video.questionReady) || video.watched,
-    initialWatchedSeconds: video.watchedSeconds ?? 0,
-    onReached: ({ completed: done }) => {
-      changed.current = true;
-      if (done) setCompleted(true);
-      if (!askable) return;
-      // A pergunta aparece no instante dos 80 %; o vídeo pausa para a pessoa
-      // responder com atenção — pode dar play de novo se quiser.
-      videoRef.current?.pause();
-      setAsking(true);
-    },
-  });
+  // Fim de uma Instrução em Vídeo: grava uma vez e abre a pergunta (se ainda
+  // não respondida). Nas vitrines não acontece nada.
+  function onEnded() {
+    if (!comprehension) return;
+    if (askable) setAsking(true);
+    if (ended) return;
+    setEnded(true);
+    void markVideoEnded({ videoId: video.id }).then((res) => {
+      if (res.ok) changed.current = true;
+    });
+  }
 
-  // Ao fechar, quem abriu recarrega a página se algo mudou no servidor. O
-  // rastreio grava ao desmontar (cleanup dele roda antes deste); `settle`
-  // espera essa gravação chegar antes de recarregar.
+  // Ao fechar, quem abriu recarrega a página se algo mudou no servidor.
   const onChangedRef = useRef(onChanged);
   onChangedRef.current = onChanged;
-  const settle = watch.settle;
   useEffect(() => {
     return () => {
-      void settle().then((saved) => {
-        if (saved || changed.current) onChangedRef.current?.();
-      });
+      if (changed.current) onChangedRef.current?.();
     };
-  }, [settle]);
+  }, []);
 
   const hasTranscript = Boolean(video.transcriptText?.trim());
 
@@ -199,7 +192,7 @@ function VideoModalContent({
                 controls
                 autoPlay={!askNow}
                 playsInline
-                {...watch.videoProps}
+                onEnded={onEnded}
                 // `max-h-[70vh]` para o player não empurrar o botão de
                 // transcrição para fora em tela baixa.
                 className="aspect-video max-h-[70vh] w-full rounded-xl bg-black"
@@ -235,7 +228,6 @@ function VideoModalContent({
                   onSubmitted={() => {
                     changed.current = true;
                     setAnswered(true);
-                    setCompleted(true);
                     setAsking(false);
                   }}
                   onLater={() => setAsking(false)}

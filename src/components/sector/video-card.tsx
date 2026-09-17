@@ -13,13 +13,14 @@ import { useToast } from "@/providers/toast-provider";
 import type { VideoItem } from "@/types/sector";
 
 /**
- * Situação do vídeo para o usuário. Só leitura: "assistido" não é clique.
+ * Situação de uma Instrução em Vídeo para o usuário. Só leitura: "assistido"
+ * não é clique. Vitrines (Coleção, Workshop) não têm regra de conclusão e não
+ * mostram selo.
  *
- *  - Em andamento: começou e ainda não chegou aos 80 %.
- *  - Responder (só Instruções em Vídeo): chegou aos 80 % e ainda não
- *    respondeu à pergunta de compreensão — clicar abre o player já com a
- *    pergunta. É a resposta que conclui o vídeo.
- *  - Assistido: concluiu (vitrine: 80 %; Instruções: respondeu).
+ *  - Responder: chegou ao fim e ainda não respondeu à pergunta de
+ *    compreensão — clicar abre o player já com a pergunta. É a resposta que
+ *    conclui o vídeo.
+ *  - Assistido: respondeu.
  *  - Avaliada: o Gestor já deu a nota à resposta.
  */
 function WatchBadge({
@@ -34,7 +35,9 @@ function WatchBadge({
   const base =
     "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-medium";
 
-  if (comprehension && video.questionReady && !video.watched && !video.comprehension) {
+  if (!comprehension) return null;
+
+  if (video.ended && !video.watched && !video.comprehension) {
     return (
       <button
         type="button"
@@ -56,9 +59,6 @@ function WatchBadge({
   }
   if (video.watched) {
     return <span className={cn(base, "border-primary/25 bg-primary/15 text-primary")}>✓ Assistido</span>;
-  }
-  if (video.watchedSeconds) {
-    return <span className={cn(base, "border-border bg-surface-3 text-muted")}>Em andamento</span>;
   }
   return null;
 }

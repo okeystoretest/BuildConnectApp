@@ -17,14 +17,12 @@ export interface VideoItem {
   id: string;
   title: string;
   /**
-   * Assistido. Nas vitrines, 80 % da duração reproduzidos; nas Instruções em
-   * Vídeo, a resposta de compreensão enviada.
+   * Assistido: a resposta de compreensão foi enviada (Instruções em Vídeo).
+   * Vitrines não têm regra de conclusão — ali o valor é histórico.
    */
   watched: boolean;
-  /** Segundos únicos já reproduzidos (progresso parcial). Ausente = não começou. */
-  watchedSeconds?: number;
-  /** Cruzou os 80 %: a pergunta de compreensão está liberada. */
-  questionReady?: boolean;
+  /** Chegou ao fim do vídeo: a pergunta de compreensão está liberada. */
+  ended?: boolean;
   /** Ausente = ainda não respondeu à pergunta de compreensão. */
   comprehension?: ComprehensionStatus;
   isNew?: boolean;

@@ -52,8 +52,8 @@ export async function getSectorContent(
     select: { id: true, label: true, url: true, iconPath: true },
   });
 
-  // Estado do usuário: o que já concluiu (ou começou) neste subsetor, e as
-  // respostas de compreensão que já enviou.
+  // Estado do usuário: o que já concluiu (ou chegou ao fim) neste subsetor, e
+  // as respostas de compreensão que já enviou.
   const [progress, comprehensions] = await Promise.all([
     prisma.contentProgress.findMany({
       where: {
@@ -63,13 +63,7 @@ export async function getSectorContent(
           { document: { subsectorId: sub.id } },
         ],
       },
-      select: {
-        videoId: true,
-        documentId: true,
-        completed: true,
-        watchedSeconds: true,
-        reachedAt: true,
-      },
+      select: { videoId: true, documentId: true, completed: true, endedAt: true },
     }),
     prisma.videoComprehension.findMany({
       where: { userId, video: { subsectorId: sub.id } },
@@ -79,13 +73,11 @@ export async function getSectorContent(
 
   const doneVideo = new Set<string>();
   const doneDoc = new Set<string>();
-  const partialVideo = new Map<string, number>();
-  const readyVideo = new Set<string>();
+  const endedVideo = new Set<string>();
   for (const p of progress) {
     if (p.videoId) {
       if (p.completed) doneVideo.add(p.videoId);
-      if (p.watchedSeconds != null) partialVideo.set(p.videoId, p.watchedSeconds);
-      if (p.reachedAt) readyVideo.add(p.videoId);
+      if (p.endedAt) endedVideo.add(p.videoId);
     }
     if (p.documentId && p.completed) doneDoc.add(p.documentId);
   }
@@ -112,8 +104,7 @@ export async function getSectorContent(
       id: v.id,
       title: v.title,
       watched: doneVideo.has(v.id),
-      watchedSeconds: partialVideo.get(v.id),
-      questionReady: readyVideo.has(v.id),
+      ended: endedVideo.has(v.id),
       comprehension: comprehensionOf.get(v.id),
       isNew: v.isNew,
       tags: v.tags,

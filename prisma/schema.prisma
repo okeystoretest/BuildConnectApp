@@ -536,17 +536,11 @@ model ContentProgress {
   completed   Boolean   @default(true)
   completedAt DateTime  @default(now())
 
-  // Progresso parcial do vídeo. `watchedIntervals` é a união dos trechos
-  // reproduzidos ([[início, fim], ...], em segundos) — guardar só o total
-  // deixaria uma segunda sessão contar de novo o que a primeira já contou.
-  // `watchedSeconds` é o total derivado, para exibição. Nulos nos documentos e
-  // nos registros anteriores ao rastreio. `reachedAt` marca quando cruzou os
-  // 80 % da duração: nas vitrines isso já conclui (`completed`); nas
-  // Instruções em Vídeo só libera a pergunta de compreensão, e `completed`
-  // vira true ao enviar a resposta.
-  watchedIntervals Json?
-  watchedSeconds   Int?
-  reachedAt        DateTime?
+  // Quando o vídeo chegou ao fim para este usuário. Nas vitrines isso já
+  // conclui (`completed`); nas Instruções em Vídeo só libera a pergunta de
+  // compreensão, e `completed` vira true ao enviar a resposta. Nulo nos
+  // documentos.
+  endedAt DateTime?
 
   @@unique([userId, videoId])
   @@unique([userId, documentId])
