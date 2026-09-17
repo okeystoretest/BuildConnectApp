@@ -1,11 +1,14 @@
 import { prisma } from "@/lib/db/prisma";
+import { resolveAccessibleSlugs } from "@/lib/auth/access";
+import type { Role } from "@/types";
 
 /**
  * Cálculo de progresso do colaborador a partir de dados reais.
  *
- * Total de conteúdo = vídeos + documentos existentes.
- * Concluídos = linhas de ContentProgress (completed) do usuário.
- * O percentual geral é concluídos ÷ total, arredondado.
+ * Total de conteúdo = vídeos + documentos dos subsetores a que o usuário
+ * pertence (mesmo recorte de "Meu Progresso" e da barra lateral; Admin vê tudo).
+ * Concluídos = linhas de ContentProgress (completed) do usuário nesses
+ * subsetores. O percentual geral é concluídos ÷ total, arredondado.
  */
 
 export interface OverallProgress {
@@ -14,12 +17,21 @@ export interface OverallProgress {
   totalItems: number;
 }
 
-export async function getOverallProgress(userId: string): Promise<OverallProgress> {
+export async function getOverallProgress(userId: string, role: Role): Promise<OverallProgress> {
+  const slugs = await resolveAccessibleSlugs(userId, role);
+  const inScope = slugs === null ? {} : { subsector: { slug: { in: slugs } } };
+
   const [totalVideos, totalDocuments, done] = await Promise.all([
-    prisma.video.count(),
-    prisma.document.count(),
+    prisma.video.count({ where: inScope }),
+    prisma.document.count({ where: inScope }),
     prisma.contentProgress.count({
-      where: { userId, completed: true },
+      where: {
+        userId,
+        completed: true,
+        ...(slugs === null
+          ? {}
+          : { OR: [{ video: inScope }, { document: inScope }] }),
+      },
     }),
   ]);
 

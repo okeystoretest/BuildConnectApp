@@ -1,10 +1,17 @@
 import { prisma } from "@/lib/db/prisma";
+import { resolveAccessibleSlugs } from "@/lib/auth/access";
+import type { Role } from "@/types";
 import type { SectorProgress, AreaProgress } from "@/types/content";
 import type { PendingCategory } from "@/lib/pending-content";
 import { formatBytes } from "@/lib/utils";
 
 /**
  * Agregação de progresso do colaborador para a tela "Meu Progresso".
+ *
+ * Só entra o conteúdo dos subsetores a que o usuário PERTENCE — o mesmo
+ * recorte da barra lateral (`resolveAccessibleSlugs`: subsetores marcados no
+ * cadastro ou, sem marcação, todos os do setor de lotação). O Admin, que
+ * alcança tudo, vê tudo.
  *
  * Tudo é derivado de dados reais:
  *  - progresso por área: % de vídeos e % de documentos concluídos por subsetor;
@@ -27,13 +34,17 @@ function pct(done: number, total: number): number {
   return total === 0 ? 0 : Math.round((done / total) * 100);
 }
 
-export async function getProgressPageData(userId: string): Promise<ProgressPageData> {
+export async function getProgressPageData(userId: string, role: Role): Promise<ProgressPageData> {
+  // `null` = Admin, sem recorte.
+  const slugs = await resolveAccessibleSlugs(userId, role);
+
   // Estrutura de setores → subsetores com seu conteúdo (vídeos e documentos).
   const [sectors, completed] = await Promise.all([
     prisma.sector.findMany({
       orderBy: { order: "asc" },
       include: {
         subsectors: {
+          where: slugs === null ? {} : { slug: { in: slugs } },
           orderBy: { order: "asc" },
           include: {
             videos: { select: { id: true, title: true } },
@@ -44,9 +55,21 @@ export async function getProgressPageData(userId: string): Promise<ProgressPageD
         },
       },
     }),
-    // IDs de conteúdo já concluídos pelo usuário.
+    // IDs de conteúdo já concluídos pelo usuário. Só nos subsetores dele: o
+    // que foi concluído num setor de que a pessoa saiu não conta no total.
     prisma.contentProgress.findMany({
-      where: { userId, completed: true },
+      where: {
+        userId,
+        completed: true,
+        ...(slugs === null
+          ? {}
+          : {
+              OR: [
+                { video: { subsector: { slug: { in: slugs } } } },
+                { document: { subsector: { slug: { in: slugs } } } },
+              ],
+            }),
+      },
       select: { videoId: true, documentId: true },
     }),
   ]);

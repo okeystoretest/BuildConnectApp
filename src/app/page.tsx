@@ -9,6 +9,7 @@ import { getVerifiedSession } from "@/lib/auth/require-user";
 import { getOverallProgress } from "@/lib/progress-data";
 import { getPlatformWelcomeVideo } from "@/lib/platform-welcome-data";
 import { COMPANY_VALUES, CULTURE_TEXT } from "@/lib/company-info";
+import type { Role } from "@/types";
 
 export default async function HomePage() {
   const session = await getVerifiedSession();
@@ -18,7 +19,7 @@ export default async function HomePage() {
 
   const firstName = session.fullName.split(" ")[0] || session.fullName;
   const [{ overall }, platformWelcome] = await Promise.all([
-    getOverallProgress(session.userId),
+    getOverallProgress(session.userId, session.role as Role),
     getPlatformWelcomeVideo(session.userId),
   ]);
 

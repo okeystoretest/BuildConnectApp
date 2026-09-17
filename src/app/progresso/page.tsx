@@ -12,12 +12,13 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { BarChart3 } from "lucide-react";
 import { getVerifiedSession } from "@/lib/auth/require-user";
 import { getProgressPageData } from "@/lib/progress-page-data";
+import type { Role } from "@/types";
 
 export default async function ProgressPage() {
   const session = await getVerifiedSession();
   if (!session) redirect(LOGIN_EXPIRED_PATH);
 
-  const data = await getProgressPageData(session.userId);
+  const data = await getProgressPageData(session.userId, session.role as Role);
 
   return (
     <AppShell eyebrow="Menu" title="Meu Progresso">
