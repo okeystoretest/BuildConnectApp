@@ -1,12 +1,14 @@
 import { prisma } from "@/lib/db/prisma";
 import { resolveAccessibleSlugs } from "@/lib/auth/access";
+import { TRACKED_SUBSECTOR } from "@/lib/progress-scope";
 import type { Role } from "@/types";
 
 /**
  * Cálculo de progresso do colaborador a partir de dados reais.
  *
- * Total de conteúdo = vídeos + documentos dos subsetores a que o usuário
- * pertence (mesmo recorte de "Meu Progresso" e da barra lateral; Admin vê tudo).
+ * Total de conteúdo = vídeos + documentos dos subsetores PADRAO a que o
+ * usuário pertence (mesmo recorte de "Meu Progresso" e da barra lateral; Admin
+ * vê tudo). Vitrines não entram (`TRACKED_SUBSECTOR`).
  * Concluídos = linhas de ContentProgress (completed) do usuário nesses
  * subsetores. O percentual geral é concluídos ÷ total, arredondado.
  */
@@ -19,19 +21,15 @@ export interface OverallProgress {
 
 export async function getOverallProgress(userId: string, role: Role): Promise<OverallProgress> {
   const slugs = await resolveAccessibleSlugs(userId, role);
-  const inScope = slugs === null ? {} : { subsector: { slug: { in: slugs } } };
+  const inScope = {
+    subsector: { ...TRACKED_SUBSECTOR, ...(slugs === null ? {} : { slug: { in: slugs } }) },
+  };
 
   const [totalVideos, totalDocuments, done] = await Promise.all([
     prisma.video.count({ where: inScope }),
     prisma.document.count({ where: inScope }),
     prisma.contentProgress.count({
-      where: {
-        userId,
-        completed: true,
-        ...(slugs === null
-          ? {}
-          : { OR: [{ video: inScope }, { document: inScope }] }),
-      },
+      where: { userId, completed: true, OR: [{ video: inScope }, { document: inScope }] },
     }),
   ]);
 

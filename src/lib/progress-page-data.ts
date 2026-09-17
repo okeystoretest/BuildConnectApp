@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { resolveAccessibleSlugs } from "@/lib/auth/access";
+import { TRACKED_SUBSECTOR } from "@/lib/progress-scope";
 import type { Role } from "@/types";
 import type { SectorProgress, AreaProgress } from "@/types/content";
 import type { PendingCategory } from "@/lib/pending-content";
@@ -11,7 +12,7 @@ import { formatBytes } from "@/lib/utils";
  * Só entra o conteúdo dos subsetores a que o usuário PERTENCE — o mesmo
  * recorte da barra lateral (`resolveAccessibleSlugs`: subsetores marcados no
  * cadastro ou, sem marcação, todos os do setor de lotação). O Admin, que
- * alcança tudo, vê tudo.
+ * alcança tudo, vê tudo. Vitrines nunca entram (`TRACKED_SUBSECTOR`).
  *
  * Tudo é derivado de dados reais:
  *  - progresso por área: % de vídeos e % de documentos concluídos por subsetor;
@@ -35,8 +36,9 @@ function pct(done: number, total: number): number {
 }
 
 export async function getProgressPageData(userId: string, role: Role): Promise<ProgressPageData> {
-  // `null` = Admin, sem recorte.
+  // `null` = Admin, sem recorte de setor.
   const slugs = await resolveAccessibleSlugs(userId, role);
+  const inScope = { ...TRACKED_SUBSECTOR, ...(slugs === null ? {} : { slug: { in: slugs } }) };
 
   // Estrutura de setores → subsetores com seu conteúdo (vídeos e documentos).
   const [sectors, completed] = await Promise.all([
@@ -44,7 +46,7 @@ export async function getProgressPageData(userId: string, role: Role): Promise<P
       orderBy: { order: "asc" },
       include: {
         subsectors: {
-          where: slugs === null ? {} : { slug: { in: slugs } },
+          where: inScope,
           orderBy: { order: "asc" },
           include: {
             videos: { select: { id: true, title: true } },
@@ -61,14 +63,7 @@ export async function getProgressPageData(userId: string, role: Role): Promise<P
       where: {
         userId,
         completed: true,
-        ...(slugs === null
-          ? {}
-          : {
-              OR: [
-                { video: { subsector: { slug: { in: slugs } } } },
-                { document: { subsector: { slug: { in: slugs } } } },
-              ],
-            }),
+        OR: [{ video: { subsector: inScope } }, { document: { subsector: inScope } }],
       },
       select: { videoId: true, documentId: true },
     }),

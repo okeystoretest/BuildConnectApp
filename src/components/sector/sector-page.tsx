@@ -220,7 +220,9 @@ export function SectorPage({
       <PageHeader
         title={sector.name}
         description={sector.description}
-        progress={{ label: "Concluído", value: sector.completion }}
+        progress={
+          sector.completion === null ? undefined : { label: "Concluído", value: sector.completion }
+        }
       />
 
       <SectorWelcomeVideo data={welcome ?? null} />

@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { ROLE_LABEL } from "@/lib/permissions";
+import { TRACKED_SUBSECTOR } from "@/lib/progress-scope";
 import type { Role } from "@/types";
 import type {
   EmployeeHistory,
@@ -107,14 +108,16 @@ export async function getEmployeeHistory(userId: string): Promise<EmployeeHistor
   if (!user || !user.active) return null;
 
   // --- Catálogo de conteúdo e progresso do colaborador ---
+  // Só subsetores PADRAO: vídeos de vitrine não são material a concluir.
+  const tracked = { subsector: TRACKED_SUBSECTOR };
   const [completed, videos, documents] = await Promise.all([
     prisma.contentProgress.findMany({
-      // `completed: false` é progresso parcial de vídeo — ainda não conta.
-      where: { userId, completed: true },
+      // `completed: false` é "chegou ao fim, não respondeu" — ainda não conta.
+      where: { userId, completed: true, OR: [{ video: tracked }, { document: tracked }] },
       select: { videoId: true, documentId: true },
     }),
-    prisma.video.findMany({ select: { id: true, title: true } }),
-    prisma.document.findMany({ select: { id: true, name: true } }),
+    prisma.video.findMany({ where: tracked, select: { id: true, title: true } }),
+    prisma.document.findMany({ where: tracked, select: { id: true, name: true } }),
   ]);
 
   const doneVideos = new Set<string>();

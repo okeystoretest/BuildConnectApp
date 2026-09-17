@@ -51,7 +51,9 @@ export function DriverSectorView({ content, evaluations, welcome }: DriverSector
       <PageHeader
         title="Motoristas"
         description="Conteúdos e avaliações da equipe de rota. Os chamados são geridos no Build.Flow."
-        progress={{ label: "Concluído", value: content.completion }}
+        progress={
+          content.completion === null ? undefined : { label: "Concluído", value: content.completion }
+        }
       />
 
       <SectorWelcomeVideo data={welcome ?? null} />

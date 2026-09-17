@@ -71,7 +71,11 @@ export interface SectorContent {
   parent: string;
   kind: SectorKind;
   description: string;
-  completion: number;
+  /**
+   * Percentual concluído da área. Nulo nas vitrines: visualização casual,
+   * nada ali é material a concluir.
+   */
+  completion: number | null;
   photos: readonly PhotoItem[];
   videos: readonly VideoItem[];
   workshops: readonly VideoItem[];

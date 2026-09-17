@@ -142,10 +142,12 @@ export async function getSectorContent(
     }),
   );
 
-  // Conclusão da área: concluídos ÷ total (vídeos + documentos).
+  // Conclusão da área: concluídos ÷ total (vídeos + documentos). Vitrine não
+  // tem conclusão — é visualização casual.
   const total = sub.videos.length + sub.documents.length;
   const done = doneVideo.size + doneDoc.size;
-  const completion = total === 0 ? 0 : Math.round((done / total) * 100);
+  const completion =
+    sub.kind === "VITRINE" ? null : total === 0 ? 0 : Math.round((done / total) * 100);
 
   return {
     slug: sub.slug,
