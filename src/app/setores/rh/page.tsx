@@ -15,6 +15,7 @@ import {
 import { getSectorWelcomeVideo } from "@/lib/welcome-video-data";
 import { getReportsBoard } from "@/lib/reports/data";
 import { getFormsForViewer } from "@/lib/forms/data";
+import { getVideoComprehensionResults } from "@/lib/video-comprehension-data";
 import { HrSectorView } from "@/components/hr/hr-sector-view";
 import type { Role } from "@/types";
 
@@ -65,6 +66,7 @@ export default async function HrSectorPage() {
     assignRaters,
     reports,
     forms,
+    comprehension,
   ] = await Promise.all([
     canHrAdmin ? getManagedUsers() : Promise.resolve([]),
     canHrAdmin ? getHrDocuments() : Promise.resolve([]),
@@ -79,6 +81,8 @@ export default async function HrSectorPage() {
     canReports ? getReportsBoard() : Promise.resolve([]),
     // A consulta já recorta por setor; a permissão só evita a ida ao banco.
     canForms ? getFormsForViewer() : Promise.resolve([]),
+    // Respostas de compreensão já avaliadas, com o mesmo recorte dos resultados.
+    getVideoComprehensionResults(sectorScope),
   ]);
 
   const welcome = await getSectorWelcomeVideo("rh", session.userId);
@@ -92,6 +96,7 @@ export default async function HrSectorPage() {
       roster={roster}
       initialHistory={null}
       resultsCatalog={resultsCatalog}
+      comprehension={comprehension}
       assignableTypes={assignableTypes}
       assignSubjects={assignSubjects}
       assignRaters={assignRaters}

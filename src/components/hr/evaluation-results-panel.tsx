@@ -7,6 +7,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   Loader2,
+  MonitorPlay,
   UserPlus,
   Users,
 } from "lucide-react";
@@ -29,6 +30,7 @@ import type {
   EvaluationResultSubject,
   EvaluationResultTypeCard,
   EvaluationSubject,
+  VideoComprehensionSubject,
 } from "@/types/evaluation";
 import type { FormListItem } from "@/types/form";
 
@@ -42,10 +44,18 @@ export interface EvaluationResultsPanelProps {
   rounds: readonly EfficacyRoundRow[];
   /** Formulários do DHO, já recortados por setor na consulta. */
   forms: readonly FormListItem[];
+  /** Respostas de compreensão (Instruções em Vídeo) já avaliadas pelo Gestor. */
+  comprehension: readonly VideoComprehensionSubject[];
 }
 
 /** Card especial de atribuição — não é um instrumento, é uma ação. */
 const ASSIGN_KEY = "__atribuir__";
+/**
+ * Card "Compreensão de Vídeos" — também não é um `EvaluationType`: a nota é
+ * 0–10, sem seções nem questões, e vem das Instruções em Vídeo.
+ */
+const COMPREHENSION_KEY = "__compreensao__";
+const COMPREHENSION_TITLE = "Compreensão de Vídeos";
 
 /**
  * Aba "Resultados de Avaliações" em três níveis:
@@ -60,6 +70,7 @@ export function EvaluationResultsPanel({
   assignRaters,
   rounds,
   forms,
+  comprehension,
 }: EvaluationResultsPanelProps) {
   const { can } = useRole();
   const [openKey, setOpenKey] = useState<string | null>(null);
@@ -67,6 +78,7 @@ export function EvaluationResultsPanel({
 
   const selectedType = catalog.find((t) => t.slug === openKey) ?? null;
   const selectedSubject = selectedType?.subjects.find((s) => s.subjectId === subjectId) ?? null;
+  const comprehensionCount = comprehension.reduce((acc, s) => acc + s.count, 0);
 
   // Nível 1 — seleção do que consultar.
   if (!openKey) {
@@ -102,6 +114,35 @@ export function EvaluationResultsPanel({
           {catalog.map((type) => (
             <TypeCard key={type.slug} type={type} onOpen={() => setOpenKey(type.slug)} />
           ))}
+
+          <button
+            type="button"
+            onClick={() => setOpenKey(COMPREHENSION_KEY)}
+            disabled={comprehensionCount === 0}
+            className={cn(
+              "focus-ring flex items-center gap-3 rounded-xl border border-border bg-surface p-4 text-left transition-colors",
+              comprehensionCount === 0
+                ? "cursor-not-allowed opacity-60"
+                : "hover:border-border-strong hover:bg-surface-2",
+            )}
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-muted">
+              <MonitorPlay className="h-5 w-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold leading-snug text-foreground">
+                {COMPREHENSION_TITLE}
+              </p>
+              <p className="mt-0.5 text-xs text-muted">
+                {comprehensionCount === 0
+                  ? "Nenhum resultado"
+                  : `${comprehensionCount} ${comprehensionCount === 1 ? "registro" : "registros"} · ${comprehension.length} ${
+                      comprehension.length === 1 ? "colaborador" : "colaboradores"
+                    }`}
+              </p>
+            </div>
+            {comprehensionCount > 0 && <ChevronRight className="h-4 w-4 shrink-0 text-muted" />}
+          </button>
         </div>
 
         {/* Formulários do DHO. Ficam atrás de forms.manage, que é de GESTOR e
@@ -127,6 +168,46 @@ export function EvaluationResultsPanel({
           raters={assignRaters}
           rounds={rounds}
         />
+      </div>
+    );
+  }
+
+  // Compreensão de Vídeos: nível 2 (colaboradores) e 3 (registros).
+  if (openKey === COMPREHENSION_KEY) {
+    const subject = comprehension.find((s) => s.subjectId === subjectId) ?? null;
+    if (!subject) {
+      return (
+        <div className="space-y-4">
+          <Breadcrumb onBack={() => setOpenKey(null)} trail={[COMPREHENSION_TITLE]} />
+          <p className="text-sm text-muted">
+            Selecione o colaborador cujas respostas você quer consultar.
+          </p>
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {comprehension.map((s) => (
+              <ComprehensionSubjectCard
+                key={s.subjectId}
+                subject={s}
+                onOpen={() => setSubjectId(s.subjectId)}
+              />
+            ))}
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-4">
+        <Breadcrumb
+          onBack={() => setSubjectId(null)}
+          trail={[COMPREHENSION_TITLE, subject.subjectName]}
+          onTrailClick={[
+            () => {
+              setSubjectId(null);
+              setOpenKey(null);
+            },
+            undefined,
+          ]}
+        />
+        <ComprehensionResults subject={subject} />
       </div>
     );
   }
@@ -364,6 +445,88 @@ function RoundResult({ roundId }: { roundId: string }) {
   if (error) return <EmptyState title="Consolidação indisponível" description={error} />;
   if (!data) return <LoadingBlock />;
   return <RoundConsolidatedView data={data} />;
+}
+
+function ComprehensionSubjectCard({
+  subject,
+  onOpen,
+}: {
+  subject: VideoComprehensionSubject;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="focus-ring flex items-center gap-3 rounded-xl border border-border bg-surface p-4 text-left transition-colors hover:border-border-strong hover:bg-surface-2"
+    >
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-surface-2 text-muted">
+        <Users className="h-4 w-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-foreground">{subject.subjectName}</p>
+        <p className="mt-0.5 text-xs text-muted">{subject.sector}</p>
+        <p className="mt-1 text-[11px] text-muted">
+          {subject.count} {subject.count === 1 ? "resposta" : "respostas"} · média{" "}
+          {subject.average.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} · última em{" "}
+          {subject.lastLabel}
+        </p>
+      </div>
+      <ChevronRight className="h-4 w-4 shrink-0 text-muted" />
+    </button>
+  );
+}
+
+/** Nível 3 da Compreensão de Vídeos: cada resposta avaliada, com a nota. */
+function ComprehensionResults({ subject }: { subject: VideoComprehensionSubject }) {
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface p-4">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary">
+          <MonitorPlay className="h-5 w-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold text-foreground">{subject.subjectName}</p>
+          <p className="text-xs text-muted">{subject.sector}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-2xl font-semibold text-foreground">
+            {subject.average.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
+            <span className="text-sm text-muted">/10</span>
+          </p>
+          <p className="text-[11px] text-muted">
+            média de {subject.count} {subject.count === 1 ? "resposta" : "respostas"}
+          </p>
+        </div>
+      </div>
+
+      {subject.entries.map((entry) => (
+        <article key={entry.id} className="rounded-xl border border-border bg-surface p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h4 className="truncate text-sm font-semibold text-foreground">{entry.videoTitle}</h4>
+              <p className="mt-0.5 text-[11px] text-muted">Respondido em {entry.submittedAtLabel}</p>
+            </div>
+            <p className="shrink-0 text-xl font-semibold text-foreground">
+              {entry.grade}
+              <span className="text-xs text-muted">/10</span>
+            </p>
+          </div>
+          <blockquote className="mt-3 whitespace-pre-wrap rounded-lg border border-border bg-surface-2 p-3 text-sm leading-relaxed text-foreground">
+            {entry.answer}
+          </blockquote>
+          <p className="mt-2 text-[11px] text-muted">
+            Avaliado por {entry.graderName} em {entry.gradedAtLabel}
+          </p>
+          {entry.graderComment && (
+            <p className="mt-1 text-xs text-muted">
+              <span className="font-medium text-foreground">Comentário:</span> {entry.graderComment}
+            </p>
+          )}
+        </article>
+      ))}
+    </div>
+  );
 }
 
 function LoadingBlock() {

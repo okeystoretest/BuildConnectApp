@@ -29,6 +29,7 @@ import type {
   AssignableEvaluationType,
   EfficacyRoundRow,
   EvaluationResultTypeCard,
+  VideoComprehensionSubject,
   EvaluationSubject,
 } from "@/types/evaluation";
 import type { ReportItem } from "@/types/report";
@@ -44,6 +45,8 @@ export interface HrSectorViewProps {
   initialHistory: EmployeeHistory | null;
   /** Catálogo de resultados: instrumentos → avaliados → registros. */
   resultsCatalog: EvaluationResultTypeCard[];
+  /** Card "Compreensão de Vídeos" em Resultados de Avaliações. */
+  comprehension: VideoComprehensionSubject[];
   /** Card "Atribuir Avaliações": instrumentos multiavaliador + gente selecionável. */
   assignableTypes: AssignableEvaluationType[];
   assignSubjects: EvaluationSubject[];
@@ -67,6 +70,7 @@ export function HrSectorView({
   roster,
   initialHistory,
   resultsCatalog,
+  comprehension,
   assignableTypes,
   assignSubjects,
   assignRaters,
@@ -148,6 +152,7 @@ export function HrSectorView({
         {active === "resultados" && (
           <EvaluationResultsPanel
             catalog={resultsCatalog}
+            comprehension={comprehension}
             assignableTypes={assignableTypes}
             assignSubjects={assignSubjects}
             assignRaters={assignRaters}
