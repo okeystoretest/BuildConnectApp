@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Tabs, TabPanel, type TabItem } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/ui/empty-state";
 import { useRole } from "@/providers/role-provider";
+import { cn } from "@/lib/utils";
 import type { LinkItem, SectorContent, TabId } from "@/types/sector";
 import { ContentToolbar, type ViewMode } from "./content-toolbar";
 import { FilterPills } from "./filter-pills";
@@ -18,6 +19,9 @@ import { PhotoUploadModal } from "./photo-upload-modal";
 import { FileUploadModal } from "./file-upload-modal";
 import { VideoBatchUploadModal, type VideoUploadKind } from "./video-batch-upload-modal";
 import { deriveFilters, matchesFilters } from "@/lib/video-filters";
+import { paginate } from "@/lib/paginate";
+import { INSTRUCOES_PAGE_SIZE } from "@/lib/instrucoes-video";
+import { Pagination } from "@/components/ui/pagination";
 import { LinkModal } from "./link-modal";
 import { SectorWelcomeVideo } from "./welcome-video";
 import type { SectorWelcomeVideo as SectorWelcomeVideoData } from "@/lib/welcome-video-data";
@@ -136,6 +140,7 @@ export function SectorPage({
   const [view, setView] = useState<ViewMode>("grid");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [activeFilters, setActiveFilters] = useState<readonly string[]>([]);
+  const [page, setPage] = useState(1);
   const [photoModalOpen, setPhotoModalOpen] = useState(false);
   const [videoModal, setVideoModal] = useState<VideoUploadKind | null>(null);
   const [documentModalOpen, setDocumentModalOpen] = useState(false);
@@ -159,6 +164,7 @@ export function SectorPage({
   const currentTab = tabs.find((tab) => tab.id === active) ?? tabs[0];
   const activeId = currentTab?.id ?? "videos";
   const filterable = FILTERABLE.includes(activeId);
+  const instrucoes = activeId === "instrucoes-video";
 
   const videos = activeId === "workshop" ? sector.workshops : sector.videos;
   // As pílulas são as tags em uso nos vídeos da aba: atribuir uma tag na
@@ -176,7 +182,16 @@ export function SectorPage({
     setActiveFilters((prev) =>
       prev.includes(filter) ? prev.filter((f) => f !== filter) : [...prev, filter],
     );
+    setPage(1);
   }
+
+  // Só Instruções em Vídeo pagina; Coleção e Workshop mostram tudo. O
+  // `paginate` já puxa a página para dentro quando a busca encolhe a lista.
+  const videoPage = useMemo(
+    () => paginate(filteredVideos, page, INSTRUCOES_PAGE_SIZE),
+    [filteredVideos, page],
+  );
+  const shownVideos = instrucoes ? videoPage.items : filteredVideos;
 
   const filterBar =
     filterable && filtersOpen ? (
@@ -198,9 +213,9 @@ export function SectorPage({
     <AppShell
       eyebrow={`Setores · ${sector.parent}`}
       title={sector.name}
-      // Só o Cronograma ocupa a tela toda; as demais abas mantêm a largura
-      // de leitura confortável.
-      wide={activeId === "cronograma"}
+      // Cronograma e Instruções em Vídeo (4 por linha) ocupam a tela toda; as
+      // demais abas mantêm a largura de leitura confortável.
+      wide={activeId === "cronograma" || instrucoes}
     >
       <PageHeader
         title={sector.name}
@@ -217,6 +232,7 @@ export function SectorPage({
           onValueChange={(id) => {
             setActive(id as TabId);
             setQuery("");
+            setPage(1);
             syncTabToUrl(id as TabId);
           }}
         />
@@ -232,7 +248,10 @@ export function SectorPage({
           <div className="space-y-4">
             <ContentToolbar
               query={query}
-              onQueryChange={setQuery}
+              onQueryChange={(q) => {
+                setQuery(q);
+                setPage(1);
+              }}
               placeholder={activeId === "workshop" ? "Buscar workshop" : "Buscar vídeo"}
               view={view}
               onViewChange={setView}
@@ -248,30 +267,38 @@ export function SectorPage({
                 description="Ajuste a busca ou os filtros para ver outros conteúdos desta área."
               />
             ) : view === "grid" ? (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {filteredVideos.map((video) => (
+              <div
+                className={cn(
+                  "grid gap-4 sm:grid-cols-2 lg:grid-cols-3",
+                  // 4 por linha na página larga das Instruções, como o Cronograma.
+                  instrucoes && "xl:grid-cols-4",
+                )}
+              >
+                {shownVideos.map((video) => (
                   <VideoCard
                     key={video.id}
                     slug={sector.slug}
                     video={video}
                     suggestions={filters}
-                    comprehension={activeId === "instrucoes-video"}
+                    comprehension={instrucoes}
                   />
                 ))}
               </div>
             ) : (
               <div className="space-y-3">
-                {filteredVideos.map((video) => (
+                {shownVideos.map((video) => (
                   <VideoListRow
                     key={video.id}
                     slug={sector.slug}
                     video={video}
                     suggestions={filters}
-                    comprehension={activeId === "instrucoes-video"}
+                    comprehension={instrucoes}
                   />
                 ))}
               </div>
             )}
+
+            {instrucoes && <Pagination page={videoPage} onChange={setPage} noun="vídeos" />}
           </div>
         )}
 

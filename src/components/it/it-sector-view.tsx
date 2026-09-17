@@ -16,6 +16,9 @@ import { FileUploadModal } from "@/components/sector/file-upload-modal";
 import { VideoBatchUploadModal } from "@/components/sector/video-batch-upload-modal";
 import { FilterPills } from "@/components/sector/filter-pills";
 import { deriveFilters, matchesFilters } from "@/lib/video-filters";
+import { paginate } from "@/lib/paginate";
+import { Pagination } from "@/components/ui/pagination";
+import { INSTRUCOES_PAGE_SIZE } from "@/lib/instrucoes-video";
 import { LinkModal } from "@/components/sector/link-modal";
 import { SectorWelcomeVideo } from "@/components/sector/welcome-video";
 import type { SectorWelcomeVideo as SectorWelcomeVideoData } from "@/lib/welcome-video-data";
@@ -64,6 +67,7 @@ export function ItSectorView({
   const [docModalOpen, setDocModalOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [activeFilters, setActiveFilters] = useState<readonly string[]>([]);
+  const [page, setPage] = useState(1);
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [editingLink, setEditingLink] = useState<LinkItem | null>(null);
 
@@ -109,15 +113,20 @@ export function ItSectorView({
     setActiveFilters((prev) =>
       prev.includes(filter) ? prev.filter((f) => f !== filter) : [...prev, filter],
     );
+    setPage(1);
   }
+
+  // 16 por página (4 linhas de 4), sobre a lista já filtrada.
+  const videoPage = paginate(filteredVideos, page, INSTRUCOES_PAGE_SIZE);
 
   return (
     <AppShell
       eyebrow="Setores · Retaguarda"
       title="Retaguarda"
-      // Só o quadro de Chamados ocupa a tela toda — como o Cronograma: a
-      // largura das colunas cresce quando a barra lateral é recolhida.
-      wide={active === "chamados"}
+      // O quadro de Chamados e as Instruções em Vídeo (4 por linha) ocupam a
+      // tela toda — como o Cronograma: a largura cresce quando a barra
+      // lateral é recolhida.
+      wide={active === "chamados" || active === "instrucoes-video"}
     >
       <PageHeader
         title="Retaguarda"
@@ -133,6 +142,7 @@ export function ItSectorView({
           onValueChange={(id) => {
             setActive(id);
             setQuery("");
+            setPage(1);
           }}
         />
         {uploadLabel && <UploadAction label={uploadLabel} onClick={openUpload} />}
@@ -146,7 +156,10 @@ export function ItSectorView({
           <div className="space-y-4">
             <ContentToolbar
               query={query}
-              onQueryChange={setQuery}
+              onQueryChange={(q) => {
+                setQuery(q);
+                setPage(1);
+              }}
               placeholder="Buscar vídeo"
               view={view}
               onViewChange={setView}
@@ -174,8 +187,8 @@ export function ItSectorView({
                 description="Envie vídeos de instrução para a equipe de TI."
               />
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {filteredVideos.map((video) => (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {videoPage.items.map((video) => (
                   <VideoCard
                     key={video.id}
                     slug="ti"
@@ -186,6 +199,7 @@ export function ItSectorView({
                 ))}
               </div>
             )}
+            <Pagination page={videoPage} onChange={setPage} noun="vídeos" />
           </div>
         )}
 
