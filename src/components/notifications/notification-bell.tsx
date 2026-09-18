@@ -7,6 +7,7 @@ import { Bell, BellOff, Check, Trash2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNotifications } from "@/providers/notification-provider";
 import { NOTIFICATION_ICON, NOTIFICATION_TONE } from "@/types/notification";
+import { relativeLabel } from "@/lib/notifications/core";
 import type { AppNotification } from "@/types/notification";
 
 function Icon({ name, className }: { name: string; className?: string }) {
@@ -89,7 +90,7 @@ export function NotificationBell() {
                     </span>
                     <p className="text-sm font-medium text-foreground">Nenhuma notificação</p>
                     <p className="mt-1 text-xs text-muted">
-                      Novos chamados e conteúdos aparecem aqui.
+                      Chamados, avaliações, pesquisas e novos materiais aparecem aqui.
                     </p>
                   </div>
                 ) : (
@@ -170,7 +171,7 @@ function NotificationRow({
           )}
         </div>
         <p className="mt-0.5 text-xs leading-relaxed text-muted">{item.body}</p>
-        <p className="mt-1 text-[10px] text-muted">{item.createdLabel}</p>
+        <p className="mt-1 text-[10px] text-muted">{relativeLabel(item.createdAt)}</p>
       </div>
     </div>
   );

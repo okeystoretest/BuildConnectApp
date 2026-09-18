@@ -1106,6 +1106,7 @@ enum NotificationKind {
   CHAMADO_MOTORISTAS
   CONTEUDO
   AVALIACAO
+  FORMULARIO
   SISTEMA
 }
 
@@ -1115,7 +1116,8 @@ model Notification {
   title String
   body  String
   href  String?
-  // Setores destinatários ("*" = todos). Espelha NOTIFICATION_AUDIENCE.
+  // SLUGS de subsetor destinatários ("*" = todos). Slug, e não rótulo: o
+  // rótulo muda de nome (TI virou Retaguarda) e o slug é a chave do RBAC.
   audience String[]       @default([])
 
   // Alvo individual opcional. Quando preenchido, a notificação é para um único
@@ -1132,13 +1134,15 @@ model Notification {
   @@index([targetUserId])
 }
 
-// Leitura por usuário: a existência da linha marca como lida.
+// Leitura por usuário: a existência da linha marca como lida. `dismissed`
+// é o "Limpar notificações": some da lista deste usuário e não volta.
 model NotificationRead {
   notificationId String
   notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade)
   userId         String
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   readAt         DateTime     @default(now())
+  dismissed      Boolean      @default(false)
 
   @@id([notificationId, userId])
   @@index([userId])
@@ -1318,6 +1322,7 @@ model FormAnswer {
 enum WhatsappKind {
   AVALIACAO
   FORMULARIO
+  CHAMADO_TI
 }
 
 enum WhatsappStatus {
@@ -1363,6 +1368,9 @@ model WhatsappMessage {
   attempts Int            @default(0)
   /** Motivo da falha, em português. Nunca contém o número nem credencial. */
   error    String?
+  // Texto próprio desta mensagem (ex.: código do chamado). Nulo = o texto
+  // padrão do tipo em MESSAGE_TEXT.
+  text     String?
 
   // A partir de quando esta mensagem pode sair. O espaçamento aleatório entre
   // envios (1 s a 2 h) fica gravado AQUI, ao enfileirar, e não numa espera em

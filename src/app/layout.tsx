@@ -10,6 +10,7 @@ import { NotificationProvider } from "@/providers/notification-provider";
 import { PendingEvaluationsProvider } from "@/providers/pending-evaluations-provider";
 import { ToastProvider } from "@/providers/toast-provider";
 import { countMyPendingEvaluations } from "@/lib/evaluation-rounds";
+import { listMyNotifications } from "@/lib/notifications/data";
 import { getPlatformWelcomeVideo } from "@/lib/platform-welcome-data";
 import { OnboardingGate } from "@/components/onboarding/onboarding-gate";
 import { TicketModalHost } from "@/components/tickets/ticket-modal-host";
@@ -82,6 +83,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // (tela de login) não há o que contar e nem consulta é feita.
   const pendingEvaluations = session ? await countMyPendingEvaluations(session.userId) : 0;
 
+  // Sino: a lista inicial já vem do servidor, pelo mesmo motivo. `null` sem
+  // sessão desliga o polling na tela de login.
+  const notifications = session
+    ? await listMyNotifications(session.userId, session.role as Role)
+    : null;
+
   // Vídeo obrigatório da plataforma. A resposta vem pronta do servidor para o
   // modal não piscar na primeira pintura — e, principalmente, para a marca de
   // "já assistiu" ser do USUÁRIO, e não do navegador como era no localStorage.
@@ -95,7 +102,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className={`${outfit.variable} ${jetbrains.variable} font-sans`}>
         <ThemeProvider>
           <RoleProvider initialUser={user}>
-            <NotificationProvider>
+            <NotificationProvider initial={notifications}>
               <PendingEvaluationsProvider initialCount={pendingEvaluations}>
                 <ToastProvider>
                   <SidebarProvider>
