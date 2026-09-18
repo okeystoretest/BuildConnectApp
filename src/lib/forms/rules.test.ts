@@ -98,25 +98,18 @@ function draftWith(questions: { id: string; optionIds?: string[] }[]): FormDraft
     status: "PUBLICADO",
     anonymous: false,
     currentRound: 1,
-    sections: [
-      {
-        id: "s1",
-        title: "S",
-        order: 0,
-        questions: questions.map((q, i) => ({
-          id: q.id,
-          kind: "MULTIPLA_ESCOLHA",
-          label: q.id,
-          required: false,
-          order: i,
-          options: (q.optionIds ?? []).map((oid, oi) => ({
-            id: oid,
-            label: oid,
-            order: oi,
-          })),
-        })),
-      },
-    ],
+    questions: questions.map((q, i) => ({
+      id: q.id,
+      kind: "MULTIPLA_ESCOLHA",
+      label: q.id,
+      required: false,
+      order: i,
+      options: (q.optionIds ?? []).map((oid, oi) => ({
+        id: oid,
+        label: oid,
+        order: oi,
+      })),
+    })),
   };
 }
 
@@ -180,7 +173,7 @@ test("renomear pergunta não conta como remoção", () => {
   // já respondida é edição legítima e não perde nada.
   const existing = { questions: [{ id: "q1", label: "Título antigo", answers: 9 }], options: [] };
   const draft = draftWith([{ id: "q1" }]);
-  draft.sections[0]!.questions[0]!.label = "Título novo";
+  draft.questions[0]!.label = "Título novo";
   assert.deepEqual(removalImpact(existing, draft), []);
 });
 

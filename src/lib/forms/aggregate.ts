@@ -40,7 +40,7 @@ export function aggregate(
   form: FormDraft,
   responses: readonly { answers: readonly FormAnswerInput[] }[],
 ): QuestionResult[] {
-  const questions = form.sections.flatMap((s) => s.questions);
+  const questions = form.questions;
 
   return questions.map((question) => {
     const answers = responses

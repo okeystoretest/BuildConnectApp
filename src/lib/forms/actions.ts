@@ -68,18 +68,12 @@ export async function createForm(): Promise<FormActionResult> {
       // ADMIN cria formulário da empresa (sem setor); gestor, do próprio setor.
       ownerSectorId: me.role === "ADMIN" ? null : me.sectorId,
       createdById: me.id,
-      sections: {
+      questions: {
         create: {
-          title: "Seção 1",
+          kind: "MULTIPLA_ESCOLHA",
+          label: "Pergunta sem título",
           order: 0,
-          questions: {
-            create: {
-              kind: "MULTIPLA_ESCOLHA",
-              label: "Pergunta sem título",
-              order: 0,
-              options: { create: [{ label: "Opção 1", order: 0 }] },
-            },
-          },
+          options: { create: [{ label: "Opção 1", order: 0 }] },
         },
       },
     },
@@ -96,38 +90,29 @@ const draftSchema = z.object({
   draft: z.object({
     title: z.string().trim().min(1, "O formulário precisa de um título."),
     description: z.string().trim().optional(),
-    sections: z
+    questions: z
       .array(
         z.object({
           id: z.string().min(1),
-          title: z.string().trim().min(1),
-          description: z.string().trim().optional(),
-          questions: z.array(
-            z.object({
-              id: z.string().min(1),
-              kind: z.enum([
-                "TEXTO_CURTO",
-                "PARAGRAFO",
-                "MULTIPLA_ESCOLHA",
-                "CAIXAS_SELECAO",
-                "LISTA_SUSPENSA",
-                "ESCALA_LINEAR",
-              ]),
-              label: z.string().trim().min(1, "Toda pergunta precisa de um enunciado."),
-              helpText: z.string().trim().optional(),
-              required: z.boolean(),
-              options: z.array(
-                z.object({ id: z.string().min(1), label: z.string().trim().min(1) }),
-              ),
-              scaleMin: z.number().int().optional(),
-              scaleMax: z.number().int().optional(),
-              scaleMinLabel: z.string().trim().optional(),
-              scaleMaxLabel: z.string().trim().optional(),
-            }),
-          ),
+          kind: z.enum([
+            "TEXTO_CURTO",
+            "PARAGRAFO",
+            "MULTIPLA_ESCOLHA",
+            "CAIXAS_SELECAO",
+            "LISTA_SUSPENSA",
+            "ESCALA_LINEAR",
+          ]),
+          label: z.string().trim().min(1, "Toda pergunta precisa de um enunciado."),
+          helpText: z.string().trim().optional(),
+          required: z.boolean(),
+          options: z.array(z.object({ id: z.string().min(1), label: z.string().trim().min(1) })),
+          scaleMin: z.number().int().optional(),
+          scaleMax: z.number().int().optional(),
+          scaleMinLabel: z.string().trim().optional(),
+          scaleMaxLabel: z.string().trim().optional(),
         }),
       )
-      .min(1, "O formulário precisa de ao menos uma seção."),
+      .min(1, "O formulário precisa de ao menos uma pergunta."),
   }),
 });
 
@@ -141,7 +126,7 @@ export async function saveForm(input: {
 
   // O id de cada linha virou dado de verdade: é ele que liga o que a tela
   // devolve ao que está gravado, e portanto o que preserva as respostas. Por
-  // isso o schema passou a exigi-lo em seção, pergunta e opção.
+  // isso o schema passou a exigi-lo em pergunta e opção.
   const parsed = draftSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };

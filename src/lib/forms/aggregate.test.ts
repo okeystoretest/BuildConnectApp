@@ -9,42 +9,35 @@ const form: FormDraft = {
   status: "PUBLICADO",
   anonymous: true,
   currentRound: 1,
-  sections: [
+  questions: [
     {
-      id: "s1",
-      title: "Seção",
+      id: "q1",
+      kind: "MULTIPLA_ESCOLHA",
+      label: "Turno",
+      required: true,
       order: 0,
-      questions: [
-        {
-          id: "q1",
-          kind: "MULTIPLA_ESCOLHA",
-          label: "Turno",
-          required: true,
-          order: 0,
-          options: [
-            { id: "o1", label: "Manhã", order: 0 },
-            { id: "o2", label: "Tarde", order: 1 },
-          ],
-        },
-        {
-          id: "q2",
-          kind: "ESCALA_LINEAR",
-          label: "Satisfação",
-          required: true,
-          order: 1,
-          options: [],
-          scaleMin: 1,
-          scaleMax: 5,
-        },
-        {
-          id: "q3",
-          kind: "PARAGRAFO",
-          label: "Comentário",
-          required: false,
-          order: 2,
-          options: [],
-        },
+      options: [
+        { id: "o1", label: "Manhã", order: 0 },
+        { id: "o2", label: "Tarde", order: 1 },
       ],
+    },
+    {
+      id: "q2",
+      kind: "ESCALA_LINEAR",
+      label: "Satisfação",
+      required: true,
+      order: 1,
+      options: [],
+      scaleMin: 1,
+      scaleMax: 5,
+    },
+    {
+      id: "q3",
+      kind: "PARAGRAFO",
+      label: "Comentário",
+      required: false,
+      order: 2,
+      options: [],
     },
   ],
 };
@@ -102,12 +95,7 @@ test("pergunta sem nenhuma resposta não divide por zero", () => {
 test("caixas de seleção contam cada opção marcada", () => {
   const multi: FormDraft = {
     ...form,
-    sections: [
-      {
-        ...form.sections[0]!,
-        questions: [{ ...form.sections[0]!.questions[0]!, kind: "CAIXAS_SELECAO" }],
-      },
-    ],
+    questions: [{ ...form.questions[0]!, kind: "CAIXAS_SELECAO" }],
   };
   const [q] = aggregate(multi, [{ answers: [{ questionId: "q1", optionIds: ["o1", "o2"] }] }]);
   assert.equal(q?.answered, 1);

@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, EyeOff, Loader2, X } from "lucide-react";
+import { EyeOff, Loader2, X } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -20,28 +20,25 @@ export interface FormResponseModalProps {
 }
 
 /**
- * Preenchimento de um formulário do DHO, paginado por seção.
+ * Preenchimento de um formulário do DHO, numa página só.
  *
  * "Respondida" vem de `isQuestionAnswered`, a mesma função que a validação do
- * servidor usa. Se a tela tivesse a sua noção, o usuário veria "Próximo"
+ * servidor usa. Se a tela tivesse a sua noção, o usuário veria "Enviar"
  * liberado e o envio recusado — ou o contrário, o que é pior.
  */
 export function FormResponseModal({ open, onClose, form, onSubmitted }: FormResponseModalProps) {
   const router = useRouter();
   const { success, error } = useToast();
   const [answers, setAnswers] = useState<Record<string, FormAnswerInput>>({});
-  const [page, setPage] = useState(0);
   const [submitting, startSubmit] = useTransition();
 
-  const questions = useMemo(() => form.sections.flatMap((s) => s.questions), [form]);
+  const questions = form.questions;
   const answeredCount = questions.filter((q) => isQuestionAnswered(q, answers[q.id])).length;
   const progressPct = Math.round((answeredCount / Math.max(questions.length, 1)) * 100);
 
-  const lastPage = form.sections.length - 1;
-  const currentSection = form.sections[page];
-  const currentComplete = currentSection
-    ? currentSection.questions.every((q) => !q.required || isQuestionAnswered(q, answers[q.id]))
-    : true;
+  const allRequiredAnswered = questions.every(
+    (q) => !q.required || isQuestionAnswered(q, answers[q.id]),
+  );
 
   function setAnswer(answer: FormAnswerInput) {
     setAnswers((prev) => ({ ...prev, [answer.questionId]: answer }));
@@ -49,21 +46,12 @@ export function FormResponseModal({ open, onClose, form, onSubmitted }: FormResp
 
   function resetAll() {
     setAnswers({});
-    setPage(0);
   }
 
   function handleClose() {
     if (submitting) return;
     resetAll();
     onClose();
-  }
-
-  function goNext() {
-    if (!currentComplete) return;
-    setPage((p) => Math.min(p + 1, lastPage));
-  }
-  function goBack() {
-    setPage((p) => Math.max(p - 1, 0));
   }
 
   function handleSubmit() {
@@ -124,10 +112,7 @@ export function FormResponseModal({ open, onClose, form, onSubmitted }: FormResp
         {/* Progresso */}
         <div className="border-b border-border px-7 py-4">
           <div className="mb-2 flex items-center justify-between text-sm text-muted">
-            <span className="font-medium">
-              Seção {page + 1} de {form.sections.length}
-              {currentSection?.title ? ` · ${currentSection.title}` : ""}
-            </span>
+            <span className="font-medium">Perguntas</span>
             <span>
               {answeredCount}/{questions.length} respondidas
             </span>
@@ -137,11 +122,7 @@ export function FormResponseModal({ open, onClose, form, onSubmitted }: FormResp
 
         {/* Corpo */}
         <div className="scrollbar-slim flex-1 space-y-5 overflow-y-auto px-7 py-6">
-          {currentSection?.description && (
-            <p className="text-sm leading-relaxed text-muted">{currentSection.description}</p>
-          )}
-
-          {currentSection?.questions.map((question) => (
+          {questions.map((question) => (
             <div key={question.id} className="rounded-xl border border-border bg-surface p-5">
               <p
                 id={`q-${question.id}`}
@@ -167,29 +148,17 @@ export function FormResponseModal({ open, onClose, form, onSubmitted }: FormResp
             </div>
           ))}
 
-          {currentSection?.questions.length === 0 && (
-            <p className="text-sm text-muted">Esta seção não tem perguntas.</p>
+          {questions.length === 0 && (
+            <p className="text-sm text-muted">Este formulário não tem perguntas.</p>
           )}
         </div>
 
         {/* Rodapé */}
-        <footer className="flex items-center justify-between gap-3 border-t border-border p-5">
-          <Button variant="ghost" size="lg" onClick={goBack} disabled={page === 0 || submitting}>
-            <ChevronLeft className="h-4 w-4" />
-            Voltar
+        <footer className="flex items-center justify-end gap-3 border-t border-border p-5">
+          <Button size="lg" onClick={handleSubmit} disabled={submitting || !allRequiredAnswered}>
+            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+            {submitting ? "Enviando" : "Enviar respostas"}
           </Button>
-
-          {page < lastPage ? (
-            <Button size="lg" onClick={goNext} disabled={!currentComplete}>
-              Próximo
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          ) : (
-            <Button size="lg" onClick={handleSubmit} disabled={submitting || !currentComplete}>
-              {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-              {submitting ? "Enviando" : "Enviar respostas"}
-            </Button>
-          )}
         </footer>
       </div>
     </Modal>

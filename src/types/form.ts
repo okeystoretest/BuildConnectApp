@@ -62,14 +62,6 @@ export interface FormQuestionDraft {
   scaleMaxLabel?: string;
 }
 
-export interface FormSectionDraft {
-  id: string;
-  title: string;
-  description?: string;
-  order: number;
-  questions: FormQuestionDraft[];
-}
-
 /**
  * Formulário completo. Serve ao construtor (onde vira estado local até o
  * "Salvar") e ao preenchimento (onde é só leitura).
@@ -83,7 +75,7 @@ export interface FormDraft {
   dueAt?: string;
   /** Rodada em curso. Reabrir incrementa; as respostas antigas ficam na sua. */
   currentRound: number;
-  sections: FormSectionDraft[];
+  questions: FormQuestionDraft[];
 }
 
 /** Linha da listagem no bloco "Formulários" do DHO. */

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, ArrowLeft, Loader2, Lock, Plus, Save, Send, Trash2 } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Loader2, Lock, Plus, Save, Send } from "lucide-react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/app-shell";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +16,7 @@ import { saveForm } from "@/lib/forms/actions";
 import { useToast } from "@/providers/toast-provider";
 import { FORM_STATUS_LABEL } from "@/types/form";
 import type { RemovalImpact } from "@/lib/forms/rules";
-import type { FormDraft, FormQuestionDraft, FormSectionDraft } from "@/types/form";
+import type { FormDraft, FormQuestionDraft } from "@/types/form";
 
 export interface FormBuilderProps {
   /** Rascunho vindo do servidor. Vira estado local até "Salvar". */
@@ -57,13 +57,6 @@ export function FormBuilder({ initial }: FormBuilderProps) {
     setDraft((prev) => ({ ...prev, ...patch }));
   }
 
-  function patchSection(sectionId: string, patch: Partial<FormSectionDraft>) {
-    setDraft((prev) => ({
-      ...prev,
-      sections: prev.sections.map((s) => (s.id === sectionId ? { ...s, ...patch } : s)),
-    }));
-  }
-
   function newQuestion(order: number): FormQuestionDraft {
     return {
       id: crypto.randomUUID(),
@@ -75,108 +68,54 @@ export function FormBuilder({ initial }: FormBuilderProps) {
     };
   }
 
-  function addSection() {
+  function addQuestion() {
     setDraft((prev) => ({
       ...prev,
-      sections: [
-        ...prev.sections,
-        {
-          id: crypto.randomUUID(),
-          title: `Seção ${prev.sections.length + 1}`,
-          order: prev.sections.length,
-          questions: [newQuestion(0)],
-        },
-      ],
+      questions: [...prev.questions, newQuestion(prev.questions.length)],
     }));
   }
 
-  function removeSection(sectionId: string) {
+  function patchQuestion(questionId: string, patch: Partial<FormQuestionDraft>) {
     setDraft((prev) => ({
       ...prev,
-      sections: prev.sections
-        .filter((s) => s.id !== sectionId)
-        .map((s, i) => ({ ...s, order: i })),
+      questions: prev.questions.map((q) => (q.id === questionId ? { ...q, ...patch } : q)),
     }));
   }
 
-  function addQuestion(sectionId: string) {
+  function removeQuestion(questionId: string) {
     setDraft((prev) => ({
       ...prev,
-      sections: prev.sections.map((s) =>
-        s.id === sectionId
-          ? { ...s, questions: [...s.questions, newQuestion(s.questions.length)] }
-          : s,
-      ),
+      questions: prev.questions
+        .filter((q) => q.id !== questionId)
+        .map((q, i) => ({ ...q, order: i })),
     }));
   }
 
-  function patchQuestion(
-    sectionId: string,
-    questionId: string,
-    patch: Partial<FormQuestionDraft>,
-  ) {
-    setDraft((prev) => ({
-      ...prev,
-      sections: prev.sections.map((s) =>
-        s.id === sectionId
-          ? {
-              ...s,
-              questions: s.questions.map((q) => (q.id === questionId ? { ...q, ...patch } : q)),
-            }
-          : s,
-      ),
-    }));
+  function duplicateQuestion(questionId: string) {
+    setDraft((prev) => {
+      const at = prev.questions.findIndex((q) => q.id === questionId);
+      if (at < 0) return prev;
+      const original = prev.questions[at]!;
+      const copy: FormQuestionDraft = {
+        ...original,
+        id: crypto.randomUUID(),
+        options: original.options.map((o) => ({ ...o, id: crypto.randomUUID() })),
+      };
+      const questions = [...prev.questions];
+      questions.splice(at + 1, 0, copy);
+      return { ...prev, questions: questions.map((q, i) => ({ ...q, order: i })) };
+    });
   }
 
-  function removeQuestion(sectionId: string, questionId: string) {
-    setDraft((prev) => ({
-      ...prev,
-      sections: prev.sections.map((s) =>
-        s.id === sectionId
-          ? {
-              ...s,
-              questions: s.questions
-                .filter((q) => q.id !== questionId)
-                .map((q, i) => ({ ...q, order: i })),
-            }
-          : s,
-      ),
-    }));
-  }
-
-  function duplicateQuestion(sectionId: string, questionId: string) {
-    setDraft((prev) => ({
-      ...prev,
-      sections: prev.sections.map((s) => {
-        if (s.id !== sectionId) return s;
-        const at = s.questions.findIndex((q) => q.id === questionId);
-        if (at < 0) return s;
-        const original = s.questions[at]!;
-        const copy: FormQuestionDraft = {
-          ...original,
-          id: crypto.randomUUID(),
-          options: original.options.map((o) => ({ ...o, id: crypto.randomUUID() })),
-        };
-        const questions = [...s.questions];
-        questions.splice(at + 1, 0, copy);
-        return { ...s, questions: questions.map((q, i) => ({ ...q, order: i })) };
-      }),
-    }));
-  }
-
-  function moveQuestion(sectionId: string, questionId: string, delta: -1 | 1) {
-    setDraft((prev) => ({
-      ...prev,
-      sections: prev.sections.map((s) => {
-        if (s.id !== sectionId) return s;
-        const at = s.questions.findIndex((q) => q.id === questionId);
-        const to = at + delta;
-        if (at < 0 || to < 0 || to >= s.questions.length) return s;
-        const questions = [...s.questions];
-        [questions[at], questions[to]] = [questions[to]!, questions[at]!];
-        return { ...s, questions: questions.map((q, i) => ({ ...q, order: i })) };
-      }),
-    }));
+  function moveQuestion(questionId: string, delta: -1 | 1) {
+    setDraft((prev) => {
+      const at = prev.questions.findIndex((q) => q.id === questionId);
+      const to = at + delta;
+      if (at < 0 || to < 0 || to >= prev.questions.length) return prev;
+      const questions = [...prev.questions];
+      [questions[at], questions[to]] = [questions[to]!, questions[at]!];
+      return { ...prev, questions: questions.map((q, i) => ({ ...q, order: i })) };
+    });
   }
 
   function handleSave(confirmRemovals = false) {
@@ -197,8 +136,6 @@ export function FormBuilder({ initial }: FormBuilderProps) {
       error(res.error ?? "Não foi possível salvar o formulário.");
     });
   }
-
-  let questionNumber = 0;
 
   return (
     <AppShell eyebrow="DHO" title="Construtor de formulários">
@@ -244,75 +181,25 @@ export function FormBuilder({ initial }: FormBuilderProps) {
         />
       </div>
 
-      <div className="mt-4 space-y-4">
-        {draft.sections.map((section, si) => (
-          <section key={section.id} className="rounded-xl border border-border bg-surface-2/40 p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
-              <div className="min-w-0 flex-1">
-                <Input
-                  value={section.title}
-                  onChange={(e) => patchSection(section.id, { title: e.target.value })}
-                  placeholder={`Seção ${si + 1}`}
-                  aria-label={`Título da seção ${si + 1}`}
-                  disabled={locked}
-                  className="h-11 rounded-xl font-semibold"
-                />
-                <Input
-                  value={section.description ?? ""}
-                  onChange={(e) => patchSection(section.id, { description: e.target.value })}
-                  placeholder="Descrição da seção (opcional)"
-                  aria-label={`Descrição da seção ${si + 1}`}
-                  disabled={locked}
-                  className="mt-2 text-sm"
-                />
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => removeSection(section.id)}
-                aria-label={`Excluir seção ${si + 1}`}
-                disabled={locked || draft.sections.length <= 1}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {section.questions.map((question) => {
-                questionNumber += 1;
-                return (
-                  <QuestionEditor
-                    key={question.id}
-                    question={question}
-                    index={questionNumber}
-                    disabled={locked}
-                    onChange={(patch) => patchQuestion(section.id, question.id, patch)}
-                    onDuplicate={() => duplicateQuestion(section.id, question.id)}
-                    onDelete={() => removeQuestion(section.id, question.id)}
-                    onMoveUp={() => moveQuestion(section.id, question.id, -1)}
-                    onMoveDown={() => moveQuestion(section.id, question.id, 1)}
-                  />
-                );
-              })}
-            </div>
-
-            <Button
-              variant="secondary"
-              size="sm"
-              className="mt-3"
-              onClick={() => addQuestion(section.id)}
-              disabled={locked}
-            >
-              <Plus className="h-4 w-4" />
-              Adicionar pergunta
-            </Button>
-          </section>
+      <div className="mt-4 space-y-3">
+        {draft.questions.map((question, index) => (
+          <QuestionEditor
+            key={question.id}
+            question={question}
+            index={index + 1}
+            disabled={locked}
+            onChange={(patch) => patchQuestion(question.id, patch)}
+            onDuplicate={() => duplicateQuestion(question.id)}
+            onDelete={() => removeQuestion(question.id)}
+            onMoveUp={() => moveQuestion(question.id, -1)}
+            onMoveDown={() => moveQuestion(question.id, 1)}
+          />
         ))}
       </div>
 
-      <Button variant="secondary" className="mt-4" onClick={addSection} disabled={locked}>
+      <Button variant="secondary" className="mt-4" onClick={addQuestion} disabled={locked}>
         <Plus className="h-4 w-4" />
-        Adicionar seção
+        Adicionar pergunta
       </Button>
 
       {/* Barra de ações: fica ao alcance sem obrigar a rolar até o fim. */}

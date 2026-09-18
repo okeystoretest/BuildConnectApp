@@ -22,7 +22,7 @@ function form(questions: FormQuestionDraft[]): FormDraft {
     status: "PUBLICADO",
     anonymous: false,
     currentRound: 1,
-    sections: [{ id: "s1", title: "Seção", order: 0, questions }],
+    questions,
   };
 }
 

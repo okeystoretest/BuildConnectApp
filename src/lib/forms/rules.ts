@@ -62,7 +62,7 @@ export function removalImpact(
   },
   draft: FormDraft,
 ): RemovalImpact[] {
-  const questions = draft.sections.flatMap((s) => s.questions);
+  const questions = draft.questions;
   const keptQuestions = new Set(questions.map((q) => q.id));
   const keptOptions = new Set(questions.flatMap((q) => q.options.map((o) => o.id)));
 

@@ -62,24 +62,17 @@ function draftOf(formId: string, questionIds: string[]): FormDraft {
     status: "RASCUNHO",
     anonymous: false,
     currentRound: 1,
-    sections: [
-      {
-        id: `${formId}-s1`,
-        title: "Seção 1",
-        order: 0,
-        questions: questionIds.map((qid, i) => ({
-          id: `${formId}-${qid}`,
-          kind: "MULTIPLA_ESCOLHA",
-          label: `Pergunta ${qid}`,
-          required: false,
-          order: i,
-          options: [
-            { id: `${formId}-${qid}-a`, label: "Sim", order: 0 },
-            { id: `${formId}-${qid}-b`, label: "Não", order: 1 },
-          ],
-        })),
-      },
-    ],
+    questions: questionIds.map((qid, i) => ({
+      id: `${formId}-${qid}`,
+      kind: "MULTIPLA_ESCOLHA",
+      label: `Pergunta ${qid}`,
+      required: false,
+      order: i,
+      options: [
+        { id: `${formId}-${qid}-a`, label: "Sim", order: 0 },
+        { id: `${formId}-${qid}-b`, label: "Não", order: 1 },
+      ],
+    })),
   };
 }
 
@@ -110,13 +103,13 @@ test("editar formulário respondido PRESERVA as respostas das perguntas mantidas
   assert.ok(toFill, "o destinatário deve enxergar o formulário");
   const sent = await submitResponseFor(userId, {
     formId,
-    answers: toFill.sections[0]!.questions.map((q) => ({
+    answers: toFill.questions.map((q) => ({
       questionId: q.id,
       optionIds: [q.options[0]!.id],
     })),
   });
   assert.equal(sent.ok, true, sent.error);
-  assert.equal(await prisma.formAnswer.count({ where: { question: { section: { formId } } } }), 3);
+  assert.equal(await prisma.formAnswer.count({ where: { question: { formId } } }), 3);
 
   // Apaga a q3. As respostas de q1 e q2 têm de sobreviver — antes da reescrita,
   // o deleteMany levava as três.
@@ -127,7 +120,7 @@ test("editar formulário respondido PRESERVA as respostas das perguntas mantidas
   assert.equal(refused.removals?.[0]?.kind, "pergunta");
   assert.equal(refused.removals?.[0]?.affected, 1);
   assert.equal(
-    await prisma.formAnswer.count({ where: { question: { section: { formId } } } }),
+    await prisma.formAnswer.count({ where: { question: { formId } } }),
     3,
     "recusar não pode ter gravado nada",
   );
@@ -136,7 +129,7 @@ test("editar formulário respondido PRESERVA as respostas das perguntas mantidas
   assert.equal(saved.ok, true, saved.error);
 
   const left = await prisma.formAnswer.findMany({
-    where: { question: { section: { formId } } },
+    where: { question: { formId } },
     select: { questionId: true },
   });
   assert.equal(left.length, 2, "as duas perguntas mantidas conservam suas respostas");
@@ -162,20 +155,20 @@ test("renomear pergunta respondida não perde nada e não pede confirmação", a
     formId,
     answers: [
       {
-        questionId: toFill!.sections[0]!.questions[0]!.id,
-        optionIds: [toFill!.sections[0]!.questions[0]!.options[0]!.id],
+        questionId: toFill!.questions[0]!.id,
+        optionIds: [toFill!.questions[0]!.options[0]!.id],
       },
     ],
   });
 
   const renamed = draftOf(formId, ["q1"]);
-  renamed.sections[0]!.questions[0]!.label = "Enunciado novo";
+  renamed.questions[0]!.label = "Enunciado novo";
   const saved = await saveFormFor(ADMIN, { formId, draft: renamed });
   assert.equal(saved.ok, true, "renomear não destrói nada, então não pergunta");
 
-  assert.equal(await prisma.formAnswer.count({ where: { question: { section: { formId } } } }), 1);
+  assert.equal(await prisma.formAnswer.count({ where: { question: { formId } } }), 1);
   const q = await prisma.formQuestion.findFirst({
-    where: { section: { formId } },
+    where: { formId },
     select: { label: true },
   });
   assert.equal(q?.label, "Enunciado novo");
@@ -192,16 +185,16 @@ test("acrescentar pergunta a formulário respondido não mexe no que existe", as
     formId,
     answers: [
       {
-        questionId: toFill!.sections[0]!.questions[0]!.id,
-        optionIds: [toFill!.sections[0]!.questions[0]!.options[0]!.id],
+        questionId: toFill!.questions[0]!.id,
+        optionIds: [toFill!.questions[0]!.options[0]!.id],
       },
     ],
   });
 
   const grown = await saveFormFor(ADMIN, { formId, draft: draftOf(formId, ["q1", "q2"]) });
   assert.equal(grown.ok, true, grown.error);
-  assert.equal(await prisma.formQuestion.count({ where: { section: { formId } } }), 2);
-  assert.equal(await prisma.formAnswer.count({ where: { question: { section: { formId } } } }), 1);
+  assert.equal(await prisma.formQuestion.count({ where: { formId } }), 2);
+  assert.equal(await prisma.formAnswer.count({ where: { question: { formId } } }), 1);
 });
 
 // ─── Reabrir ───────────────────────────────────────────────────────────────
@@ -218,8 +211,8 @@ test("reabrir cria rodada nova sem apagar a anterior", async () => {
     formId,
     answers: [
       {
-        questionId: first!.sections[0]!.questions[0]!.id,
-        optionIds: [first!.sections[0]!.questions[0]!.options[0]!.id],
+        questionId: first!.questions[0]!.id,
+        optionIds: [first!.questions[0]!.options[0]!.id],
       },
     ],
   });
@@ -247,8 +240,8 @@ test("reabrir cria rodada nova sem apagar a anterior", async () => {
     formId,
     answers: [
       {
-        questionId: second.sections[0]!.questions[0]!.id,
-        optionIds: [second.sections[0]!.questions[0]!.options[1]!.id],
+        questionId: second.questions[0]!.id,
+        optionIds: [second.questions[0]!.options[1]!.id],
       },
     ],
   });
@@ -288,8 +281,8 @@ test("excluir formulário com respostas exige a palavra digitada", async () => {
     formId,
     answers: [
       {
-        questionId: toFill!.sections[0]!.questions[0]!.id,
-        optionIds: [toFill!.sections[0]!.questions[0]!.options[0]!.id],
+        questionId: toFill!.questions[0]!.id,
+        optionIds: [toFill!.questions[0]!.options[0]!.id],
       },
     ],
   });
@@ -309,7 +302,7 @@ test("excluir formulário com respostas exige a palavra digitada", async () => {
   assert.equal(await prisma.form.count({ where: { id: formId } }), 0);
   assert.equal(await prisma.formResponse.count({ where: { formId } }), 0);
   assert.equal(await prisma.formAssignment.count({ where: { formId } }), 0);
-  assert.equal(await prisma.formQuestion.count({ where: { section: { formId } } }), 0);
+  assert.equal(await prisma.formQuestion.count({ where: { formId } }), 0);
 });
 
 test("excluir formulário vazio não pede confirmação", async () => {
@@ -332,8 +325,8 @@ test("dois envios simultâneos gravam uma resposta só", async () => {
     formId,
     answers: [
       {
-        questionId: toFill!.sections[0]!.questions[0]!.id,
-        optionIds: [toFill!.sections[0]!.questions[0]!.options[0]!.id],
+        questionId: toFill!.questions[0]!.id,
+        optionIds: [toFill!.questions[0]!.options[0]!.id],
       },
     ],
   };

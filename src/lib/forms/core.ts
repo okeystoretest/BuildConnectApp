@@ -58,22 +58,14 @@ async function formInScope(formId: string, me: FormActor) {
  * É contra isto que o rascunho é comparado.
  */
 async function currentStructure(formId: string) {
-  const sections = await prisma.formSection.findMany({
+  const questions = await prisma.formQuestion.findMany({
     where: { formId },
-    select: {
-      id: true,
-      questions: {
-        select: { id: true, label: true, options: { select: { id: true, label: true } } },
-      },
-    },
+    select: { id: true, label: true, options: { select: { id: true, label: true } } },
   });
   return {
-    sectionIds: sections.map((s) => s.id),
-    questions: sections.flatMap((s) => s.questions.map((q) => ({ id: q.id, label: q.label }))),
-    options: sections.flatMap((s) =>
-      s.questions.flatMap((q) =>
-        q.options.map((o) => ({ id: o.id, questionId: q.id, label: o.label })),
-      ),
+    questions: questions.map((q) => ({ id: q.id, label: q.label })),
+    options: questions.flatMap((q) =>
+      q.options.map((o) => ({ id: o.id, questionId: q.id, label: o.label })),
     ),
   };
 }
@@ -91,7 +83,7 @@ async function costOfRemoving(
   current: Awaited<ReturnType<typeof currentStructure>>,
   draft: FormDraft,
 ) {
-  const questions = draft.sections.flatMap((s) => s.questions);
+  const questions = draft.questions;
   const keptQuestions = new Set(questions.map((q) => q.id));
   const keptOptions = new Set(questions.flatMap((q) => q.options.map((o) => o.id)));
 
@@ -109,7 +101,7 @@ async function costOfRemoving(
       doomedOptions.map(async (o) => ({
         ...o,
         chosen: await prisma.formAnswer.count({
-          where: { optionIds: { has: o.id }, question: { section: { formId } } },
+          where: { optionIds: { has: o.id }, question: { formId } },
         }),
       })),
     ),
@@ -138,10 +130,7 @@ export async function saveFormFor(
     return { ok: false, error: "Esta alteração apaga respostas.", removals };
   }
 
-  const draftSectionIds = new Set(draft.sections.map((s) => s.id));
-  const draftQuestions = draft.sections.flatMap((s) =>
-    s.questions.map((q, i) => ({ ...q, sectionId: s.id, position: i })),
-  );
+  const draftQuestions = draft.questions.map((q, i) => ({ ...q, position: i }));
   const draftQuestionIds = new Set(draftQuestions.map((q) => q.id));
   const draftOptionIds = new Set(draftQuestions.flatMap((q) => q.options.map((o) => o.id)));
 
@@ -151,32 +140,13 @@ export async function saveFormFor(
       data: { title: draft.title, description: draft.description || null },
     });
 
-    // A ordem abaixo não é arbitrária. Primeiro tudo que fica é criado ou
-    // atualizado NO LUGAR — é o que preserva as respostas das perguntas que
-    // sobreviveram, e é a diferença em relação ao apagar-e-recriar de antes.
-    // Só depois vem a remoção, e as seções por último: apagar uma seção antes
-    // de mover as perguntas dela levaria junto, pelo cascade, pergunta que o
-    // rascunho mantinha.
-    for (const [order, section] of draft.sections.entries()) {
-      const data = {
-        title: section.title,
-        description: section.description || null,
-        order,
-      };
-      await tx.formSection.upsert({
-        where: { id: section.id },
-        update: data,
-        // O id vem do rascunho, inclusive para os novos (crypto.randomUUID no
-        // cliente). Assim o próximo salvamento reconhece a linha em vez de
-        // recriá-la — que é o que faria a resposta se perder.
-        create: { id: section.id, formId: input.formId, ...data },
-      });
-    }
-
+    // Primeiro tudo que fica é criado ou atualizado NO LUGAR — é o que
+    // preserva as respostas das perguntas que sobreviveram. Só depois vem a
+    // remoção.
     for (const question of draftQuestions) {
       const isScale = question.kind === "ESCALA_LINEAR";
       const data = {
-        sectionId: question.sectionId,
+        formId: input.formId,
         kind: question.kind,
         label: question.label,
         helpText: question.helpText || null,
@@ -210,11 +180,6 @@ export async function saveFormFor(
     const goneQuestions = current.questions.filter((q) => !draftQuestionIds.has(q.id));
     if (goneQuestions.length > 0) {
       await tx.formQuestion.deleteMany({ where: { id: { in: goneQuestions.map((q) => q.id) } } });
-    }
-
-    const goneSections = current.sectionIds.filter((id) => !draftSectionIds.has(id));
-    if (goneSections.length > 0) {
-      await tx.formSection.deleteMany({ where: { id: { in: goneSections } } });
     }
   });
 
@@ -330,8 +295,8 @@ export async function reopenFormFor(me: FormActor, formId: string): Promise<Core
 export const DELETE_CONFIRMATION = "APAGAR";
 
 /**
- * Excluir é definitivo e leva tudo: o cascade do schema arrasta seções,
- * perguntas, opções, atribuições e respostas. Uma linha apaga a árvore inteira
+ * Excluir é definitivo e leva tudo: o cascade do schema arrasta perguntas,
+ * opções, atribuições e respostas. Uma linha apaga a árvore inteira
  * — e é por isso que o freio, quando há respostas, é digitado e não clicado.
  */
 export async function deleteFormFor(

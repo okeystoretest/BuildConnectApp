@@ -1180,7 +1180,7 @@ model Form {
   // foram dadas, e é assim que o resultado antigo continua consultável.
   currentRound Int @default(1)
 
-  sections    FormSection[]
+  questions   FormQuestion[]
   assignments FormAssignment[]
   responses   FormResponse[]
 
@@ -1191,23 +1191,12 @@ model Form {
   @@index([ownerSectorId])
 }
 
-model FormSection {
-  id          String  @id @default(cuid())
-  formId      String
-  form        Form    @relation(fields: [formId], references: [id], onDelete: Cascade)
-  title       String
-  description String?
-  order       Int     @default(0)
-
-  questions FormQuestion[]
-
-  @@index([formId, order])
-}
-
 model FormQuestion {
   id        String           @id @default(cuid())
-  sectionId String
-  section   FormSection      @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  // Liga direto ao formulário. Seções saíram em 18/09/2026: o construtor do
+  // DHO é uma lista única de perguntas, e a resposta é uma página só.
+  formId    String
+  form      Form             @relation(fields: [formId], references: [id], onDelete: Cascade)
   kind      FormQuestionKind
   label     String
   helpText  String?
@@ -1223,7 +1212,7 @@ model FormQuestion {
   options FormOption[]
   answers FormAnswer[]
 
-  @@index([sectionId, order])
+  @@index([formId, order])
 }
 
 model FormOption {

@@ -114,7 +114,7 @@ export function validateSubmission(
   form: FormDraft,
   answers: readonly FormAnswerInput[],
 ): ValidationResult {
-  const questions = form.sections.flatMap((s) => s.questions);
+  const questions = form.questions;
   const known = new Set(questions.map((q) => q.id));
 
   const seen = new Set<string>();

@@ -31,14 +31,9 @@ export async function assignedFormFor(
   const form = await prisma.form.findUnique({
     where: { id: formId },
     include: {
-      sections: {
+      questions: {
         orderBy: { order: "asc" },
-        include: {
-          questions: {
-            orderBy: { order: "asc" },
-            include: { options: { orderBy: { order: "asc" } } },
-          },
-        },
+        include: { options: { orderBy: { order: "asc" } } },
       },
     },
   });
@@ -53,24 +48,18 @@ export async function assignedFormFor(
     anonymous: form.anonymous,
     dueAt: form.dueAt?.toISOString(),
     currentRound: form.currentRound,
-    sections: form.sections.map((s) => ({
-      id: s.id,
-      title: s.title,
-      description: s.description ?? undefined,
-      order: s.order,
-      questions: s.questions.map((q) => ({
-        id: q.id,
-        kind: q.kind as FormQuestionKind,
-        label: q.label,
-        helpText: q.helpText ?? undefined,
-        required: q.required,
-        order: q.order,
-        options: q.options.map((o) => ({ id: o.id, label: o.label, order: o.order })),
-        scaleMin: q.scaleMin ?? undefined,
-        scaleMax: q.scaleMax ?? undefined,
-        scaleMinLabel: q.scaleMinLabel ?? undefined,
-        scaleMaxLabel: q.scaleMaxLabel ?? undefined,
-      })),
+    questions: form.questions.map((q) => ({
+      id: q.id,
+      kind: q.kind as FormQuestionKind,
+      label: q.label,
+      helpText: q.helpText ?? undefined,
+      required: q.required,
+      order: q.order,
+      options: q.options.map((o) => ({ id: o.id, label: o.label, order: o.order })),
+      scaleMin: q.scaleMin ?? undefined,
+      scaleMax: q.scaleMax ?? undefined,
+      scaleMinLabel: q.scaleMinLabel ?? undefined,
+      scaleMaxLabel: q.scaleMaxLabel ?? undefined,
     })),
   };
 }

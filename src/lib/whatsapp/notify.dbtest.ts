@@ -39,21 +39,14 @@ function draft(formId: string): FormDraft {
     status: "RASCUNHO",
     anonymous: false,
     currentRound: 1,
-    sections: [
+    questions: [
       {
-        id: `${formId}-s`,
-        title: "S",
+        id: `${formId}-q`,
+        kind: "MULTIPLA_ESCOLHA",
+        label: "P",
+        required: false,
         order: 0,
-        questions: [
-          {
-            id: `${formId}-q`,
-            kind: "MULTIPLA_ESCOLHA",
-            label: "P",
-            required: false,
-            order: 0,
-            options: [{ id: `${formId}-o`, label: "Sim", order: 0 }],
-          },
-        ],
+        options: [{ id: `${formId}-o`, label: "Sim", order: 0 }],
       },
     ],
   };
