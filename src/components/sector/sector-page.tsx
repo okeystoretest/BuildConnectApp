@@ -137,7 +137,6 @@ export function SectorPage({
   }, []);
   const [query, setQuery] = useState("");
   const [view, setView] = useState<ViewMode>("grid");
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [activeFilters, setActiveFilters] = useState<readonly string[]>([]);
   const [page, setPage] = useState(1);
   const [photoModalOpen, setPhotoModalOpen] = useState(false);
@@ -192,20 +191,16 @@ export function SectorPage({
   );
   const shownVideos = instrucoes ? videoPage.items : filteredVideos;
 
+  // As pílulas ficam sempre à vista (pedido de 18/09/2026): sem botão para
+  // abri-las e sem restrição de papel. Sem tag em uso, não há nada a mostrar.
   const filterBar =
-    filterable && filtersOpen ? (
-      filters.length > 0 ? (
-        <FilterPills
-          filters={filters}
-          onChange={() => {}}
-          active={activeFilters}
-          onToggle={toggleFilter}
-        />
-      ) : (
-        <p className="text-xs text-muted">
-          Nenhum filtro ainda. Os filtros nascem das tags atribuídas na edição de cada vídeo.
-        </p>
-      )
+    filterable && filters.length > 0 ? (
+      <FilterPills
+        filters={filters}
+        onChange={() => {}}
+        active={activeFilters}
+        onToggle={toggleFilter}
+      />
     ) : null;
 
   return (
@@ -256,9 +251,6 @@ export function SectorPage({
               placeholder={activeId === "workshop" ? "Buscar workshop" : "Buscar vídeo"}
               view={view}
               onViewChange={setView}
-              showFilter={filterable}
-              filtersOpen={filtersOpen}
-              onToggleFilters={() => setFiltersOpen((v) => !v)}
             />
             {filterBar}
 

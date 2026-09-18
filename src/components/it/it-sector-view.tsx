@@ -65,7 +65,6 @@ export function ItSectorView({
   const [view, setView] = useState<ViewMode>("grid");
   const [videoModalOpen, setVideoModalOpen] = useState(false);
   const [docModalOpen, setDocModalOpen] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [activeFilters, setActiveFilters] = useState<readonly string[]>([]);
   const [page, setPage] = useState(1);
   const [linkModalOpen, setLinkModalOpen] = useState(false);
@@ -162,24 +161,15 @@ export function ItSectorView({
               placeholder="Buscar vídeo"
               view={view}
               onViewChange={setView}
-              showFilter
-              filtersOpen={filtersOpen}
-              onToggleFilters={() => setFiltersOpen((v) => !v)}
             />
-            {filtersOpen &&
-              (filters.length > 0 ? (
-                <FilterPills
-                  filters={filters}
-                  onChange={() => {}}
-                  active={activeFilters}
-                  onToggle={toggleFilter}
-                />
-              ) : (
-                <p className="text-xs text-muted">
-                  Nenhum filtro ainda. Os filtros nascem das tags atribuídas na edição de cada
-                  vídeo.
-                </p>
-              ))}
+            {filters.length > 0 && (
+              <FilterPills
+                filters={filters}
+                onChange={() => {}}
+                active={activeFilters}
+                onToggle={toggleFilter}
+              />
+            )}
             {filteredVideos.length === 0 ? (
               <EmptyState
                 title="Nenhum vídeo encontrado"

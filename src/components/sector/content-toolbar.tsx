@@ -1,8 +1,7 @@
 "use client";
 
-import { LayoutGrid, List, Search, SlidersHorizontal } from "lucide-react";
+import { LayoutGrid, List, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useRole } from "@/providers/role-provider";
 
 export type ViewMode = "grid" | "list";
 
@@ -12,10 +11,6 @@ export interface ContentToolbarProps {
   placeholder: string;
   view: ViewMode;
   onViewChange: (view: ViewMode) => void;
-  /** Habilita o botão de filtro; a visibilidade final depende do papel. */
-  showFilter?: boolean;
-  filtersOpen?: boolean;
-  onToggleFilters?: () => void;
 }
 
 export function ContentToolbar({
@@ -24,14 +19,7 @@ export function ContentToolbar({
   placeholder,
   view,
   onViewChange,
-  showFilter = false,
-  filtersOpen = false,
-  onToggleFilters,
 }: ContentToolbarProps) {
-  const { can } = useRole();
-  // Filtro é ferramenta de gestão: Colaborador não vê.
-  const canFilter = showFilter && can("content.upload");
-
   return (
     <div className="flex flex-wrap items-center gap-2">
       <div className="relative min-w-0 flex-1 sm:max-w-xs">
@@ -65,23 +53,6 @@ export function ContentToolbar({
           </button>
         ))}
       </div>
-
-      {canFilter && (
-        <button
-          type="button"
-          onClick={onToggleFilters}
-          aria-pressed={filtersOpen}
-          className={cn(
-            "focus-ring flex h-10 items-center gap-2 rounded-lg border px-3 text-sm transition-colors",
-            filtersOpen
-              ? "border-primary bg-primary/10 text-primary"
-              : "border-border bg-surface text-muted hover:text-foreground",
-          )}
-        >
-          <SlidersHorizontal className="h-4 w-4" />
-          Filtro
-        </button>
-      )}
     </div>
   );
 }
