@@ -132,12 +132,13 @@ export async function getSectorContent(
     filePath: p.filePath,
   }));
 
-  const documents: DocumentItem[] = sub.documents.map((d: { id: string; name: string; sizeBytes: number; kind: DocumentItem["kind"]; tags: string[] }) => ({
+  const documents: DocumentItem[] = sub.documents.map((d: { id: string; name: string; sizeBytes: number; kind: DocumentItem["kind"]; tags: string[]; filePath: string }) => ({
     id: d.id,
     name: d.name,
     size: formatBytes(d.sizeBytes),
     kind: d.kind,
     tags: d.tags,
+    filePath: d.filePath,
   }));
 
   const links: LinkItem[] = linkRows.map(

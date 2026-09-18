@@ -36,20 +36,32 @@ export function DocumentGrid({ documents }: { documents: readonly DocumentItem[]
           </div>
 
           <div className="mt-4 flex gap-2">
-            <button
-              type="button"
-              className="focus-ring flex h-9 flex-1 items-center justify-center gap-2 rounded-lg bg-surface-2 text-xs text-foreground transition-colors hover:bg-surface-3"
-            >
-              <Eye className="h-3.5 w-3.5" />
-              Visualizar
-            </button>
-            <button
-              type="button"
+            {/* Só o PDF abre no navegador. Office (DOCX/XLSX/PPTX) não
+                renderiza sem serviço externo, e mandar o arquivo para um
+                visualizador de terceiros exporia o acervo — então só baixa. */}
+            {doc.kind === "PDF" && (
+              <a
+                href={doc.filePath}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="focus-ring flex h-9 flex-1 items-center justify-center gap-2 rounded-lg bg-surface-2 text-xs text-foreground transition-colors hover:bg-surface-3"
+              >
+                <Eye className="h-3.5 w-3.5" />
+                Visualizar
+              </a>
+            )}
+            <a
+              href={doc.filePath}
+              download
               aria-label={`Baixar ${doc.name}`}
-              className="focus-ring flex h-9 w-9 items-center justify-center rounded-lg bg-primary/15 text-primary transition-colors hover:bg-primary/25"
+              className={cn(
+                "focus-ring flex h-9 items-center justify-center gap-2 rounded-lg bg-primary/15 text-xs text-primary transition-colors hover:bg-primary/25",
+                doc.kind === "PDF" ? "w-9" : "flex-1",
+              )}
             >
               <Download className="h-3.5 w-3.5" />
-            </button>
+              {doc.kind !== "PDF" && "Baixar"}
+            </a>
           </div>
         </article>
       ))}

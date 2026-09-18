@@ -54,6 +54,8 @@ export interface DocumentItem {
   size: string;
   kind: FileKind;
   tags?: readonly string[];
+  /** Caminho público do arquivo, para visualizar/baixar. */
+  filePath: string;
 }
 
 /** Atalho de plataforma exibido na aba "Aplicativos". */
