@@ -176,6 +176,7 @@ model Subsector {
   documents Document[]
   links     ExternalLink[]
   posts     ContentPost[]
+  sharedVideos VideoShare[]
 
   members      UserSubsector[]
   welcomeViews SubsectorWelcomeView[]
@@ -344,10 +345,32 @@ model Video {
 
   progress       ContentProgress[]
   comprehensions VideoComprehension[]
+  // Subsetores que também enxergam este vídeo. Mesma linha, mesmo arquivo:
+  // compartilhar não duplica nada em disco. Só ADMIN cria e remove.
+  shares VideoShare[]
 
   createdAt DateTime @default(now())
 
   @@index([subsectorId, kind, order])
+}
+
+/**
+ * Vídeo de UM subsetor visível em OUTRO. A linha é só a permissão de leitura:
+ * quem edita e exclui continua sendo o subsetor dono (Video.subsectorId), e
+ * o cascade dos dois lados garante que não sobra share de vídeo ou de
+ * subsetor apagado. Não entra no progresso do destino (ver lib/progress-*).
+ */
+model VideoShare {
+  videoId String
+  video   Video  @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  subsectorId String
+  subsector   Subsector @relation(fields: [subsectorId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@id([videoId, subsectorId])
+  @@index([subsectorId])
 }
 
 model Photo {

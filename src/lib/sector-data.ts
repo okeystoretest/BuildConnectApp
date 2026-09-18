@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { formatBytes } from "@/lib/utils";
 import { resolveAppScope } from "@/lib/app-scope";
 import { sortInstrucoes } from "@/lib/instrucoes-video";
+import { mergeSharedVideos } from "@/lib/video-share";
 import type {
   ComprehensionStatus,
   SectorContent,
@@ -36,13 +37,21 @@ export async function getSectorContent(
     where: { slug },
     include: {
       sector: { select: { label: true } },
-      videos: { orderBy: { order: "asc" } },
+      videos: { orderBy: { order: "asc" }, include: { shares: { select: { subsectorId: true } } } },
       photos: { orderBy: { order: "asc" } },
       documents: { orderBy: { order: "asc" } },
     },
   });
 
   if (!sub) return null;
+
+  // Vídeos que outros subsetores compartilharam com este. Só INSTRUCAO faz
+  // sentido aqui (a tela de edição só oferece o compartilhamento nessa aba),
+  // mas o filtro é por segurança: uma vitrine não deve receber Workshop.
+  const sharedRows = await prisma.videoShare.findMany({
+    where: { subsectorId: sub.id, video: { kind: "INSTRUCAO" } },
+    select: { video: { include: { subsector: { select: { label: true } } } } },
+  });
 
   // Aplicativos vêm do subsetor de ESCOPO: com herança configurada, Marketing
   // lista exatamente os mesmos atalhos de Vendas, sem cópia de registro.
@@ -54,20 +63,22 @@ export async function getSectorContent(
   });
 
   // Estado do usuário: o que já concluiu (ou chegou ao fim) neste subsetor, e
-  // as respostas de compreensão que já enviou.
+  // as respostas de compreensão que já enviou. Os compartilhados entram aqui
+  // também: o usuário assiste e responde a partir deste subsetor.
+  const videoIds = [...sub.videos.map((v) => v.id), ...sharedRows.map((r) => r.video.id)];
   const [progress, comprehensions] = await Promise.all([
     prisma.contentProgress.findMany({
       where: {
         userId,
         OR: [
-          { video: { subsectorId: sub.id } },
+          { videoId: { in: videoIds } },
           { document: { subsectorId: sub.id } },
         ],
       },
       select: { videoId: true, documentId: true, completed: true, endedAt: true },
     }),
     prisma.videoComprehension.findMany({
-      where: { userId, video: { subsectorId: sub.id } },
+      where: { userId, videoId: { in: videoIds } },
       select: { videoId: true, gradedAt: true },
     }),
   ]);
@@ -87,10 +98,10 @@ export async function getSectorContent(
     comprehensionOf.set(c.videoId, c.gradedAt ? "AVALIADA" : "ENVIADA");
   }
 
-  // Vídeos separados por tipo (VIDEO/INSTRUCAO vão para "videos"; WORKSHOP à parte).
-  const videos: VideoItem[] = [];
-  const workshops: VideoItem[] = [];
-  for (const v of sub.videos as Array<{
+  // A mesma linha de Video vira VideoItem tanto para os próprios quanto para
+  // os compartilhados — só o que se acrescenta depois (sharedWith/sharedFrom)
+  // muda de um lado para o outro.
+  type VideoRow = {
     id: string;
     title: string;
     isNew: boolean;
@@ -100,29 +111,40 @@ export async function getSectorContent(
     thumbnailPath: string | null;
     transcriptPath: string | null;
     transcriptText: string | null;
-  }>) {
-    const item: VideoItem = {
-      id: v.id,
-      title: v.title,
-      watched: doneVideo.has(v.id),
-      ended: endedVideo.has(v.id),
-      comprehension: comprehensionOf.get(v.id),
-      isNew: v.isNew,
-      tags: v.tags,
-      filePath: v.filePath ?? undefined,
-      thumbnailPath: v.thumbnailPath ?? undefined,
-      transcriptPath: v.transcriptPath ?? undefined,
-      transcriptText: v.transcriptText ?? undefined,
-    };
+  };
+  const toItem = (v: VideoRow): VideoItem => ({
+    id: v.id,
+    title: v.title,
+    watched: doneVideo.has(v.id),
+    ended: endedVideo.has(v.id),
+    comprehension: comprehensionOf.get(v.id),
+    isNew: v.isNew,
+    tags: v.tags,
+    filePath: v.filePath ?? undefined,
+    thumbnailPath: v.thumbnailPath ?? undefined,
+    transcriptPath: v.transcriptPath ?? undefined,
+    transcriptText: v.transcriptText ?? undefined,
+  });
+
+  // Vídeos separados por tipo (VIDEO/INSTRUCAO vão para "videos"; WORKSHOP à parte).
+  const videos: VideoItem[] = [];
+  const workshops: VideoItem[] = [];
+  for (const v of sub.videos as Array<VideoRow & { shares: { subsectorId: string }[] }>) {
+    const item = { ...toItem(v), sharedWith: v.shares.map((s) => s.subsectorId) };
     if (v.kind === "WORKSHOP") workshops.push(item);
     else videos.push(item);
   }
+  const shared: VideoItem[] = sharedRows.map((r) => ({
+    ...toItem(r.video as VideoRow),
+    sharedFrom: (r.video as { subsector: { label: string } }).subsector.label,
+  }));
+  const allVideos = mergeSharedVideos(videos, shared);
 
   // Instruções em Vídeo listam em ordem alfabética; Coleção e Workshop
   // (VIDEO) seguem a ordem de envio. O `kind` está no registro, não no item,
   // então a decisão é tomada aqui, onde ele ainda existe.
   const instrucoes = sub.kind === "PADRAO";
-  const orderedVideos = instrucoes ? sortInstrucoes(videos) : videos;
+  const orderedVideos = instrucoes ? sortInstrucoes(allVideos) : allVideos;
 
   const photos: PhotoItem[] = sub.photos.map((p: { id: string; title: string; filePath: string }) => ({
     id: p.id,
@@ -152,8 +174,12 @@ export async function getSectorContent(
 
   // Conclusão da área: concluídos ÷ total (vídeos + documentos). Vitrine não
   // tem conclusão — é visualização casual.
+  // Compartilhados não entram: o progresso é do subsetor dono. Como
+  // `doneVideo` também cobre os compartilhados (para o card mostrar o estado),
+  // o numerador conta só os vídeos próprios — senão passaria do total.
   const total = sub.videos.length + sub.documents.length;
-  const done = doneVideo.size + doneDoc.size;
+  const doneOwnVideos = sub.videos.filter((v) => doneVideo.has(v.id)).length;
+  const done = doneOwnVideos + doneDoc.size;
   const completion =
     sub.kind === "VITRINE" ? null : total === 0 ? 0 : Math.round((done / total) * 100);
 

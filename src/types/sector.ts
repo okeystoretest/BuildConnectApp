@@ -36,6 +36,13 @@ export interface VideoItem {
   transcriptText?: string;
   /** Caminho público do arquivo de transcrição enviado. */
   transcriptPath?: string;
+  /**
+   * Rótulo do subsetor dono, presente só quando o vídeo chegou aqui por
+   * compartilhamento. Com ele, o card não oferece editar nem excluir.
+   */
+  sharedFrom?: string;
+  /** Ids dos subsetores que recebem este vídeo. Presente só no subsetor dono. */
+  sharedWith?: readonly string[];
 }
 
 export interface PhotoItem {
