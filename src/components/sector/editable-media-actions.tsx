@@ -10,6 +10,8 @@ export interface EditableMediaActionsProps {
   suggestions?: readonly string[];
   /** Presente só para vídeos: habilita o campo de transcrição na edição. */
   transcript?: { hasCurrent: boolean };
+  /** Presente só para Instruções em Vídeo: habilita "Compartilhar com" (ADMIN). */
+  sharing?: { slug: string; current: readonly string[] };
   variant?: "overlay" | "inline";
   className?: string;
   /** true enquanto `onSave` roda no servidor; o modal fica aberto e travado. */
@@ -31,6 +33,7 @@ export function EditableMediaActions({
   tags = [],
   suggestions = [],
   transcript,
+  sharing,
   variant = "overlay",
   className,
   saving,
@@ -60,6 +63,7 @@ export function EditableMediaActions({
         initial={{ title, tags }}
         suggestions={suggestions}
         transcript={transcript}
+        sharing={sharing}
         saving={saving}
         serverError={saveError}
         onSave={(value) => onSave?.(value)}

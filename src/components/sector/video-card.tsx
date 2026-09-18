@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Play, Captions, MessageSquareText } from "lucide-react";
+import { Play, Captions, MessageSquareText, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EditableMediaActions } from "./editable-media-actions";
 import type { MediaEditValue } from "./media-edit-modal";
@@ -73,6 +73,22 @@ function TranscriptBadge({ video, className }: { video: VideoItem; className?: s
   );
 }
 
+/** Vídeo que chegou por compartilhamento: mostra de onde veio. */
+function SharedBadge({ video, className }: { video: VideoItem; className?: string }) {
+  if (!video.sharedFrom) return null;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-md border border-border bg-surface-2 px-2 py-0.5 text-[10px] font-medium text-muted",
+        className,
+      )}
+      title={`Compartilhado por ${video.sharedFrom}`}
+    >
+      <Share2 className="h-3 w-3" /> {video.sharedFrom}
+    </span>
+  );
+}
+
 /** Miniatura do vídeo; sem ela, o placeholder listrado de sempre. */
 function Thumbnail({ video, className }: { video: VideoItem; className?: string }) {
   if (!video.thumbnailPath) return null;
@@ -88,16 +104,25 @@ function Thumbnail({ video, className }: { video: VideoItem; className?: string 
 }
 
 /**
- * Salvar (título, tags, transcrição) e excluir, ligados ao servidor.
- * Compartilhado pelo card e pela linha da lista.
+ * Salvar (título, tags, transcrição, compartilhamento) e excluir, ligados ao
+ * servidor. Compartilhado pelo card e pela linha da lista.
  */
-function useVideoAdmin(slug: string, video: VideoItem) {
+function useVideoAdmin(slug: string, video: VideoItem, sharing: boolean) {
   const router = useRouter();
   const toast = useToast();
   const upload = useUploadProgress();
   const [editing, setEditing] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [deleting, startDelete] = useTransition();
+
+  // Só Instruções compartilham (o servidor filtra por INSTRUCAO). O card
+  // não sabe o kind; `comprehension` é o que identifica a aba. Passado
+  // como parâmetro acima. Memoizado: o modal recarrega a lista de destinos
+  // quando este objeto muda, e ele não deve mudar a cada render do card.
+  const sharingProps = useMemo(
+    () => (sharing ? { slug, current: video.sharedWith ?? [] } : undefined),
+    [sharing, slug, video.sharedWith],
+  );
 
   async function save(value: MediaEditValue) {
     setSaveError(null);
@@ -106,6 +131,7 @@ function useVideoAdmin(slug: string, video: VideoItem) {
     fd.set("id", video.id);
     fd.set("title", value.title);
     for (const tag of value.tags) fd.append("tags", tag);
+    for (const sid of value.shareWith ?? []) fd.append("shareWith", sid);
     fd.set("transcriptMode", value.transcriptMode ?? "keep");
     if (value.transcriptMode === "replace" && value.transcriptFile) {
       fd.set("transcriptFile", value.transcriptFile);
@@ -136,6 +162,7 @@ function useVideoAdmin(slug: string, video: VideoItem) {
     title: video.title,
     tags: video.tags,
     transcript: { hasCurrent: Boolean(video.transcriptText?.trim()) },
+    sharing: sharingProps,
     saving: upload.busy,
     saveError,
     editing,
@@ -181,7 +208,7 @@ function usePlayer() {
 
 export function VideoCard({ slug, video, suggestions, comprehension = false }: VideoCardProps) {
   const player = usePlayer();
-  const { deleting, ...admin } = useVideoAdmin(slug, video);
+  const { deleting, ...admin } = useVideoAdmin(slug, video, comprehension);
 
   return (
     <>
@@ -191,7 +218,8 @@ export function VideoCard({ slug, video, suggestions, comprehension = false }: V
           deleting && "pointer-events-none opacity-50",
         )}
       >
-        <EditableMediaActions {...admin} suggestions={suggestions} />
+        {/* Vídeo compartilhado: quem edita e exclui é o subsetor dono. */}
+        {!video.sharedFrom && <EditableMediaActions {...admin} suggestions={suggestions} />}
 
         {/* Irmão do botão de play, não filho: <button> dentro de <button> é
             HTML inválido e o React avisa no console. */}
@@ -214,6 +242,7 @@ export function VideoCard({ slug, video, suggestions, comprehension = false }: V
 
         <div className="flex items-center justify-between gap-2 p-3.5">
           <h3 className="truncate text-sm font-medium text-foreground">{video.title}</h3>
+          <SharedBadge video={video} className="shrink-0" />
           <TranscriptBadge video={video} className="shrink-0" />
         </div>
       </article>
@@ -232,7 +261,7 @@ export function VideoCard({ slug, video, suggestions, comprehension = false }: V
 
 export function VideoListRow({ slug, video, suggestions, comprehension = false }: VideoCardProps) {
   const player = usePlayer();
-  const { deleting, ...admin } = useVideoAdmin(slug, video);
+  const { deleting, ...admin } = useVideoAdmin(slug, video, comprehension);
 
   return (
     <>
@@ -254,16 +283,22 @@ export function VideoListRow({ slug, video, suggestions, comprehension = false }
 
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-sm font-medium text-foreground">{video.title}</h3>
-          <TranscriptBadge video={video} className="mt-1" />
+          <div className="flex items-center">
+            <SharedBadge video={video} className="mt-1 mr-2" />
+            <TranscriptBadge video={video} className="mt-1" />
+          </div>
         </div>
 
         <WatchBadge video={video} comprehension={comprehension} onAnswer={player.answer} />
 
-        <EditableMediaActions
-          {...admin}
-          suggestions={suggestions}
-          className="!top-1/2 !-translate-y-1/2 !bg-transparent"
-        />
+        {/* Vídeo compartilhado: quem edita e exclui é o subsetor dono. */}
+        {!video.sharedFrom && (
+          <EditableMediaActions
+            {...admin}
+            suggestions={suggestions}
+            className="!top-1/2 !-translate-y-1/2 !bg-transparent"
+          />
+        )}
       </article>
 
       <VideoModal

@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Captions, Loader2, Plus, Upload, X } from "lucide-react";
+import { Captions, Loader2, Plus, Share2, Upload, X } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MAX_BYTES, maxMb, validateUploadSizes } from "@/lib/storage/limits";
+import { useRole } from "@/providers/role-provider";
+import { listVideoShareTargets } from "@/lib/sector-actions";
 
 /** O que fazer com a transcrição ao salvar. */
 export type TranscriptMode = "keep" | "replace" | "remove";
@@ -17,6 +19,8 @@ export interface MediaEditValue {
   /** Só existe quando o modal foi aberto com `transcript`. */
   transcriptMode?: TranscriptMode;
   transcriptFile?: File | null;
+  /** Só existe quando o modal foi aberto com `sharing`. */
+  shareWith?: readonly string[];
 }
 
 export interface MediaEditModalProps {
@@ -30,6 +34,11 @@ export interface MediaEditModalProps {
    * diz se o vídeo já tem uma, para oferecer "substituir" e "remover".
    */
   transcript?: { hasCurrent: boolean };
+  /**
+   * Presente só para vídeos de Instruções: habilita "Compartilhar com".
+   * `current` são os ids dos subsetores que já recebem o vídeo.
+   */
+  sharing?: { slug: string; current: readonly string[] };
   /** true enquanto o salvamento roda — trava os botões e o fechar. */
   saving?: boolean;
   /** Erro vindo do servidor, exibido dentro do modal. */
@@ -51,6 +60,7 @@ export function MediaEditModal({
   initial,
   suggestions = [],
   transcript,
+  sharing,
   saving = false,
   serverError = null,
   onSave,
@@ -63,6 +73,12 @@ export function MediaEditModal({
   const [transcriptFile, setTranscriptFile] = useState<File | null>(null);
   const transcriptInputRef = useRef<HTMLInputElement>(null);
 
+  const { role } = useRole();
+  const canShare = Boolean(sharing) && role === "ADMIN";
+  const [targets, setTargets] = useState<{ id: string; label: string; sector: string }[]>([]);
+  const [shareWith, setShareWith] = useState<readonly string[]>(sharing?.current ?? []);
+  const [loadingTargets, setLoadingTargets] = useState(false);
+
   // Recarrega ao abrir sobre outro item.
   useEffect(() => {
     if (open) {
@@ -74,6 +90,25 @@ export function MediaEditModal({
       setTranscriptFile(null);
     }
   }, [open, initial.title, initial.tags]);
+
+  // A lista de subsetores vem do servidor ao abrir, e só para quem pode
+  // compartilhar: o modal serve a todo card e não deve puxar isso à toa.
+  useEffect(() => {
+    if (!open || !canShare || !sharing) return;
+    setShareWith(sharing.current);
+    let alive = true;
+    setLoadingTargets(true);
+    void listVideoShareTargets(sharing.slug)
+      .then((rows) => alive && setTargets(rows))
+      .finally(() => alive && setLoadingTargets(false));
+    return () => {
+      alive = false;
+    };
+  }, [open, canShare, sharing]);
+
+  function toggleShare(id: string) {
+    setShareWith((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
 
   function addTag(value: string) {
     const clean = value.trim();
@@ -110,6 +145,7 @@ export function MediaEditModal({
       title: title.trim(),
       tags,
       ...(transcript ? { transcriptMode, transcriptFile } : {}),
+      ...(canShare ? { shareWith } : {}),
     });
     // Quem salva no servidor fecha o modal quando terminar; sem servidor
     // (documentos, por ora), fecha aqui mesmo.
@@ -133,9 +169,11 @@ export function MediaEditModal({
       dismissible={!saving}
       title="Editar conteúdo"
       description={
-        transcript
-          ? "Altere o título, os filtros e a transcrição."
-          : "Altere o título e as tags de filtragem."
+        canShare
+          ? "Altere o título, os filtros, a transcrição e com quem o vídeo é compartilhado."
+          : transcript
+            ? "Altere o título, os filtros e a transcrição."
+            : "Altere o título e as tags de filtragem."
       }
       className="max-w-lg"
       footer={
@@ -278,6 +316,47 @@ export function MediaEditModal({
             <p className="mt-1.5 text-[11px] text-muted">
               TXT, MD, VTT ou SRT, até {maxMb("transcript")} MB. O texto aparece ao lado do player.
             </p>
+          </div>
+        )}
+
+        {canShare && (
+          <div>
+            <Label>Compartilhar com outros setores</Label>
+            <p className="mb-2 text-[11px] text-muted">
+              O mesmo arquivo passa a aparecer nas Instruções em Vídeo dos setores marcados. Só
+              este setor edita ou exclui.
+            </p>
+            {loadingTargets ? (
+              <p className="text-xs text-muted">Carregando setores…</p>
+            ) : targets.length === 0 ? (
+              <p className="text-xs text-muted">Nenhum outro setor disponível.</p>
+            ) : (
+              <div className="scrollbar-slim max-h-48 space-y-1 overflow-y-auto rounded-xl border border-border bg-surface-2 p-2">
+                {targets.map((t) => (
+                  <label
+                    key={t.id}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-foreground hover:bg-surface-3"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={shareWith.includes(t.id)}
+                      onChange={() => toggleShare(t.id)}
+                      disabled={saving}
+                      className="h-4 w-4 accent-primary"
+                    />
+                    <span className="min-w-0 truncate">
+                      {t.label}
+                      <span className="ml-1 text-xs text-muted">· {t.sector}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+            {shareWith.length > 0 && (
+              <p className="mt-1.5 flex items-center gap-1 text-[11px] text-muted">
+                <Share2 className="h-3 w-3" /> Compartilhado com {shareWith.length} setor(es).
+              </p>
+            )}
           </div>
         )}
 
