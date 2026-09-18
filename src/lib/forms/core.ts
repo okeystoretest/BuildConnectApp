@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { notifyFormAvailable } from "@/lib/whatsapp/notify";
+import { notifyFormAvailableInApp } from "@/lib/notifications/notify";
 import { canEditStructure, canReopen, removalImpact, NO_SECTOR } from "./rules";
 import type { RemovalImpact } from "./rules";
 import type { Role } from "@/types";
@@ -237,6 +238,7 @@ export async function publishFormFor(
 
   // Depois do commit: a transação acima é que define quem é destinatário, e
   // avisar antes dela avisaria sobre um formulário que pode não ter publicado.
+  await notifyFormAvailableInApp(input.formId);
   await notifyFormAvailable(input.formId);
 
   return { ok: true };
@@ -286,6 +288,7 @@ export async function reopenFormFor(me: FormActor, formId: string): Promise<Core
   // Reabrir é coleta nova: todo mundo volta a pendente, e todo mundo é avisado
   // de novo. Sem isto a rodada nova começaria em silêncio, e quem já tinha
   // respondido não teria motivo nenhum para voltar à tela.
+  await notifyFormAvailableInApp(formId);
   await notifyFormAvailable(formId);
 
   return { ok: true };

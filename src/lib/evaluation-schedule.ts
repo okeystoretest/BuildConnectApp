@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { notifyCycleAvailable } from "@/lib/whatsapp/notify";
+import { notifyCycleAvailableInApp } from "@/lib/notifications/notify";
 import { addBusinessDays, holidaySet } from "@/lib/business-days";
 import { isPreEfetivoRequired, PRE_EFETIVO_SUBJECT_WHERE } from "@/lib/pre-efetivo-cutoff";
 
@@ -136,9 +137,9 @@ export async function sweepAvailability(now: Date = new Date()): Promise<number>
         data: { status: "DISPONIVEL", notifiedAt: cycle.notifiedAt ?? now },
       });
 
-      // Notifica o Gestor do setor do colaborador (persistido em Notification).
+      // Notifica os Gestores do setor do colaborador (persistido em Notification).
       if (primeiraLiberacao) {
-        await notifyManagerOfCycle(tx, {
+        await notifyCycleAvailableInApp(tx, {
           subjectName: cycle.subject.fullName,
           sectorId: cycle.subject.sectorId,
           cycle: cycle.cycle,
@@ -184,35 +185,5 @@ export async function advanceAfterCompletion(
       },
     },
     data: { availableAt: nextAvailableAt, status: "AGENDADO" },
-  });
-}
-
-/**
- * Cria a notificação de ciclo disponível direcionada ao Gestor do setor.
- * A audiência espelha o modelo de Notification (setores destinatários).
- * Buscamos o rótulo do setor para compor a audiência; o(s) Gestor(es)
- * daquele setor recebem via filtro de audiência já existente.
- */
-async function notifyManagerOfCycle(
-  tx: Prisma.TransactionClient,
-  params: { subjectName: string; sectorId: string | null; cycle: number },
-): Promise<void> {
-  if (!params.sectorId) return;
-
-  const sector = await tx.sector.findUnique({
-    where: { id: params.sectorId },
-    select: { label: true },
-  });
-  if (!sector) return;
-
-  await tx.notification.create({
-    data: {
-      kind: "AVALIACAO",
-      title: `Avaliação Pré-Efetivo disponível — ciclo ${params.cycle}`,
-      body: `O ${params.cycle}º ciclo de ${params.subjectName} está liberado para preenchimento.`,
-      href: "/setores/rh",
-      // Setor do colaborador: o Gestor lotado nele recebe.
-      audience: [sector.label],
-    },
   });
 }

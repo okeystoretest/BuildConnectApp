@@ -17,6 +17,7 @@ import { toAbsolutePath } from "@/lib/storage/config";
 import { MAX_BYTES } from "@/lib/storage/limits";
 import { resolveAppScope } from "@/lib/app-scope";
 import { hasComprehension } from "@/lib/video-comprehension";
+import { notifyNewContent } from "@/lib/notifications/notify";
 
 export interface ActionResult {
   ok: boolean;
@@ -250,6 +251,9 @@ export async function uploadSectorVideo(formData: FormData): Promise<ActionResul
         order: count,
       },
     });
+    // Depois do commit. Workshop é vitrine (Coleção) e não avisa; a função
+    // ainda confere o tipo do subsetor por conta própria.
+    if (kind !== "WORKSHOP") await notifyNewContent({ slug, kind: "video", title });
     revalidatePath(`/setores/${slug}`);
     return { ok: true };
   } catch (e) {
@@ -501,6 +505,7 @@ export async function uploadSectorDocument(formData: FormData): Promise<ActionRe
         order: count,
       },
     });
+    await notifyNewContent({ slug, kind: "document", title: name });
     revalidatePath(`/setores/${slug}`);
     return { ok: true };
   } catch (e) {
