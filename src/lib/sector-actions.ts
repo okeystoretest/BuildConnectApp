@@ -23,11 +23,13 @@ export interface ActionResult {
   error?: string;
 }
 
-/** Mapeia MIME de documento para o enum FileKind do schema. */
-function docKind(mime: string): "PDF" | "DOCX" | "XLSX" | "PNG" {
-  if (mime === "application/pdf") return "PDF";
-  if (mime.includes("wordprocessing") || mime === "application/msword") return "DOCX";
-  if (mime.includes("spreadsheet") || mime === "application/vnd.ms-excel") return "XLSX";
+/** Mapeia MIME (ou, sem ele, a extensão) de documento para o enum FileKind. */
+function docKind(mime: string, name: string): "PDF" | "DOCX" | "XLSX" | "PPTX" | "PNG" {
+  const ext = name.toLowerCase().slice(name.lastIndexOf("."));
+  if (mime === "application/pdf" || ext === ".pdf") return "PDF";
+  if (mime.includes("presentationml") || mime === "application/vnd.ms-powerpoint" || ext === ".pptx" || ext === ".ppt") return "PPTX";
+  if (mime.includes("wordprocessing") || mime === "application/msword" || ext === ".docx" || ext === ".doc") return "DOCX";
+  if (mime.includes("spreadsheet") || mime === "application/vnd.ms-excel" || ext === ".xlsx" || ext === ".xls") return "XLSX";
   return "PNG";
 }
 
@@ -437,7 +439,7 @@ export async function uploadSectorDocument(formData: FormData): Promise<ActionRe
       data: {
         subsectorId,
         name,
-        kind: docKind(file.type),
+        kind: docKind(file.type, file.name),
         sizeBytes: stored.sizeBytes,
         filePath: stored.publicPath,
         order: count,

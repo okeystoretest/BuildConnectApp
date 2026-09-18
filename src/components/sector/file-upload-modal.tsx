@@ -10,14 +10,14 @@ import { MAX_BYTES, validateUploadSizes } from "@/lib/storage/limits";
 import { useUploadProgress, uploadPhaseLabel } from "@/lib/use-upload-progress";
 
 /**
- * Envio de documento (PDF/DOC/DOCX/XLS/XLSX/PNG).
+ * Envio de documento (PDF/DOC/DOCX/XLS/XLSX/PPT/PPTX/PNG).
  *
  * Os vídeos saíram daqui: sobem em lote pelo `VideoBatchUploadModal`, um por
  * requisição. Este modal ficou só com o caso de um arquivo, sem título.
  */
 
 const DOCUMENT_ACCEPT =
-  "application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,image/png";
+  "application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint,.ppt,.pptx,image/png";
 
 export interface FileUploadModalProps {
   slug: string;

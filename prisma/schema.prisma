@@ -369,6 +369,7 @@ enum FileKind {
   PDF
   DOCX
   XLSX
+  PPTX
   PNG
 }
 

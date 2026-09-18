@@ -40,3 +40,21 @@ test("vídeo com extensão fora da lista é recusado, mesmo com MIME de vídeo",
     (e: unknown) => e instanceof files.FileStorageError && /Extensão inválida/.test(e.message),
   );
 });
+
+test("documento .pptx com MIME de apresentação é aceito", async () => {
+  const file = new File([new Uint8Array([1, 2, 3, 4])], "treinamento.pptx", {
+    type: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  });
+  const stored = await files.storeFile(file, "document", "conteudo");
+  assert.match(stored.publicPath, /\.pptx$/);
+  assert.equal(stored.sizeBytes, 4);
+});
+
+test("documento .pptx sem MIME é aceito pela extensão", async () => {
+  // O Explorador do Windows manda `type` vazio para .pptx em algumas
+  // instalações — mesma situação do .mkv em vídeo, aqui na regra document.
+  const file = new File([new Uint8Array([1, 2])], "treinamento.pptx", { type: "" });
+  const stored = await files.storeFile(file, "document", "conteudo");
+  assert.match(stored.publicPath, /\.pptx$/);
+  assert.equal(stored.sizeBytes, 2);
+});

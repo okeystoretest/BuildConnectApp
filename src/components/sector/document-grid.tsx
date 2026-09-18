@@ -9,6 +9,7 @@ const KIND_STYLE: Record<FileKind, string> = {
   PDF: "bg-danger/15 text-danger",
   DOCX: "bg-info/15 text-info",
   XLSX: "bg-primary/15 text-primary",
+  PPTX: "bg-warning/15 text-warning",
   PNG: "bg-accent/15 text-accent",
 };
 

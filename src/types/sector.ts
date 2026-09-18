@@ -46,7 +46,7 @@ export interface PhotoItem {
   filePath?: string;
 }
 
-export type FileKind = "PDF" | "DOCX" | "XLSX" | "PNG";
+export type FileKind = "PDF" | "DOCX" | "XLSX" | "PPTX" | "PNG";
 
 export interface DocumentItem {
   id: string;

@@ -9,8 +9,9 @@ import { MAX_BYTES } from "./limits";
 
 /**
  * Armazenamento de arquivos que NÃO são imagem (vídeos, PDFs, planilhas,
- * documentos). Sem sharp — grava o binário direto no disco particionado
- * por ano/mês e devolve o caminho público. O banco guarda só o caminho.
+ * documentos, apresentações). Sem sharp — grava o binário direto no disco
+ * particionado por ano/mês e devolve o caminho público. O banco guarda só o
+ * caminho.
  *
  * Imagens continuam passando por images.ts (tratamento + .webp).
  */
@@ -39,8 +40,13 @@ const RULES: Record<
       "application/msword",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "application/vnd.ms-powerpoint",
       "image/png",
     ]),
+    // .pptx/.ppt chegam sem MIME do Explorador do Windows em algumas
+    // instalações — mesmo mecanismo do fallback de .mkv em vídeo.
+    extensions: new Set([".pptx", ".ppt"]),
     maxBytes: MAX_BYTES.document,
     label: "Documento",
   },
@@ -69,7 +75,7 @@ const RULES: Record<
  */
 const RULE_EXTENSIONS: Record<keyof typeof RULES, ReadonlySet<string>> = {
   video: new Set([".mp4", ".webm", ".mov", ".mkv"]),
-  document: new Set([".pdf", ".doc", ".docx", ".xls", ".xlsx", ".png"]),
+  document: new Set([".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".png"]),
   pdf: new Set([".pdf"]),
   transcript: new Set([".txt", ".vtt", ".srt", ".md"]),
 };
