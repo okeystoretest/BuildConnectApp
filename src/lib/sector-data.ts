@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { formatBytes } from "@/lib/utils";
 import { resolveAppScope } from "@/lib/app-scope";
+import { sortInstrucoes } from "@/lib/instrucoes-video";
 import type {
   ComprehensionStatus,
   SectorContent,
@@ -117,6 +118,12 @@ export async function getSectorContent(
     else videos.push(item);
   }
 
+  // Instruções em Vídeo listam em ordem alfabética; Coleção e Workshop
+  // (VIDEO) seguem a ordem de envio. O `kind` está no registro, não no item,
+  // então a decisão é tomada aqui, onde ele ainda existe.
+  const instrucoes = sub.kind === "PADRAO";
+  const orderedVideos = instrucoes ? sortInstrucoes(videos) : videos;
+
   const photos: PhotoItem[] = sub.photos.map((p: { id: string; title: string; filePath: string }) => ({
     id: p.id,
     title: p.title,
@@ -160,7 +167,7 @@ export async function getSectorContent(
         : "Conteúdos de integração e reciclagem da área.",
     completion,
     photos,
-    videos,
+    videos: orderedVideos,
     workshops,
     documents,
     links,
