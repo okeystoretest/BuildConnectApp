@@ -45,7 +45,7 @@ export interface HrSectorViewProps {
   initialHistory: EmployeeHistory | null;
   /** Catálogo de resultados: instrumentos → avaliados → registros. */
   resultsCatalog: EvaluationResultTypeCard[];
-  /** Card "Compreensão de Vídeos" em Resultados de Avaliações. */
+  /** Card "Resultados de Treinamentos" em Resultados de Avaliações. */
   comprehension: VideoComprehensionSubject[];
   /** Card "Atribuir Avaliações": instrumentos multiavaliador + gente selecionável. */
   assignableTypes: AssignableEvaluationType[];

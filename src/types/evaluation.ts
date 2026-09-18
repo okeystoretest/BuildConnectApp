@@ -363,7 +363,7 @@ export interface VideoComprehensionTask {
   submittedAtLabel: string;
 }
 
-/** Um registro avaliado (DHO › Resultados › Compreensão de Vídeos). */
+/** Um registro avaliado (DHO › Resultados › Resultados de Treinamentos). */
 export interface VideoComprehensionEntry {
   id: string;
   videoTitle: string;

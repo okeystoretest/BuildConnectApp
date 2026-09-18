@@ -51,11 +51,11 @@ export interface EvaluationResultsPanelProps {
 /** Card especial de atribuição — não é um instrumento, é uma ação. */
 const ASSIGN_KEY = "__atribuir__";
 /**
- * Card "Compreensão de Vídeos" — também não é um `EvaluationType`: a nota é
+ * Card "Resultados de Treinamentos" (compreensão dos vídeos) — também não é um `EvaluationType`: a nota é
  * 0–10, sem seções nem questões, e vem das Instruções em Vídeo.
  */
 const COMPREHENSION_KEY = "__compreensao__";
-const COMPREHENSION_TITLE = "Compreensão de Vídeos";
+const COMPREHENSION_TITLE = "Resultados de Treinamentos";
 
 /**
  * Aba "Resultados de Avaliações" em três níveis:
@@ -172,7 +172,7 @@ export function EvaluationResultsPanel({
     );
   }
 
-  // Compreensão de Vídeos: nível 2 (colaboradores) e 3 (registros).
+  // Resultados de Treinamentos: nível 2 (colaboradores) e 3 (registros).
   if (openKey === COMPREHENSION_KEY) {
     const subject = comprehension.find((s) => s.subjectId === subjectId) ?? null;
     if (!subject) {
@@ -477,7 +477,7 @@ function ComprehensionSubjectCard({
   );
 }
 
-/** Nível 3 da Compreensão de Vídeos: cada resposta avaliada, com a nota. */
+/** Nível 3 de Resultados de Treinamentos: cada resposta avaliada, com a nota. */
 function ComprehensionResults({ subject }: { subject: VideoComprehensionSubject }) {
   return (
     <div className="space-y-3">
