@@ -52,7 +52,7 @@ export function DocumentGrid({ documents }: { documents: readonly DocumentItem[]
             )}
             <a
               href={doc.filePath}
-              download
+              download={doc.name}
               aria-label={`Baixar ${doc.name}`}
               className={cn(
                 "focus-ring flex h-9 items-center justify-center gap-2 rounded-lg bg-primary/15 text-xs text-primary transition-colors hover:bg-primary/25",

@@ -12,8 +12,10 @@ WHERE q."sectionId" = s."id";
 UPDATE "FormQuestion" q
 SET "order" = ranked.rn
 FROM (
+  -- Empate de "order" dentro da seção não pode sortear a ordem: o id da
+  -- pergunta é o desempate final, determinístico.
   SELECT q2."id",
-         ROW_NUMBER() OVER (PARTITION BY s."formId" ORDER BY s."order", q2."order") - 1 AS rn
+         ROW_NUMBER() OVER (PARTITION BY s."formId" ORDER BY s."order", q2."order", q2."id") - 1 AS rn
   FROM "FormQuestion" q2
   JOIN "FormSection" s ON s."id" = q2."sectionId"
 ) ranked

@@ -9,6 +9,7 @@ const KIND_STYLE = {
   PDF: "bg-danger/15 text-danger",
   DOCX: "bg-info/15 text-info",
   XLSX: "bg-primary/15 text-primary",
+  PPTX: "bg-warning/15 text-warning",
 } as const;
 
 export function HrDocumentsPanel({

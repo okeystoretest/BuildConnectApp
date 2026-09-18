@@ -78,6 +78,7 @@ export function MediaEditModal({
   const [targets, setTargets] = useState<{ id: string; label: string; sector: string }[]>([]);
   const [shareWith, setShareWith] = useState<readonly string[]>(sharing?.current ?? []);
   const [loadingTargets, setLoadingTargets] = useState(false);
+  const [targetsError, setTargetsError] = useState(false);
 
   // Recarrega ao abrir sobre outro item.
   useEffect(() => {
@@ -98,8 +99,17 @@ export function MediaEditModal({
     setShareWith(sharing.current);
     let alive = true;
     setLoadingTargets(true);
+    setTargetsError(false);
     void listVideoShareTargets(sharing.slug)
       .then((rows) => alive && setTargets(rows))
+      .catch(() => {
+        // Se a listagem falhar, não mostrar "nenhum setor disponível" — isso
+        // pareceria que a área não tem destino, em vez de dizer que a busca deu errado.
+        if (alive) {
+          setTargets([]);
+          setTargetsError(true);
+        }
+      })
       .finally(() => alive && setLoadingTargets(false));
     return () => {
       alive = false;
@@ -328,6 +338,10 @@ export function MediaEditModal({
             </p>
             {loadingTargets ? (
               <p className="text-xs text-muted">Carregando setores…</p>
+            ) : targetsError ? (
+              <p className="text-xs text-danger">
+                Não foi possível carregar os setores. Feche e abra de novo.
+              </p>
             ) : targets.length === 0 ? (
               <p className="text-xs text-muted">Nenhum outro setor disponível.</p>
             ) : (

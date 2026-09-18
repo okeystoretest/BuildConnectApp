@@ -288,7 +288,7 @@ export async function listVideoShareTargets(
 
   const rows = await prisma.subsector.findMany({
     where: { kind: "PADRAO", slug: { not: slug } },
-    select: { id: true, label: true, sector: { select: { label: true, order: true } }, order: true },
+    select: { id: true, label: true, sector: { select: { label: true } } },
     orderBy: [{ sector: { order: "asc" } }, { order: "asc" }],
   });
   return rows.map((r) => ({ id: r.id, label: r.label, sector: r.sector.label }));
@@ -366,12 +366,20 @@ export async function updateSectorVideo(formData: FormData): Promise<ActionResul
       // Sincroniza os destinos: o que saiu da lista perde o acesso, o que
       // entrou ganha. O próprio subsetor dono nunca é destino.
       const wanted = new Set(parsed.data.shareWith.filter((sid) => sid !== subsectorId));
-      await tx.videoShare.deleteMany({
-        where: { videoId: id, subsectorId: { notIn: [...wanted] } },
+      // Só subsetores PADRAO existentes viram destino: a lista da tela já
+      // filtra, mas quem grava é o servidor — um id forjado (ou de vitrine)
+      // não pode entrar, nem derrubar a edição inteira por FK.
+      const valid = await tx.subsector.findMany({
+        where: { id: { in: [...wanted] }, kind: "PADRAO" },
+        select: { id: true },
       });
-      if (wanted.size > 0) {
+      const targets = new Set(valid.map((s) => s.id));
+      await tx.videoShare.deleteMany({
+        where: { videoId: id, subsectorId: { notIn: [...targets] } },
+      });
+      if (targets.size > 0) {
         await tx.videoShare.createMany({
-          data: [...wanted].map((sid) => ({ videoId: id, subsectorId: sid })),
+          data: [...targets].map((sid) => ({ videoId: id, subsectorId: sid })),
           skipDuplicates: true,
         });
       }

@@ -72,7 +72,7 @@ export interface HrDocument {
   id: string;
   name: string;
   size: string;
-  kind: "PDF" | "DOCX" | "XLSX";
+  kind: "PDF" | "DOCX" | "XLSX" | "PPTX";
   /** Caminho do arquivo real para visualizar/baixar. */
   filePath?: string;
 }
