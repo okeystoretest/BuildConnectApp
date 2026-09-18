@@ -271,10 +271,32 @@ const videoUpdateSchema = z.object({
   tags: z.array(z.string().trim().min(1).max(40)).max(20),
   /** "keep" mantém a transcrição atual; "remove" apaga; "replace" troca pelo arquivo enviado. */
   transcriptMode: z.enum(["keep", "replace", "remove"]).catch("keep"),
+  // Destinos do compartilhamento. Só ADMIN grava; para os demais é ignorado.
+  shareWith: z.array(z.string().min(1)).max(100).default([]),
 });
 
 /**
- * Tela de edição do vídeo: título, tags e transcrição.
+ * Subsetores que podem receber um vídeo compartilhado: todos os PADRAO, menos
+ * o dono. Só ADMIN compartilha (decisão de 18/09/2026); para os demais a
+ * lista é vazia e a tela não mostra o campo.
+ */
+export async function listVideoShareTargets(
+  slug: string,
+): Promise<{ id: string; label: string; sector: string }[]> {
+  const user = await getCurrentUser();
+  if (!user || (user.role as Role) !== "ADMIN") return [];
+
+  const rows = await prisma.subsector.findMany({
+    where: { kind: "PADRAO", slug: { not: slug } },
+    select: { id: true, label: true, sector: { select: { label: true, order: true } }, order: true },
+    orderBy: [{ sector: { order: "asc" } }, { order: "asc" }],
+  });
+  return rows.map((r) => ({ id: r.id, label: r.label, sector: r.sector.label }));
+}
+
+/**
+ * Tela de edição do vídeo: título, tags, transcrição e — para ADMIN — com
+ * quais subsetores o vídeo é compartilhado.
  *
  * A transcrição chega aqui, e só aqui — o envio em lote não a aceita. O
  * arquivo novo é gravado ANTES de tocar no banco; a transcrição antiga só sai
@@ -291,12 +313,14 @@ export async function updateSectorVideo(formData: FormData): Promise<ActionResul
     title: formData.get("title"),
     tags: formData.getAll("tags").map(String),
     transcriptMode: formData.get("transcriptMode") ?? "keep",
+    shareWith: formData.getAll("shareWith").map(String),
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
   }
   const { slug, id, title, transcriptMode } = parsed.data;
   const tags = dedupeTags(parsed.data.tags);
+  const isAdmin = (user.role as Role) === "ADMIN";
   const transcriptFile = formData.get("transcriptFile");
 
   const subsectorId = await subsectorIdFromSlug(slug);
@@ -333,9 +357,24 @@ export async function updateSectorVideo(formData: FormData): Promise<ActionResul
   }
 
   try {
-    await prisma.video.update({
-      where: { id },
-      data: { title, tags, transcriptPath, transcriptText },
+    await prisma.$transaction(async (tx) => {
+      await tx.video.update({
+        where: { id },
+        data: { title, tags, transcriptPath, transcriptText },
+      });
+      if (!isAdmin) return;
+      // Sincroniza os destinos: o que saiu da lista perde o acesso, o que
+      // entrou ganha. O próprio subsetor dono nunca é destino.
+      const wanted = new Set(parsed.data.shareWith.filter((sid) => sid !== subsectorId));
+      await tx.videoShare.deleteMany({
+        where: { videoId: id, subsectorId: { notIn: [...wanted] } },
+      });
+      if (wanted.size > 0) {
+        await tx.videoShare.createMany({
+          data: [...wanted].map((sid) => ({ videoId: id, subsectorId: sid })),
+          skipDuplicates: true,
+        });
+      }
     });
   } catch (e) {
     if (novoAbsoluto) await removeFile(novoAbsoluto);
@@ -350,6 +389,14 @@ export async function updateSectorVideo(formData: FormData): Promise<ActionResul
   }
 
   revalidatePath(`/setores/${slug}`);
+  // Os destinos também mudam de cara: o vídeo aparece (ou some) lá.
+  if (isAdmin) {
+    const targets = await prisma.subsector.findMany({
+      where: { id: { in: parsed.data.shareWith } },
+      select: { slug: true },
+    });
+    for (const t of targets) revalidatePath(`/setores/${t.slug}`);
+  }
   return { ok: true };
 }
 
@@ -367,6 +414,7 @@ function dedupeTags(tags: readonly string[]): string[] {
  * Exclui o vídeo: registro (o progresso cai em cascata) e, depois, os
  * arquivos — vídeo, miniatura e transcrição. Ordem deliberada: registro sem
  * arquivo é um card quebrado; arquivo sem registro é só espaço em disco.
+ * Os compartilhamentos caem em cascata; o arquivo só sai aqui, pelo dono.
  */
 export async function deleteSectorVideo(input: {
   slug: string;
