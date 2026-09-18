@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
-import { enqueue } from "./outbox";
+import { activeUserIdsInSubsector } from "@/lib/notifications/membership";
+import { ticketText } from "./messages";
+import { enqueue, sendNow, type SendNowOptions } from "./outbox";
 
 /**
  * Os gatilhos das notificações por WhatsApp.
@@ -79,5 +81,25 @@ export async function notifyFormAvailable(formId: string): Promise<void> {
       destinatarios.map((d) => d.userId),
       "FORMULARIO",
     );
+  });
+}
+
+/** Slug do subsetor da Retaguarda — a chave da rota /setores/ti e do RBAC. */
+export const TI_SLUG = "ti";
+
+/**
+ * Chamado de TI aberto, para TODOS os usuários ativos lotados na Retaguarda.
+ *
+ * Fora da fila, de propósito: é o único tipo em que o atraso anula o aviso.
+ * Quem chama deve fazê-lo com `void`, depois do commit — a Server Action do
+ * chamado não espera o WhatsApp.
+ */
+export async function notifyNewItTicket(
+  code: string,
+  options: SendNowOptions & { slug?: string } = {},
+): Promise<void> {
+  await silently("chamado de TI", async () => {
+    const ids = await activeUserIdsInSubsector(options.slug ?? TI_SLUG);
+    return sendNow(ids, "CHAMADO_TI", ticketText(code), options);
   });
 }

@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth/require-user";
+import { notifyNewItTicket, TI_SLUG } from "@/lib/whatsapp/notify";
 import {
   processAndStoreImages,
   ImageProcessingError,
@@ -319,12 +320,18 @@ export async function createItTicket(formData: FormData): Promise<CreateTicketRe
           title: "Novo chamado de TI",
           body: `${code} · ${title}`,
           href: "/setores/ti",
-          audience: ["TI"],
+          // Slug do subsetor, não rótulo: é o que o sino cruza com a lotação.
+          audience: [TI_SLUG],
         },
       });
 
       return created;
     });
+
+    // WhatsApp DEPOIS do commit e SEM esperar: o envio é imediato (fora da
+    // fila) e pode levar segundos por destinatário — quem abriu o chamado não
+    // fica preso nisso. A função nunca lança; o resultado fica na tabela.
+    void notifyNewItTicket(ticket.code);
 
     revalidatePath("/setores/ti");
     revalidatePath("/chamados");

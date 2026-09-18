@@ -183,63 +183,17 @@ export async function drainOutbox(options: DrainOptions = {}): Promise<DrainResu
       const msg = await prisma.whatsappMessage.findFirst({
         where: { status: "PENDENTE", sendAfter: { lte: now }, id: { notIn: tentadas } },
         orderBy: [{ sendAfter: "asc" }, { createdAt: "asc" }],
-        select: { id: true, kind: true, userId: true, attempts: true, user: { select: { phone: true } } },
+        select: MSG_SELECT,
       });
       if (!msg) break;
       tentadas.push(msg.id);
 
-      try {
-        const candidates = jidCandidates(msg.user.phone);
-        if (candidates.length === 0) {
-          throw new PermanentFailure("Telefone ausente ou inválido no cadastro.");
-        }
-
-        const jid = await resolveJid(candidates);
-        if (!jid) throw new PermanentFailure("Este número não tem WhatsApp.");
-
-        await sender(jid, MESSAGE_TEXT[msg.kind]);
-
-        // updateMany, e não update: a linha pode ter sumido entre a leitura da
-        // fila e agora — basta o destinatário ser excluído do sistema, e o
-        // cascade leva a mensagem junto. `update` LANÇA quando não acha, e o
-        // erro escaparia do laço abortando os envios restantes; `updateMany`
-        // sobre zero linhas simplesmente não faz nada.
-        await prisma.whatsappMessage.updateMany({
-          where: { id: msg.id },
-          data: { status: "ENVIADO", sentAt: now, attempts: msg.attempts + 1, error: null },
-        });
+      const outcome = await attemptOne(msg, { sender, resolveJid, now, delay, requeue: true });
+      if (outcome === "enviado") {
         enviados += 1;
-
         await spaceNext(msg.id, now, delay);
-      } catch (e) {
-        // A falha de um destinatário NÃO interrompe os demais. É por isso que
-        // o try/catch está dentro do laço, e não em volta dele.
-        const permanent = e instanceof PermanentFailure;
-        const tentativas = msg.attempts + 1;
-        const desistir = permanent || tentativas >= MAX_ATTEMPTS;
-        const motivo = permanent
-          ? e.message
-          : e instanceof Error
-            ? e.message.slice(0, 300)
-            : "Falha desconhecida no envio.";
-
-        // Mesmo motivo do updateMany acima: registrar a falha não pode, ela
-        // própria, virar uma exceção que derruba o laço.
-        await prisma.whatsappMessage.updateMany({
-          where: { id: msg.id },
-          data: {
-            // Falha passageira volta para a fila, um sorteio adiante — repetir
-            // na mesma passada seria martelar. Só se desiste depois de
-            // MAX_ATTEMPTS ou quando repetir não tem como dar certo.
-            status: desistir ? "FALHOU" : "PENDENTE",
-            sendAfter: desistir ? undefined : new Date(now.getTime() + delay()),
-            attempts: tentativas,
-            error: motivo,
-          },
-        });
-        if (desistir) falhas += 1;
-        // userId, nunca o telefone.
-        console.error(`[whatsapp] falha ao enviar ${msg.kind} para ${msg.userId}: ${motivo}`);
+      } else if (outcome === "falhou") {
+        falhas += 1;
       }
     }
 
@@ -247,6 +201,180 @@ export async function drainOutbox(options: DrainOptions = {}): Promise<DrainResu
   } finally {
     draining = false;
   }
+}
+
+const MSG_SELECT = {
+  id: true,
+  kind: true,
+  userId: true,
+  attempts: true,
+  text: true,
+  user: { select: { phone: true } },
+} as const;
+
+type QueuedMessage = {
+  id: string;
+  kind: WhatsappKind;
+  userId: string;
+  attempts: number;
+  text: string | null;
+  user: { phone: string | null };
+};
+
+type Outcome = "enviado" | "falhou" | "pendente";
+
+/**
+ * Uma tentativa de envio de UMA mensagem, com o registro do resultado.
+ *
+ * Compartilhada pela drenagem e pelo envio imediato: as regras de falha
+ * (telefone ausente e número sem WhatsApp são definitivos; o resto tenta de
+ * novo até MAX_ATTEMPTS) são as mesmas nos dois caminhos. `requeue` decide se
+ * a falha passageira ganha um sorteio adiante (fila) ou fica vencida para a
+ * próxima passada repescar (envio imediato).
+ */
+async function attemptOne(
+  msg: QueuedMessage,
+  deps: {
+    sender: (jid: string, text: string) => Promise<void>;
+    resolveJid: (candidates: string[]) => Promise<string | null>;
+    now: Date;
+    delay: () => number;
+    requeue: boolean;
+  },
+): Promise<Outcome> {
+  try {
+    const candidates = jidCandidates(msg.user.phone);
+    if (candidates.length === 0) {
+      throw new PermanentFailure("Telefone ausente ou inválido no cadastro.");
+    }
+
+    const jid = await deps.resolveJid(candidates);
+    if (!jid) throw new PermanentFailure("Este número não tem WhatsApp.");
+
+    await deps.sender(jid, msg.text ?? MESSAGE_TEXT[msg.kind]);
+
+    // updateMany, e não update: a linha pode ter sumido entre a leitura da
+    // fila e agora — basta o destinatário ser excluído do sistema, e o
+    // cascade leva a mensagem junto. `update` LANÇA quando não acha, e o
+    // erro escaparia do laço abortando os envios restantes; `updateMany`
+    // sobre zero linhas simplesmente não faz nada.
+    await prisma.whatsappMessage.updateMany({
+      where: { id: msg.id },
+      data: { status: "ENVIADO", sentAt: deps.now, attempts: msg.attempts + 1, error: null },
+    });
+    return "enviado";
+  } catch (e) {
+    // A falha de um destinatário NÃO interrompe os demais. É por isso que
+    // o try/catch está em volta de UMA mensagem, e não do laço.
+    const permanent = e instanceof PermanentFailure;
+    const tentativas = msg.attempts + 1;
+    const desistir = permanent || tentativas >= MAX_ATTEMPTS;
+    const motivo = permanent
+      ? e.message
+      : e instanceof Error
+        ? e.message.slice(0, 300)
+        : "Falha desconhecida no envio.";
+
+    // Mesmo motivo do updateMany acima: registrar a falha não pode, ela
+    // própria, virar uma exceção que derruba o laço.
+    await prisma.whatsappMessage.updateMany({
+      where: { id: msg.id },
+      data: {
+        // Falha passageira volta para a fila, um sorteio adiante — repetir
+        // na mesma passada seria martelar. Só se desiste depois de
+        // MAX_ATTEMPTS ou quando repetir não tem como dar certo.
+        status: desistir ? "FALHOU" : "PENDENTE",
+        sendAfter: desistir || !deps.requeue ? undefined : new Date(deps.now.getTime() + deps.delay()),
+        attempts: tentativas,
+        error: motivo,
+      },
+    });
+    // userId, nunca o telefone.
+    console.error(`[whatsapp] falha ao enviar ${msg.kind} para ${msg.userId}: ${motivo}`);
+    return desistir ? "falhou" : "pendente";
+  }
+}
+
+export interface SendNowOptions {
+  /** Injetados no teste. Em produção saem do socket real. */
+  sender?: (jid: string, text: string) => Promise<void>;
+  resolveJid?: (candidates: string[]) => Promise<string | null>;
+  now?: Date;
+}
+
+export interface SendNowResult {
+  enviados: number;
+  falhas: number;
+}
+
+/**
+ * Envio IMEDIATO, fora da fila — o caminho do chamado de TI.
+ *
+ * Sem sorteio nem espera: quem abre um chamado precisa de atendimento agora,
+ * e um aviso que chega duas horas depois não é aviso. O preço é o risco de
+ * rajada, aceito de propósito para este tipo — os demais continuam na fila.
+ *
+ * A linha em `WhatsappMessage` nasce com `sendAfter = agora` e o envio é
+ * tentado em seguida. Se o WhatsApp estiver desligado ou desconectado, ou a
+ * falha for passageira, ela fica PENDENTE e vencida: a fila normal a repesca
+ * na próxima passada. O registro por destinatário é o mesmo da fila.
+ */
+export async function sendNow(
+  userIds: readonly string[],
+  kind: WhatsappKind,
+  text: string,
+  options: SendNowOptions = {},
+): Promise<SendNowResult> {
+  const unique = [...new Set(userIds)].filter(Boolean);
+  if (unique.length === 0) return { enviados: 0, falhas: 0 };
+  const now = options.now ?? new Date();
+
+  await prisma.whatsappMessage.createMany({
+    data: unique.map((userId) => ({ userId, kind, text, sendAfter: now })),
+  });
+
+  let sender = options.sender;
+  let resolveJid = options.resolveJid;
+  if (!sender || !resolveJid) {
+    const sock = isEnabled() ? await getSocket() : null;
+    if (!sock) {
+      // Fica na fila, vencida. A drenagem manda quando houver conexão.
+      scheduleOutboxTick();
+      return { enviados: 0, falhas: 0 };
+    }
+    sender =
+      sender ??
+      (async (jid, txt) => {
+        await sock.sendMessage(jid, { text: txt });
+      });
+    resolveJid =
+      resolveJid ??
+      (async (candidates) => {
+        const found = await sock.onWhatsApp(...candidates);
+        return found?.find((f) => f.exists)?.jid ?? null;
+      });
+  }
+
+  const msgs = await prisma.whatsappMessage.findMany({
+    where: { userId: { in: unique }, kind, status: "PENDENTE", sendAfter: now, text },
+    select: MSG_SELECT,
+  });
+
+  let enviados = 0;
+  let falhas = 0;
+  for (const msg of msgs) {
+    const outcome = await attemptOne(msg, {
+      sender,
+      resolveJid,
+      now,
+      delay: randomDelayMs,
+      requeue: false,
+    });
+    if (outcome === "enviado") enviados += 1;
+    else if (outcome === "falhou") falhas += 1;
+  }
+  if (msgs.length > enviados + falhas) scheduleOutboxTick();
+  return { enviados, falhas };
 }
 
 /**
