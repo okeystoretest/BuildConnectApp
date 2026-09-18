@@ -8,7 +8,8 @@ export type TabId =
   | "instrucoes-video"
   | "documentos"
   | "avaliacoes"
-  | "cronograma";
+  | "cronograma"
+  | "material";
 
 /** Situação da resposta de compreensão (Instruções em Vídeo) do usuário logado. */
 export type ComprehensionStatus = "ENVIADA" | "AVALIADA";

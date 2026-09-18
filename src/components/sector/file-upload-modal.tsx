@@ -22,10 +22,17 @@ const DOCUMENT_ACCEPT =
 export interface FileUploadModalProps {
   slug: string;
   open: boolean;
+  /** Título do modal. TI e RH usam o padrão; a Vitrine troca por "Enviar material de apoio". */
+  title?: string;
   onClose: () => void;
 }
 
-export function FileUploadModal({ slug, open, onClose }: FileUploadModalProps) {
+export function FileUploadModal({
+  slug,
+  open,
+  title = "Enviar documento",
+  onClose,
+}: FileUploadModalProps) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -86,7 +93,7 @@ export function FileUploadModal({ slug, open, onClose }: FileUploadModalProps) {
   return (
     <Modal open={open} onClose={handleClose} className="max-w-md">
       <div className="p-6">
-        <h2 className="text-lg font-semibold text-foreground">Enviar documento</h2>
+        <h2 className="text-lg font-semibold text-foreground">{title}</h2>
 
         <div className="mt-5 space-y-4">
           <button

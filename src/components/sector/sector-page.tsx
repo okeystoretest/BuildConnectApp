@@ -41,6 +41,10 @@ const VITRINE_TABS: readonly TabDef[] = [
   { id: "fotos", label: "Fotos da Coleção", uploadLabel: "Enviar foto" },
   { id: "videos", label: "Vídeos da Coleção", uploadLabel: "Enviar vídeo" },
   { id: "workshop", label: "Workshop", uploadLabel: "Enviar workshop" },
+  // Documentos e apresentações da vitrine. Reusa o modelo Document: a vitrine
+  // não tem aba Documentos, então não há ambiguidade — e o progresso já
+  // ignora tudo que é VITRINE (ver lib/progress-scope).
+  { id: "material", label: "Material de Apoio", uploadLabel: "Enviar material" },
 ];
 
 const INSTRUCOES_TAB: TabDef = {
@@ -152,6 +156,7 @@ export function SectorPage({
     if (tabId === "workshop") return setVideoModal("workshop");
     if (tabId === "instrucoes-video") return setVideoModal("instrucao-video");
     if (tabId === "documentos") return setDocumentModalOpen(true);
+    if (tabId === "material") return setDocumentModalOpen(true);
   }
 
   function openLinkModal(link: LinkItem | null) {
@@ -289,12 +294,12 @@ export function SectorPage({
           </div>
         )}
 
-        {activeId === "documentos" && (
+        {(activeId === "documentos" || activeId === "material") && (
           <div className="space-y-4">
             <ContentToolbar
               query={query}
               onQueryChange={setQuery}
-              placeholder="Buscar documento"
+              placeholder={activeId === "material" ? "Buscar material" : "Buscar documento"}
               view={view}
               onViewChange={setView}
             />
@@ -355,6 +360,7 @@ export function SectorPage({
       <FileUploadModal
         slug={sector.slug}
         open={documentModalOpen}
+        title={activeId === "material" ? "Enviar material de apoio" : "Enviar documento"}
         onClose={() => setDocumentModalOpen(false)}
       />
       <LinkModal

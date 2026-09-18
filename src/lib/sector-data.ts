@@ -164,7 +164,7 @@ export async function getSectorContent(
     kind: sub.kind,
     description:
       sub.kind === "VITRINE"
-        ? "Galeria, vídeos e workshops da vitrine."
+        ? "Galeria, vídeos, workshops e material de apoio da vitrine."
         : "Conteúdos de integração e reciclagem da área.",
     completion,
     photos,
