@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db/prisma";
 import { notifyCycleAvailable } from "@/lib/whatsapp/notify";
 import { notifyCycleAvailableInApp } from "@/lib/notifications/notify";
 import { addBusinessDays, holidaySet } from "@/lib/business-days";
-import { isPreEfetivoRequired, PRE_EFETIVO_SUBJECT_WHERE } from "@/lib/pre-efetivo-cutoff";
+import { isOnboardingSchedule } from "@/lib/pre-efetivo-cutoff";
 
 /**
  * Motor de ciclos do Acompanhamento Pré-Efetivo.
@@ -13,8 +13,9 @@ import { isPreEfetivoRequired, PRE_EFETIVO_SUBJECT_WHERE } from "@/lib/pre-efeti
  *  - Ciclo 2: 7 dias úteis após a CONCLUSÃO do ciclo 1.
  *  - Ciclo 3: 7 dias úteis após a CONCLUSÃO do ciclo 2.
  *
- * Só para quem foi cadastrado a partir do corte (ver pre-efetivo-cutoff.ts):
- * antes dele, nem agenda, nem liberação, nem aviso.
+ * Quem foi cadastrado antes do corte (ver pre-efetivo-cutoff.ts) não espera o
+ * ciclo 1: ele abre na hora em que a agenda é criada. Ciclos 2 e 3 seguem a
+ * mesma regra de 7 dias úteis após a conclusão do anterior, com aviso.
  *
  * Como não há cron garantido na VPS, a liberação é feita por uma varredura
  * idempotente (`sweepAvailability`) chamada:
@@ -37,14 +38,16 @@ async function getPreEfetivoType() {
 
 /**
  * Garante que o colaborador tenha a agenda de 3 ciclos criada. Idempotente:
- * se já existir, apenas retorna. A âncora é `User.createdAt` (data de cadastro).
- * Apenas o ciclo 1 nasce com `availableAt` calculado; 2 e 3 recebem uma data
- * provisória e são recalculados na conclusão do ciclo anterior.
+ * se já existir, apenas retorna. Apenas o ciclo 1 nasce com `availableAt`
+ * calculado; 2 e 3 recebem uma data provisória e são recalculados na
+ * conclusão do ciclo anterior.
  *
- * Quem foi cadastrado antes do corte sai daqui sem agenda — e é a data de
- * cadastro que decide, não a data de hoje.
+ * A âncora do ciclo 1 depende da data de cadastro (`User.createdAt`):
+ *  - a partir do corte: +7 dias úteis após o cadastro, AGENDADO (onboarding);
+ *  - antes do corte: agora, já DISPONIVEL e marcado como avisado — foi o
+ *    próprio Gestor que abriu a avaliação, não faz sentido avisá-lo.
  */
-export async function ensureCycleSchedule(subjectId: string): Promise<void> {
+export async function ensureCycleSchedule(subjectId: string, now: Date = new Date()): Promise<void> {
   const type = await getPreEfetivoType();
   if (!type) return;
 
@@ -52,15 +55,18 @@ export async function ensureCycleSchedule(subjectId: string): Promise<void> {
     where: { id: subjectId },
     select: { createdAt: true, role: true },
   });
-  if (!subject || !isPreEfetivoRequired(subject.createdAt)) return;
+  if (!subject) return;
 
   const existing = await prisma.evaluationCycle.count({
     where: { subjectId, typeId: type.id },
   });
   if (existing > 0) return;
 
+  const onboarding = isOnboardingSchedule(subject.createdAt);
   const holidays = await loadHolidaySet();
-  const c1 = addBusinessDays(subject.createdAt, BUSINESS_DAYS_PER_CYCLE, holidays);
+  const c1 = onboarding
+    ? addBusinessDays(subject.createdAt, BUSINESS_DAYS_PER_CYCLE, holidays)
+    : now;
 
   // Ciclos 2 e 3 dependem da conclusão do anterior; guardamos uma projeção
   // a partir do ciclo 1 só para não deixar `availableAt` nulo. Serão
@@ -70,15 +76,19 @@ export async function ensureCycleSchedule(subjectId: string): Promise<void> {
   const dates = [c1, c2, c3];
 
   await prisma.evaluationCycle.createMany({
-    data: [1, 2, 3].map((cycle) => ({
-      typeId: type.id,
-      subjectId,
-      cycle,
+    data: [1, 2, 3].map((cycle) => {
       // Só o ciclo 1 começa elegível a virar DISPONIVEL; 2 e 3 ficam
       // efetivamente travados até o anterior concluir (ver sweep).
-      status: "AGENDADO" as const,
-      availableAt: dates[cycle - 1]!,
-    })),
+      const imediato = cycle === 1 && !onboarding;
+      return {
+        typeId: type.id,
+        subjectId,
+        cycle,
+        status: imediato ? ("DISPONIVEL" as const) : ("AGENDADO" as const),
+        availableAt: dates[cycle - 1]!,
+        notifiedAt: imediato ? now : null,
+      };
+    }),
     skipDuplicates: true,
   });
 }
@@ -96,13 +106,12 @@ export async function sweepAvailability(now: Date = new Date()): Promise<number>
   const type = await getPreEfetivoType();
   if (!type) return 0;
 
-  // Candidatos: agendados com data vencida, de quem passa pela regra.
+  // Candidatos: agendados com data vencida.
   const due = await prisma.evaluationCycle.findMany({
     where: {
       typeId: type.id,
       status: "AGENDADO",
       availableAt: { lte: now },
-      subject: PRE_EFETIVO_SUBJECT_WHERE,
     },
     include: {
       subject: {

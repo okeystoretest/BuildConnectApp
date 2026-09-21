@@ -169,7 +169,7 @@ export const EVALUATION_CATALOG: SeedEvaluationType[] = [
     kind: "PRE_EFETIVO",
     title: "Acompanhamento Funcional Pré-Efetivo",
     description:
-      "Avaliação de conformidade do colaborador em 3 ciclos (7, 14 e 21 dias úteis após o cadastro).",
+      "Avaliação de conformidade do colaborador em 3 ciclos, com 7 dias úteis entre eles. Novos cadastros esperam 7 dias úteis para o 1º ciclo; quem já estava na empresa pode ser avaliado a qualquer momento.",
     scaleMax: 5,
     hasCycle: true,
     order: 0,

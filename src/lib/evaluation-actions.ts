@@ -7,11 +7,7 @@ import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth/require-user";
 import { can } from "@/lib/permissions";
 import { advanceAfterCompletion, ensureCycleSchedule, sweepAvailability } from "@/lib/evaluation-schedule";
-import { isPreEfetivoRequired, PRE_EFETIVO_CUTOFF } from "@/lib/pre-efetivo-cutoff";
 import type { Role } from "@/types";
-
-const fmtCutoff = () =>
-  PRE_EFETIVO_CUTOFF.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
 
 /**
  * Envio de uma avaliação preenchida (Gestor ou Admin).
@@ -65,17 +61,12 @@ export async function resolveAvailableCycle(subjectId: string): Promise<{
 
   const subject = await prisma.user.findUnique({
     where: { id: subjectId },
-    select: { createdAt: true },
+    select: { id: true },
   });
   if (!subject) return { ok: false, reason: "Colaborador não encontrado." };
-  if (!isPreEfetivoRequired(subject.createdAt)) {
-    return {
-      ok: false,
-      reason: `Colaborador cadastrado antes de ${fmtCutoff()}: não passa pela pré-efetivação.`,
-    };
-  }
 
-  // Garante a agenda e promove ciclos vencidos antes de checar.
+  // Garante a agenda (ciclo 1 imediato para quem entrou antes do corte) e
+  // promove ciclos vencidos antes de checar.
   await ensureCycleSchedule(subjectId);
   await sweepAvailability();
 

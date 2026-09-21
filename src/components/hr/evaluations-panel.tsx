@@ -85,7 +85,7 @@ export function EvaluationsPanel({
   function handleStart() {
     if (!typeSlug || !subjectId || !selectedSubject) return;
 
-    // Pré-Efetivo: resolve o ciclo disponível (respeita 7/14/21 dias úteis).
+    // Pré-Efetivo: resolve o ciclo disponível (respeita o intervalo de 7 dias úteis).
     if (typeSlug === PRE_EFETIVO_SLUG) {
       if (!preEfetivoForm) {
         error("Formulário do Pré-Efetivo indisponível.");
@@ -171,8 +171,10 @@ export function EvaluationsPanel({
 
             {typeSlug === PRE_EFETIVO_SLUG && (
               <p className="mt-3 text-[11px] text-muted">
-                O Acompanhamento Pré-Efetivo segue o ciclo de 7/14/21 dias úteis — o sistema abre o
-                ciclo disponível do colaborador. As demais avaliações são livres.
+                O Acompanhamento Pré-Efetivo tem 3 ciclos com 7 dias úteis entre eles — o sistema
+                abre o ciclo disponível do colaborador. Para quem foi cadastrado antes de 01/10/2026 o
+                1º ciclo abre na hora; para os novos, 7 dias úteis após o cadastro. As demais
+                avaliações são livres.
               </p>
             )}
 

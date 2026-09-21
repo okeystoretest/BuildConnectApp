@@ -28,8 +28,9 @@ const PEOPLE_SECTOR_SLUG = "rh";
  *
  * O Gestor/Admin escolhe QUAL avaliação fazer e QUAL colaborador avaliar:
  *  - 4 avaliações avulsas: escolha livre (colaborador do setor).
- *  - Pré-Efetivo: escolha do colaborador, mas o ciclo (7/14/21 dias úteis) é
- *    resolvido pelo sistema; se nenhum ciclo estiver disponível, bloqueia.
+ *  - Pré-Efetivo: escolha do colaborador, mas o ciclo (3 ciclos, 7 dias úteis
+ *    entre eles) é resolvido pelo sistema; se nenhum ciclo estiver disponível,
+ *    bloqueia. Quem entrou antes do corte tem o 1º ciclo aberto na hora.
  *
  * Mantém a fila de ciclos disponíveis como aviso. O DHO não tem esta aba.
  * Escopo de colaboradores: Admin vê todos; Gestor só o próprio setor.
