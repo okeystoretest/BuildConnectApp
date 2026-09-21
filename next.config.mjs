@@ -109,7 +109,7 @@ const nextConfig = {
     // ACOMPANHA MAX_REQUEST_BYTES em src/lib/storage/limits.ts. Este arquivo é
     // ESM puro e não importa TypeScript, então os dois números vivem
     // separados: mexeu em um, mexa no outro.
-    middlewareClientMaxBodySize: "145mb",
+    middlewareClientMaxBodySize: "1040mb",
     serverActions: {
       // O limite padrão de corpo de Server Action é 1 MB. Todo upload do
       // sistema (foto, vídeo, documento, avatar) passa por Server Action com
@@ -117,21 +117,22 @@ const nextConfig = {
       // "Body exceeded 1 MB limit". Em dev ninguém percebe: as fotos de teste
       // são pequenas.
       //
-      // 145 MB cobre o pior envio legítimo do modal de vídeo — vídeo (135) +
-      // miniatura capturada no navegador (2) = 112, mais folga para o
+      // 1040 MB cobre o pior envio legítimo do modal de vídeo — vídeo (1024) +
+      // miniatura capturada no navegador (2) = 1026, mais folga para o
       // overhead do multipart. A transcrição vai sozinha, pela tela de
       // edição, e o envio em lote sobe um vídeo por requisição: nenhum dos
       // dois entra nesta conta.
       //
-      // O NÚMERO É DITADO POR TEMPO, não por memória. O `requestTimeout` do
-      // Node vale 300 s e o `next start` não deixa mexer nele; a 4,8 Mbps
-      // medidos em produção, 145 MB levam ~243 s. Um teto de 215 MB, que já
-      // valeu aqui, permitia um envio de ~344 s, que morria em 502 com um
-      // ECONNRESET mudo depois de o usuário esperar quase seis minutos.
+      // O NÚMERO É DITADO POR TEMPO. O `requestTimeout` do Node vale 300 s por
+      // padrão e o `next start` não deixa mexer nele — por isso o `start` do
+      // package.json carrega scripts/http-request-timeout.cjs via `node --require`
+      // e o eleva para 1 h. Sem isso, qualquer envio acima de ~170 MB (a
+      // 4,8 Mbps medidos em produção) morria em 502 com um ECONNRESET mudo.
+      // O proxy reverso na frente do container precisa acompanhar.
       //
-      // A memória, que já foi o critério, hoje sobra: mesmo bufferizado duas
-      // vezes (aqui e no middleware acima), dá ~290 MB contra ~11 GB livres.
-      bodySizeLimit: "145mb",
+      // Memória: bufferizado duas vezes (aqui e no middleware acima), um envio
+      // de 1 GB chega a ~2 GB de pico contra ~11 GB livres no host.
+      bodySizeLimit: "1040mb",
     },
   },
 };

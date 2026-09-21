@@ -19,7 +19,7 @@ Commits `5084130` e `dcea063` na `main`.
 - Sobem **um por vez**, cada um na própria requisição — o orçamento de tempo (300 s) vale por vídeo, não pelo lote.
 - Título sugerido pelo nome do arquivo (sem extensão, `_`/`-` viram espaço), editável antes do envio.
 - Progresso por item; erro num item não trava os demais (botão "tentar de novo").
-- Teto por vídeo: **135 MB**. Corpo da requisição: 145 MB (vídeo + miniatura + folga).
+- Teto por vídeo: **1 GB** (desde 21/09/2026; era 135 MB). Corpo da requisição: 1040 MB (vídeo + miniatura + folga). Só funciona porque o `start` eleva o `requestTimeout` do Node para 1 h via `scripts/http-request-timeout.cjs` — o proxy reverso da VPS precisa aceitar o mesmo tamanho de corpo e tempo.
 
 ### 4. Instrução Escrita — removida
 - Coluna `Video.instructionPath` derrubada (migration `20260916120000_video_thumbnail_drop_instruction`).
@@ -40,7 +40,7 @@ Commits `5084130` e `dcea063` na `main`.
 - Local usa `prisma db push` (sem histórico de migrations).
 
 ## Ponto de atenção
-- A 4,8 Mbps medidos em produção, 135 MB levam ~225 s dos 300 s do `requestTimeout` do Node. Rede mais lenta que a medida pode estourar o tempo num vídeo no teto (502 com `ECONNRESET` mudo). Para subir o teto, o caminho é `requestTimeout` maior ou envio em pedaços — não editar o número.
+- A 4,8 Mbps medidos em produção, 1 GB leva ~30 min; o `requestTimeout` do Node está em 1 h (preload no `start`). Se o envio morrer com 502 e `ECONNRESET` mudo, o suspeito é o timeout ou o limite de corpo do proxy reverso, não o app. Um envio de 1 GB bufferiza ~2 GB de RAM (middleware + FormData) — um por vez.
 
 ## Arquivos principais
 | Arquivo | Papel |
@@ -51,4 +51,5 @@ Commits `5084130` e `dcea063` na `main`.
 | `src/lib/video-filters.ts` | Pílulas a partir das tags e filtragem |
 | `src/lib/sector-actions.ts` | `uploadSectorVideo`, `updateSectorVideo`, `deleteSectorVideo` |
 | `src/components/sector/media-edit-modal.tsx` | Edição: título, tags, transcrição |
-| `src/lib/storage/limits.ts` | Tetos (vídeo 135 MB, miniatura 2 MB, corpo 145 MB) |
+| `src/lib/storage/limits.ts` | Tetos (vídeo 1 GB, miniatura 2 MB, corpo 1040 MB) |
+| `scripts/http-request-timeout.cjs` | Preload do `start`: `requestTimeout` do Node 300 s → 1 h |
