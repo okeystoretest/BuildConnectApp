@@ -7,7 +7,12 @@ import { Label } from "@/components/ui/label";
 import { Modal } from "@/components/ui/modal";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { COMPREHENSION_GRADE_MAX, COMPREHENSION_QUESTION } from "@/lib/video-comprehension";
+import {
+  COMPREHENSION_GRADE_MAX,
+  COMPREHENSION_GRADE_MIN,
+  COMPREHENSION_PASS_MIN,
+  COMPREHENSION_QUESTION,
+} from "@/lib/video-comprehension";
 import { gradeVideoComprehension } from "@/lib/video-comprehension-actions";
 import type { VideoComprehensionTask } from "@/types/evaluation";
 
@@ -17,7 +22,10 @@ export interface ComprehensionGradeModalProps {
   onGraded: () => void;
 }
 
-const GRADES = Array.from({ length: COMPREHENSION_GRADE_MAX + 1 }, (_, i) => i);
+const GRADES = Array.from(
+  { length: COMPREHENSION_GRADE_MAX - COMPREHENSION_GRADE_MIN + 1 },
+  (_, i) => i + COMPREHENSION_GRADE_MIN,
+);
 
 /**
  * O Gestor lê a resposta do colaborador sobre uma Instrução em Vídeo e dá a
@@ -87,11 +95,16 @@ export function ComprehensionGradeModal({ task, onClose, onGraded }: Comprehensi
         </section>
 
         <section>
-          <Label>Nível de compreensão (0 a {COMPREHENSION_GRADE_MAX})</Label>
+          <Label>
+            Nível de compreensão ({COMPREHENSION_GRADE_MIN} a {COMPREHENSION_GRADE_MAX})
+          </Label>
+          <p className="mt-1 text-[11px] text-muted">
+            Abaixo de {COMPREHENSION_PASS_MIN}, o colaborador assiste ao vídeo e responde de novo.
+          </p>
           <div
             role="radiogroup"
             aria-label="Nota"
-            className="mt-2 grid grid-cols-6 gap-1.5 sm:grid-cols-11"
+            className="mt-2 grid grid-cols-6 gap-1.5 sm:grid-cols-10"
           >
             {GRADES.map((n) => (
               <button
