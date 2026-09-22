@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { RATING_MIN, RATING_MAX, RATING_CRITERIA, averageOf, isEmptyRating } from "./video-rating";
+import {
+  RATING_MIN,
+  RATING_MAX,
+  RATING_CRITERIA,
+  RATING_LABELS,
+  averageOf,
+  isEmptyRating,
+} from "./video-rating";
 
 test("a escala vai de 1 a 5 e há três critérios", () => {
   assert.equal(RATING_MIN, 1);
@@ -39,4 +46,10 @@ test("a média ignora os nulos e não os conta no denominador", () => {
 test("sem nenhum valor não há média — e isso não é zero", () => {
   assert.equal(averageOf([]), null);
   assert.equal(averageOf([null, null]), null);
+});
+
+test("cada estrela tem um significado escrito, da pior para a melhor", () => {
+  assert.equal(RATING_LABELS.length, RATING_MAX - RATING_MIN + 1);
+  assert.equal(RATING_LABELS[0], "Muito ruim");
+  assert.equal(RATING_LABELS[RATING_LABELS.length - 1], "Ótimo");
 });

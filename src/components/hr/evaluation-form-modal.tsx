@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/providers/toast-provider";
 import { submitEvaluation } from "@/lib/evaluation-actions";
+import { scaleLegendFor } from "@/lib/scale-legend";
 import type { EvalForm } from "@/types/evaluation";
 
 export interface FormSubmitPayload {
@@ -77,6 +78,15 @@ export function EvaluationFormModal({
   const maxTotal = totalQuestions * form.scaleMax;
 
   const hasLabels = form.scaleLabels.length === form.scaleMax;
+  /*
+   * Legenda das escalas puramente numéricas: diz o que "3" quer dizer sem
+   * trocar o número do botão pela palavra. Vem nula para quem já se rotula
+   * (o Comportamental), que traz a própria legenda mais abaixo.
+   */
+  const legend = useMemo(
+    () => scaleLegendFor({ slug: form.slug, scaleMax: form.scaleMax, scaleLabels: form.scaleLabels }),
+    [form.slug, form.scaleMax, form.scaleLabels],
+  );
   // Escalas longas (Matriz de Decisão: 1–10) não cabem com o alvo cheio.
   // Reduz o círculo e permite rolagem horizontal da faixa no celular.
   const dense = form.scaleMax > 6;
@@ -196,6 +206,17 @@ export function EvaluationFormModal({
 
         {/* Corpo */}
         <div className="scrollbar-slim flex-1 overflow-y-auto px-7 py-6">
+          {!isSummary && legend && (
+            /* Acima da tabela, e não abaixo: a legenda serve para decidir a
+               nota, então precisa ser lida antes da primeira linha. Ao rolar
+               ela sai de vista — por isso cada botão também carrega a palavra
+               no `title` e no rótulo acessível. */
+            <p className="mb-3 text-sm leading-relaxed text-muted">
+              <span className="font-semibold text-foreground">Legenda: </span>
+              {legend.map((l, i) => `${i + 1} = ${l}`).join("   ·   ")}
+            </p>
+          )}
+
           {!isSummary && currentSection && (
             // overflow-clip (e não overflow-hidden) recorta os cantos
             // arredondados SEM criar um contêiner de rolagem — é o que deixa o
@@ -271,8 +292,8 @@ export function EvaluationFormModal({
                             type="button"
                             role="radio"
                             aria-checked={active}
-                            aria-label={labelFor(v)}
-                            title={hasLabels ? labelFor(v) : undefined}
+                            aria-label={legend ? `${v} — ${legend[v - 1]}` : labelFor(v)}
+                            title={legend ? legend[v - 1] : hasLabels ? labelFor(v) : undefined}
                             onClick={() => setAnswer(q.id, v)}
                             className={
                               "focus-ring flex shrink-0 items-center justify-center rounded-full border-2 font-bold transition-all " +

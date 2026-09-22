@@ -9,6 +9,7 @@ import { getMyVideoRating, submitVideoRating } from "@/lib/video-rating-actions"
 import {
   RATING_COMMENT_MAX,
   RATING_CRITERIA,
+  RATING_LABELS,
   RATING_MAX,
   RATING_MIN,
   type RatingCriterion,
@@ -97,7 +98,8 @@ export function VideoRatingForm({ videoId, onDone }: { videoId: string; onDone: 
                       type="button"
                       role="radio"
                       aria-checked={stars[criterion.key] === value}
-                      aria-label={`${criterion.label}: ${value} de ${RATING_MAX}`}
+                      aria-label={`${criterion.label}: ${value} de ${RATING_MAX} — ${RATING_LABELS[value - 1]}`}
+                      title={RATING_LABELS[value - 1]}
                       disabled={busy}
                       onClick={() =>
                         setStars((s) => ({
@@ -123,6 +125,13 @@ export function VideoRatingForm({ videoId, onDone }: { videoId: string; onDone: 
           </div>
         ))}
       </div>
+
+      {/* Sem isto, três estrelas significam coisas diferentes para cada pessoa
+          — e a média do vídeo passa a somar réguas que não são a mesma. */}
+      <p className="mt-2.5 text-[11px] leading-relaxed text-muted">
+        <span className="font-medium text-foreground">Legenda: </span>
+        {RATING_LABELS.map((l, i) => `${i + 1} = ${l}`).join(" · ")}
+      </p>
 
       <Textarea
         value={comment}

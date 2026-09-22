@@ -7,6 +7,7 @@ import { MatrizDecisaoChart } from "@/components/hr/matriz-decisao-chart";
 import { progressColor } from "@/lib/progress-color";
 import { MATRIZ_DECISAO_SLUG } from "@/lib/evaluation-rounds-config";
 import { averageOf, classifyMatriz } from "@/lib/matriz-decisao";
+import { scaleLegendFor } from "@/lib/scale-legend";
 import type {
   EvaluationResultDetail,
   EvaluationResultAnswer,
@@ -50,6 +51,11 @@ function singleMatriz(detail: EvaluationResultDetail): MatrizDecisaoResult | nul
 export function EvaluationResultView({ detail }: { detail: EvaluationResultDetail }) {
   const pct = detail.maxTotal > 0 ? Math.round((detail.total / detail.maxTotal) * 100) : 0;
   const matriz = singleMatriz(detail);
+  const legend = scaleLegendFor({
+    slug: detail.typeSlug,
+    scaleMax: detail.scaleMax,
+    scaleLabels: detail.scaleLabels,
+  });
 
   return (
     <div className="space-y-5">
@@ -101,6 +107,15 @@ export function EvaluationResultView({ detail }: { detail: EvaluationResultDetai
             Escala 1 a {detail.scaleMax}
           </span>
         </div>
+
+        {/* Quem lê a nota precisa do mesmo dicionário de quem a deu: sem isso,
+            "4 de 5" é um número sem unidade. */}
+        {legend && (
+          <p className="mt-3 text-xs leading-relaxed text-muted">
+            <span className="font-semibold text-foreground">Legenda: </span>
+            {legend.map((l, i) => `${i + 1} = ${l}`).join("   ·   ")}
+          </p>
+        )}
       </header>
 
       {matriz && (

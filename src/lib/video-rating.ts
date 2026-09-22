@@ -19,6 +19,14 @@ export const RATING_CRITERIA = [
   { key: "clarity", label: "Clareza das instruções" },
 ] as const;
 
+/**
+ * O que cada estrela quer dizer, da primeira à quinta. Três estrelas sem
+ * legenda podem significar "mediano" ou "quase bom" conforme quem clica; com a
+ * palavra escrita, a média do vídeo passa a comparar a mesma coisa entre
+ * pessoas diferentes.
+ */
+export const RATING_LABELS = ["Muito ruim", "Ruim", "Regular", "Bom", "Ótimo"] as const;
+
 export type RatingCriterion = (typeof RATING_CRITERIA)[number]["key"];
 
 export interface RatingInput {
