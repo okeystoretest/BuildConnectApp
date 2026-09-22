@@ -125,6 +125,12 @@ export function Sidebar() {
     });
   }, [can, canAccessSlug, user.dhoMember]);
 
+  // Itens gerais que declaram permissão só aparecem para quem a tem.
+  const visibleGeneralLinks = useMemo(
+    () => GENERAL_LINKS.filter((link) => !link.permission || can(link.permission)),
+    [can],
+  );
+
   const hasAnySector = visibleGroups.length > 0 || visibleStandalone.length > 0;
 
   function handleLogout() {
@@ -257,7 +263,7 @@ export function Sidebar() {
           />
 
           <Section title="Geral" collapsed={collapsed}>
-            {GENERAL_LINKS.map((link) => (
+            {visibleGeneralLinks.map((link) => (
               <NavItem
                 key={link.href}
                 href={link.href}

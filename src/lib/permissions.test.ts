@@ -24,3 +24,9 @@ test("cronograma.filterUsers pertence a GESTOR e ADMIN — o colaborador não es
   assert.equal(can("GESTOR", "cronograma.filterUsers"), true);
   assert.equal(can("COLABORADOR", "cronograma.filterUsers"), false);
 });
+
+test("Meu Setor é de Gestor e Admin, nunca de Colaborador", () => {
+  assert.equal(can("COLABORADOR", "sector.overview"), false);
+  assert.equal(can("GESTOR", "sector.overview"), true);
+  assert.equal(can("ADMIN", "sector.overview"), true);
+});

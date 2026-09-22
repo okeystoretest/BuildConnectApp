@@ -9,6 +9,8 @@ export const MY_EVALUATIONS_HREF = "/minhas-avaliacoes";
 
 export const GENERAL_LINKS: readonly SectorLink[] = [
   { label: "Meu Progresso", href: "/progresso", icon: "BarChart3" },
+  // Só Gestor e Admin: o painel mostra o desempenho de terceiros.
+  { label: "Meu Setor", href: "/meu-setor", icon: "Users", permission: "sector.overview" },
   { label: "Minhas Avaliações", href: MY_EVALUATIONS_HREF, icon: "ClipboardCheck" },
   { label: "Meus Chamados", href: "/chamados", icon: "Ticket" },
 ];

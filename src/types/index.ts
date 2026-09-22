@@ -16,6 +16,10 @@ export type Permission =
   | "sector.hr"
   // Ler e tratar as denúncias da Central de Denúncias (DHO).
   | "reports.manage"
+  // Painel "Meu Setor": progresso e médias dos colaboradores do setor. Do
+  // Gestor (só o setor dele) e do Admin (qualquer um). Permissão própria, e
+  // não `evaluations.view`, porque aqui se enxerga o DESEMPENHO de terceiros.
+  | "sector.overview"
   | "users.manage"
   | "tickets.create"
   | "tickets.viewOwn"
@@ -44,6 +48,8 @@ export interface SectorLink {
   label: string;
   href: string;
   icon: string;
+  /** Quando presente, o item só aparece para quem tem a permissão. */
+  permission?: Permission;
 }
 
 export interface SectorGroup {
