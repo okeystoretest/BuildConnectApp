@@ -5,7 +5,7 @@ import { paginate } from "@/lib/paginate";
 import { Pagination } from "@/components/ui/pagination";
 import { useRouter } from "next/navigation";
 import { Pencil, Plus, Search, Trash2 } from "lucide-react";
-import { initials } from "@/lib/utils";
+import { Avatar } from "@/components/ui/avatar";
 import { ROLE_LABEL } from "@/lib/permissions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -23,25 +23,6 @@ const ROLE_TONE: Record<Role, "neutral" | "info" | "accent"> = {
   GESTOR: "info",
   ADMIN: "accent",
 };
-
-/** Avatar do usuário: exibe a foto (.webp) quando houver; senão, as iniciais. */
-function Avatar({ user, size = "h-8 w-8" }: { user: ManagedUser; size?: string }) {
-  if (user.avatarPath) {
-    return (
-      <span className={`${size} shrink-0 overflow-hidden rounded-full border border-border`}>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={user.avatarPath} alt={user.name} className="h-full w-full object-cover" />
-      </span>
-    );
-  }
-  return (
-    <span
-      className={`${size} flex shrink-0 items-center justify-center rounded-full bg-primary/20 text-[10px] font-semibold text-primary`}
-    >
-      {initials(user.name)}
-    </span>
-  );
-}
 
 export function UserManagementPanel({ users }: { users: readonly ManagedUser[] }) {
   const router = useRouter();
@@ -162,7 +143,12 @@ export function UserManagementPanel({ users }: { users: readonly ManagedUser[] }
                 <tr key={user.id} className="border-b border-border/60 last:border-0 hover:bg-surface-2/50">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <Avatar user={user} />
+                      <Avatar
+                        name={user.name}
+                        avatarPath={user.avatarPath}
+                        size="h-8 w-8"
+                        textSize="text-[10px]"
+                      />
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-foreground">{user.name}</p>
                         <p className="truncate font-mono text-[11px] text-muted">{user.username}</p>
@@ -219,7 +205,7 @@ export function UserManagementPanel({ users }: { users: readonly ManagedUser[] }
           {page.items.map((user) => (
             <article key={user.id} className="rounded-xl border border-border bg-surface p-4">
               <div className="flex items-center gap-3">
-                <Avatar user={user} size="h-9 w-9" />
+                <Avatar name={user.name} avatarPath={user.avatarPath} textSize="text-[10px]" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-foreground">{user.name}</p>
                   <p className="truncate font-mono text-[11px] text-muted">{user.username}</p>

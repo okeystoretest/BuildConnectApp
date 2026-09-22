@@ -4,7 +4,8 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import * as Icons from "lucide-react";
 import { ChevronLeft, ChevronUp, Home, LogOut, Plus } from "lucide-react";
-import { cn, initials } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { Avatar } from "@/components/ui/avatar";
 import { ROLE_LABEL } from "@/lib/permissions";
 import {
   GENERAL_LINKS,
@@ -46,26 +47,6 @@ function useOpenedByUser(open: boolean): boolean {
   }, [open]);
 
   return animate;
-}
-
-/**
- * Avatar do usuário logado: foto (.webp) quando existir; senão, iniciais.
- * Recebe o caminho e o nome direto do contexto de sessão.
- */
-function SidebarAvatar({ avatarPath, name }: { avatarPath?: string; name: string }) {
-  if (avatarPath) {
-    return (
-      <span className="h-9 w-9 shrink-0 overflow-hidden rounded-full border border-border">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={avatarPath} alt={name} className="h-full w-full object-cover" />
-      </span>
-    );
-  }
-  return (
-    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-      {initials(name)}
-    </span>
-  );
 }
 
 export function Sidebar() {
@@ -233,7 +214,7 @@ export function Sidebar() {
               collapsed && "justify-center p-2",
             )}
           >
-            <SidebarAvatar avatarPath={user.avatarPath} name={user.name} />
+            <Avatar name={user.name} avatarPath={user.avatarPath} textSize="text-sm" tone="solid" />
             {!collapsed && (
               <div className="min-w-0">
                 <p className="truncate text-sm font-semibold text-foreground">{user.name}</p>

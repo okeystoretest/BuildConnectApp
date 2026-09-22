@@ -3,7 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Loader2 } from "lucide-react";
-import { cn, initials } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
@@ -31,24 +32,6 @@ export interface ProductionBacklogProps {
 }
 
 const PREVIEW = 6;
-
-function Avatar({ name, avatarPath }: { name: string; avatarPath?: string }) {
-  if (avatarPath) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={avatarPath}
-        alt=""
-        className="h-7 w-7 shrink-0 rounded-full border border-border object-cover"
-      />
-    );
-  }
-  return (
-    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground">
-      {initials(name)}
-    </span>
-  );
-}
 
 /**
  * Fila de produção: o que ainda não foi publicado no mês, com troca de status
@@ -176,7 +159,13 @@ export function ProductionBacklog({ slug, items, onSelect }: ProductionBacklogPr
                 <td className="py-3 pr-3">
                   {post.owner ? (
                     <span className="flex items-center gap-2">
-                      <Avatar name={post.owner.name} avatarPath={post.owner.avatarPath} />
+                      <Avatar
+                        name={post.owner.name}
+                        avatarPath={post.owner.avatarPath}
+                        size="h-7 w-7"
+                        textSize="text-[10px]"
+                        tone="solid"
+                      />
                       <span className="text-foreground">{post.owner.name}</span>
                     </span>
                   ) : (
