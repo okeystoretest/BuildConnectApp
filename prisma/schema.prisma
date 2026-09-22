@@ -87,6 +87,8 @@ model User {
   videoComprehensionGrades VideoComprehension[] @relation("VideoComprehensionGrader")
   // Patamar de fila já avisado a este Gestor (aviso de 5 em 5).
   graderAlertState         GraderAlertState?    @relation("GraderAlertState")
+  // Avaliações de qualidade que este usuário deu a vídeos.
+  videoRatings             VideoRating[]        @relation("VideoRatingAuthor")
   contentPosts       ContentPost[]      @relation("ContentPostOwner")
   authoredPosts      ContentPost[]      @relation("ContentPostAuthor")
   // Roteiros de card que este usuário gerou ou editou por último.
@@ -347,6 +349,7 @@ model Video {
 
   progress       ContentProgress[]
   comprehensions VideoComprehension[]
+  ratings        VideoRating[]
   // Subsetores que também enxergam este vídeo. Mesma linha, mesmo arquivo:
   // compartilhar não duplica nada em disco. Só ADMIN cria e remove.
   shares VideoShare[]
@@ -617,6 +620,29 @@ model GraderAlertState {
   grader            User     @relation("GraderAlertState", fields: [graderId], references: [id], onDelete: Cascade)
   lastNotifiedCount Int      @default(0)
   lastNotifiedAt    DateTime @default(now())
+}
+
+/// Opinião do colaborador SOBRE O VÍDEO (não sobre ele mesmo). Uma por pessoa
+/// por vídeo; reavaliar substitui. Nada aqui entra em média de desempenho —
+/// quem lê é o Gestor, para saber qual vídeo precisa ser refeito.
+model VideoRating {
+  id      String @id @default(cuid())
+  userId  String
+  user    User   @relation("VideoRatingAuthor", fields: [userId], references: [id], onDelete: Cascade)
+  videoId String
+  video   Video  @relation(fields: [videoId], references: [id], onDelete: Cascade)
+
+  /// 1 a 5. Nulo = o critério não foi avaliado; não conta na média.
+  audio   Int?
+  image   Int?
+  clarity Int?
+
+  comment   String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, videoId])
+  @@index([videoId])
 }
 
 // ─────────────────────────────────────────────────────────────
