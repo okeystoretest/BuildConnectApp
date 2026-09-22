@@ -74,7 +74,13 @@ export default async function MySectorPage({
   return (
     <AppShell eyebrow="Menu" title="Meu Setor">
       <PageHeader
-        title={`Meu Setor · ${data.subsectorLabel ?? data.sectorLabel}`}
+        // O setor vai junto do subsetor: "Logística Interna" sozinho não diz
+        // de quem é, e dois setores podem ter subsetores de nome parecido.
+        title={
+          data.subsectorLabel
+            ? `Meu Setor · ${data.sectorLabel} › ${data.subsectorLabel}`
+            : `Meu Setor · ${data.sectorLabel}`
+        }
         description="Avanço dos colaboradores nos treinamentos e o que eles acharam dos vídeos."
       />
       <SectorOverviewView data={data} scopes={scopes} />
