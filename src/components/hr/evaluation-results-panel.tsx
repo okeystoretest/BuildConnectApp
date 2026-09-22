@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ArrowLeft,
   BarChart3,
+  ChevronDown,
   ChevronRight,
   ClipboardCheck,
   Loader2,
@@ -13,13 +14,16 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Pagination } from "@/components/ui/pagination";
 import { EvaluationAssignmentPanel } from "@/components/hr/evaluation-assignment-panel";
 import { EvaluationResultView } from "@/components/hr/evaluation-result-view";
 import { FormsPanel } from "@/components/hr/forms-panel";
 import { RoundConsolidatedView } from "@/components/hr/round-consolidated-view";
 import { fetchEvaluationDetail } from "@/lib/evaluation-results-actions";
 import { fetchRoundConsolidated } from "@/lib/evaluation-rounds-actions";
+import { paginate } from "@/lib/paginate";
 import { cn } from "@/lib/utils";
+import { isPassing } from "@/lib/video-comprehension";
 import { useRole } from "@/providers/role-provider";
 import type {
   AssignableEvaluationType,
@@ -30,6 +34,7 @@ import type {
   EvaluationResultSubject,
   EvaluationResultTypeCard,
   EvaluationSubject,
+  VideoComprehensionEntry,
   VideoComprehensionSubject,
 } from "@/types/evaluation";
 import type { FormListItem } from "@/types/form";
@@ -207,7 +212,10 @@ export function EvaluationResultsPanel({
             undefined,
           ]}
         />
-        <ComprehensionResults subject={subject} />
+        {/* `key`: trocar de colaborador remonta a lista e volta para a
+            página 1. Sem isso, quem estava na página 3 de uma pessoa abriria
+            outra já na 3. */}
+        <ComprehensionResults key={subject.subjectId} subject={subject} />
       </div>
     );
   }
@@ -479,8 +487,95 @@ function ComprehensionSubjectCard({
   );
 }
 
+/** Quantos registros cabem numa página do nível 3. */
+const COMPREHENSION_PAGE_SIZE = 10;
+
+/**
+ * Um registro avaliado, em uma linha.
+ *
+ * Compacto de propósito: a pergunta que se faz nesta tela é "quando, quem,
+ * qual vídeo, que nota" — quatro dados que cabem lado a lado. A resposta
+ * escrita e o comentário do gestor são leitura longa, e ficam atrás do
+ * "Ver resposta"; deixá-los abertos transformava dez registros em dez telas.
+ *
+ * Reprovada recebe o fundo âmbar, e nunca só ele: a palavra "Reprovada" vai
+ * ao lado da nota (WCAG 1.4.1).
+ */
+function ComprehensionEntryCard({
+  entry,
+  subject,
+}: {
+  entry: VideoComprehensionEntry;
+  subject: VideoComprehensionSubject;
+}) {
+  const [open, setOpen] = useState(false);
+  const passed = isPassing(entry.grade);
+
+  return (
+    <article
+      className={cn(
+        "rounded-xl border transition-colors",
+        passed ? "border-border bg-surface" : "border-warning/50 bg-warning/10",
+      )}
+    >
+      <div className="flex items-start justify-between gap-3 p-3">
+        <div className="min-w-0">
+          <h4 className="truncate text-sm font-medium text-foreground">{entry.videoTitle}</h4>
+          <p className="mt-0.5 truncate text-[11px] text-muted">
+            {entry.submittedAtLabel} · {subject.subjectName} · {subject.sector}
+            {/* Só a partir da 2ª: marcar "tentativa 1" em todo registro seria ruído. */}
+            {entry.attempt > 1 && ` · tentativa ${entry.attempt}`}
+          </p>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-3">
+          <p className="text-right">
+            <span
+              className={cn("text-base font-semibold", passed ? "text-foreground" : "text-warning")}
+            >
+              {entry.grade}
+              <span className="text-xs font-normal text-muted">/10</span>
+            </span>
+            {!passed && (
+              <span className="block text-[10px] font-medium text-warning">Reprovada</span>
+            )}
+          </p>
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            className="focus-ring flex h-7 items-center gap-1 rounded-lg border border-border px-2 text-[11px] text-muted transition-colors hover:text-foreground"
+          >
+            Ver resposta
+            <ChevronDown className={cn("h-3 w-3 transition-transform", open && "rotate-180")} />
+          </button>
+        </div>
+      </div>
+
+      {open && (
+        <div className="border-t border-border/60 p-3">
+          <blockquote className="whitespace-pre-wrap rounded-lg border border-border bg-surface-2 p-3 text-sm leading-relaxed text-foreground">
+            {entry.answer}
+          </blockquote>
+          <p className="mt-2 text-[11px] text-muted">
+            Avaliado por {entry.graderName} em {entry.gradedAtLabel}
+          </p>
+          {entry.graderComment && (
+            <p className="mt-1 text-xs text-muted">
+              <span className="font-medium text-foreground">Comentário:</span> {entry.graderComment}
+            </p>
+          )}
+        </div>
+      )}
+    </article>
+  );
+}
+
 /** Nível 3 de Resultados de Treinamentos: cada resposta avaliada, com a nota. */
 function ComprehensionResults({ subject }: { subject: VideoComprehensionSubject }) {
+  const [page, setPage] = useState(1);
+  const current = paginate(subject.entries, page, COMPREHENSION_PAGE_SIZE);
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface p-4">
@@ -494,8 +589,8 @@ function ComprehensionResults({ subject }: { subject: VideoComprehensionSubject 
         <div className="text-right">
           <p className="text-2xl font-semibold text-foreground">
             {subject.average === null
-            ? "—"
-            : subject.average.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
+              ? "—"
+              : subject.average.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
             <span className="text-sm text-muted">/10</span>
           </p>
           <p className="text-[11px] text-muted">
@@ -504,39 +599,13 @@ function ComprehensionResults({ subject }: { subject: VideoComprehensionSubject 
         </div>
       </div>
 
-      {subject.entries.map((entry) => (
-        <article key={entry.id} className="rounded-xl border border-border bg-surface p-4">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <h4 className="truncate text-sm font-semibold text-foreground">
-                {entry.videoTitle}
-                {/* Só a partir da 2ª: marcar "tentativa 1" em todo registro seria ruído. */}
-                {entry.attempt > 1 && (
-                  <span className="ml-2 rounded-full bg-surface-3 px-2 py-0.5 text-[10px] font-medium text-muted">
-                    tentativa {entry.attempt}
-                  </span>
-                )}
-              </h4>
-              <p className="mt-0.5 text-[11px] text-muted">Respondido em {entry.submittedAtLabel}</p>
-            </div>
-            <p className="shrink-0 text-xl font-semibold text-foreground">
-              {entry.grade}
-              <span className="text-xs text-muted">/10</span>
-            </p>
-          </div>
-          <blockquote className="mt-3 whitespace-pre-wrap rounded-lg border border-border bg-surface-2 p-3 text-sm leading-relaxed text-foreground">
-            {entry.answer}
-          </blockquote>
-          <p className="mt-2 text-[11px] text-muted">
-            Avaliado por {entry.graderName} em {entry.gradedAtLabel}
-          </p>
-          {entry.graderComment && (
-            <p className="mt-1 text-xs text-muted">
-              <span className="font-medium text-foreground">Comentário:</span> {entry.graderComment}
-            </p>
-          )}
-        </article>
-      ))}
+      <div className="space-y-2">
+        {current.items.map((entry) => (
+          <ComprehensionEntryCard key={entry.id} entry={entry} subject={subject} />
+        ))}
+      </div>
+
+      <Pagination page={current} onChange={setPage} noun="registros" className="pt-1" />
     </div>
   );
 }
