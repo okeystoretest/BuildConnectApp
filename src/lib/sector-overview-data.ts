@@ -1,12 +1,17 @@
 import { prisma } from "@/lib/db/prisma";
+import { dateLabelBR } from "@/lib/brasilia";
+import { ROLE_LABEL } from "@/lib/permissions";
 import { TRACKED_SUBSECTOR } from "@/lib/progress-scope";
+import { isPassing } from "@/lib/video-comprehension";
 import { averageOf } from "@/lib/video-rating";
 import {
   approvedAverage,
   progressPct,
   splitGrades,
+  type MemberEvaluation,
   type MemberOverview,
 } from "@/lib/sector-overview";
+import type { Role } from "@/types";
 
 /** Um vídeo do setor com as médias de qualidade que os colaboradores deram. */
 export interface VideoQualityRow {
@@ -53,7 +58,9 @@ export async function getSectorOverview(sectorId: string): Promise<SectorOvervie
     prisma.user.findMany({
       where: { sectorId, active: true },
       orderBy: { fullName: "asc" },
-      select: { id: true, fullName: true },
+      // `createdAt` é data de CADASTRO. O modelo não guarda admissão, e o card
+      // rotula o campo como cadastro para não sugerir o que não sabe.
+      select: { id: true, fullName: true, role: true, avatarPath: true, createdAt: true },
     }),
     prisma.subsector.findMany({
       where: { sectorId, ...TRACKED_SUBSECTOR },
@@ -81,9 +88,20 @@ export async function getSectorOverview(sectorId: string): Promise<SectorOvervie
       },
       select: { userId: true },
     }),
+    // As notas vêm inteiras, e não só o número: o card lista as avaliações já
+    // dadas àquela pessoa, e uma segunda consulta por colaborador aberto seria
+    // uma ida ao banco por clique.
     prisma.videoComprehension.findMany({
       where: { userId: { in: memberIds }, gradedAt: { not: null } },
-      select: { userId: true, grade: true },
+      orderBy: { gradedAt: "desc" },
+      select: {
+        id: true,
+        userId: true,
+        grade: true,
+        attempt: true,
+        gradedAt: true,
+        video: { select: { title: true } },
+      },
     }),
     prisma.videoRating.findMany({
       where: { videoId: { in: videoIds } },
@@ -102,13 +120,27 @@ export async function getSectorOverview(sectorId: string): Promise<SectorOvervie
   for (const d of done) doneByUser.set(d.userId, (doneByUser.get(d.userId) ?? 0) + 1);
 
   const gradesByUser = new Map<string, { grade: number }[]>();
+  const evaluationsByUser = new Map<string, MemberEvaluation[]>();
   const allGrades: { grade: number }[] = [];
   for (const g of graded) {
-    if (g.grade == null) continue;
+    // `grade` e `gradedAt` não são nulos aqui (o filtro acima garante); o
+    // TypeScript não tem como saber disso.
+    if (g.grade == null || g.gradedAt == null) continue;
     const list = gradesByUser.get(g.userId) ?? [];
     list.push({ grade: g.grade });
     gradesByUser.set(g.userId, list);
     allGrades.push({ grade: g.grade });
+
+    const entries = evaluationsByUser.get(g.userId) ?? [];
+    entries.push({
+      id: g.id,
+      videoTitle: g.video.title,
+      grade: g.grade,
+      attempt: g.attempt,
+      gradedAtLabel: dateLabelBR(g.gradedAt),
+      passed: isPassing(g.grade),
+    });
+    evaluationsByUser.set(g.userId, entries);
   }
 
   const memberRows: MemberOverview[] = members.map((m) => {
@@ -117,12 +149,16 @@ export async function getSectorOverview(sectorId: string): Promise<SectorOvervie
     return {
       userId: m.id,
       name: m.fullName,
+      role: ROLE_LABEL[m.role as Role],
+      avatarPath: m.avatarPath ?? undefined,
+      sinceLabel: dateLabelBR(m.createdAt),
       doneItems,
       totalItems,
       progress: progressPct(doneItems, totalItems),
       average: approvedAverage(approved),
       rejections,
       pending: Math.max(totalItems - doneItems, 0),
+      evaluations: evaluationsByUser.get(m.id) ?? [],
     };
   });
 

@@ -19,10 +19,28 @@ export interface GradeRow {
   grade: number;
 }
 
-/** Uma linha da tabela de colaboradores. */
+/** Uma nota que Gestor/Admin já deu a este colaborador, para a caixa "Avaliações". */
+export interface MemberEvaluation {
+  id: string;
+  videoTitle: string;
+  /** 1–10. */
+  grade: number;
+  /** 1 na primeira resposta; +1 a cada reprovação. */
+  attempt: number;
+  gradedAtLabel: string;
+  /** Derivado da nota, para a tela não repetir a regra do 7. */
+  passed: boolean;
+}
+
+/** Um colaborador no painel do setor. */
 export interface MemberOverview {
   userId: string;
   name: string;
+  /** Papel (Colaborador / Gestor / Admin) — o cadastro não guarda cargo. */
+  role: string;
+  avatarPath?: string;
+  /** Data de CADASTRO. Não é admissão, e a tela diz isso com todas as letras. */
+  sinceLabel: string;
   doneItems: number;
   totalItems: number;
   progress: number;
@@ -30,6 +48,24 @@ export interface MemberOverview {
   average: number | null;
   rejections: number;
   pending: number;
+  /** Da mais recente para a mais antiga. */
+  evaluations: MemberEvaluation[];
+}
+
+/** Em que ponto do conteúdo a pessoa está. */
+export type MemberStatus = "NAO_INICIADO" | "EM_ANDAMENTO" | "CONCLUIDO";
+
+/**
+ * Status a partir do progresso, e não de um campo no banco: o estado é
+ * consequência do que foi concluído, e guardá-lo à parte criaria uma segunda
+ * verdade que envelhece.
+ *
+ * Setor sem conteúdo nenhum é "não iniciado", nunca "concluído": ninguém
+ * terminou uma trilha que não existe, e `progressPct` devolve 0 nesse caso.
+ */
+export function memberStatus(done: number, total: number): MemberStatus {
+  if (total === 0 || done === 0) return "NAO_INICIADO";
+  return done >= total ? "CONCLUIDO" : "EM_ANDAMENTO";
 }
 
 /** Aprovadas de um lado, contagem de reprovações do outro. */

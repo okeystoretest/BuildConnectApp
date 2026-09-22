@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { approvedAverage, progressPct, splitGrades } from "./sector-overview";
+import { approvedAverage, memberStatus, progressPct, splitGrades } from "./sector-overview";
 
 test("a média só considera notas aprovadas", () => {
   assert.equal(approvedAverage([7, 10]), 8.5);
@@ -37,4 +37,26 @@ test("percentual arredonda e trata total zero", () => {
   assert.equal(progressPct(0, 0), 0);
   assert.equal(progressPct(1, 3), 33);
   assert.equal(progressPct(2, 3), 67);
+});
+
+// ── Status do colaborador no painel do setor ──────────────────────────────
+
+test("sem nenhum item concluído, o status é não iniciado", () => {
+  assert.equal(memberStatus(0, 12), "NAO_INICIADO");
+});
+
+test("com parte do conteúdo concluída, está em andamento", () => {
+  assert.equal(memberStatus(6, 12), "EM_ANDAMENTO");
+});
+
+test("com tudo concluído, está concluído", () => {
+  assert.equal(memberStatus(12, 12), "CONCLUIDO");
+});
+
+test("setor sem conteúdo nenhum é não iniciado, nunca concluído", () => {
+  assert.equal(memberStatus(0, 0), "NAO_INICIADO");
+});
+
+test("mais concluídos que o total (conteúdo removido depois) ainda é concluído", () => {
+  assert.equal(memberStatus(14, 12), "CONCLUIDO");
 });

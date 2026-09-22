@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { StatCard } from "@/components/ui/stat-card";
 import { Tabs, TabPanel, type TabItem } from "@/components/ui/tabs";
-import { MembersTable } from "./members-table";
+import { MembersGrid } from "./members-grid";
 import { VideoQualityTable } from "./video-quality-table";
 import type { SectorOverview } from "@/lib/sector-overview-data";
 
@@ -66,7 +66,7 @@ export function SectorOverviewView({
       <Card className="mt-4 p-5">
         <Tabs items={TABS} value={tab} onValueChange={setTab} />
         <TabPanel tabId={tab} className="mt-5">
-          {tab === "colaboradores" && <MembersTable members={data.members} />}
+          {tab === "colaboradores" && <MembersGrid members={data.members} />}
           {tab === "qualidade" && <VideoQualityTable videos={data.videos} />}
         </TabPanel>
       </Card>
