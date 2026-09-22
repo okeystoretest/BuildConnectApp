@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { approvedAverage, memberStatus, progressPct, splitGrades } from "./sector-overview";
+import {
+  approvedAverage,
+  belongsToSubsector,
+  memberStatus,
+  progressPct,
+  splitGrades,
+} from "./sector-overview";
 
 test("a média só considera notas aprovadas", () => {
   assert.equal(approvedAverage([7, 10]), 8.5);
@@ -59,4 +65,19 @@ test("setor sem conteúdo nenhum é não iniciado, nunca concluído", () => {
 
 test("mais concluídos que o total (conteúdo removido depois) ainda é concluído", () => {
   assert.equal(memberStatus(14, 12), "CONCLUIDO");
+});
+
+// ── Pertencimento a um subsetor (pílulas do Meu Setor) ────────────────────
+
+test("quem marcou o subsetor pertence a ele", () => {
+  assert.equal(belongsToSubsector({ subsectorIds: ["a", "b"] }, "a"), true);
+});
+
+test("quem marcou outros subsetores não pertence a este", () => {
+  assert.equal(belongsToSubsector({ subsectorIds: ["a", "b"] }, "c"), false);
+});
+
+test("quem não marcou nenhum pertence a todos — é o que o cadastro diz", () => {
+  assert.equal(belongsToSubsector({ subsectorIds: [] }, "a"), true);
+  assert.equal(belongsToSubsector({ subsectorIds: [] }, "z"), true);
 });

@@ -96,3 +96,28 @@ export function approvedAverage(grades: readonly number[]): number | null {
 export function progressPct(done: number, total: number): number {
   return total === 0 ? 0 : Math.round((done / total) * 100);
 }
+
+/** O que um colaborador tem marcado no cadastro, para o recorte por subsetor. */
+export interface MemberSubsectors {
+  /** Ids dos subsetores marcados. Vazio = nenhum marcado. */
+  subsectorIds: readonly string[];
+}
+
+/**
+ * Este colaborador aparece na pílula deste subsetor?
+ *
+ * Segue a MESMA regra de `resolveAccessibleSlugs`, que já decide o que a
+ * pessoa enxerga na barra lateral e em Meu Progresso: marcar subsetores no
+ * cadastro é opcional, e quem não marca nenhum acessa todos os do seu setor —
+ * logo pertence a todos eles.
+ *
+ * Ter uma segunda definição de "é deste subsetor" aqui seria o começo de duas
+ * verdades: o painel do gestor mostraria uma equipe, e o acesso da pessoa
+ * diria outra. A consequência aceita é que quem não marcou nada aparece em
+ * todas as pílulas do seu setor — e isso é exatamente o que o cadastro dela
+ * está dizendo.
+ */
+export function belongsToSubsector(member: MemberSubsectors, subsectorId: string): boolean {
+  if (member.subsectorIds.length === 0) return true;
+  return member.subsectorIds.includes(subsectorId);
+}

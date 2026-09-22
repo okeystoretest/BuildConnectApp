@@ -112,13 +112,13 @@ after(async () => {
 });
 
 test("colaborador de outro setor não entra no painel", async () => {
-  const out = await getSectorOverview(sectorId);
+  const out = await getSectorOverview({ sectorId });
   assert.equal(out.members.length, 2);
   assert.ok(!out.members.some((m) => m.userId === forasteiroId));
 });
 
 test("quem foi aprovado tem média; quem só reprovou não tem", async () => {
-  const out = await getSectorOverview(sectorId);
+  const out = await getSectorOverview({ sectorId });
   const aprovado = out.members.find((m) => m.userId === aprovadoId);
   const reprovado = out.members.find((m) => m.userId === reprovadoId);
 
@@ -133,7 +133,7 @@ test("quem foi aprovado tem média; quem só reprovou não tem", async () => {
 });
 
 test("a média do setor usa um denominador só e ignora a reprovada", async () => {
-  const out = await getSectorOverview(sectorId);
+  const out = await getSectorOverview({ sectorId });
   assert.equal(out.average, 9);
   assert.equal(out.rejections, 1);
   assert.equal(out.memberCount, 2);

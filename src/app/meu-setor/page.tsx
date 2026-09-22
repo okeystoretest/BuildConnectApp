@@ -7,7 +7,7 @@ import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { getSectorOverview, listSectorsForOverview } from "@/lib/sector-overview-data";
+import { getSectorOverview, listScopesForOverview } from "@/lib/sector-overview-data";
 import { SectorOverviewView } from "@/components/sector-overview/sector-overview-view";
 import type { Role } from "@/types";
 
@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 export default async function MySectorPage({
   searchParams,
 }: {
-  searchParams: Promise<{ setor?: string }>;
+  searchParams: Promise<{ setor?: string; subsetor?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect(LOGIN_EXPIRED_PATH);
@@ -30,14 +30,17 @@ export default async function MySectorPage({
   if (!can(role, "sector.overview")) notFound();
 
   const isAdmin = role === "ADMIN";
-  const sectors = isAdmin ? await listSectorsForOverview() : [];
-  const { setor } = await searchParams;
+  const scopes = isAdmin ? await listScopesForOverview() : [];
+  const { setor, subsetor } = await searchParams;
 
   /*
-   * O Gestor é preso ao próprio setor: o parâmetro da URL é ignorado para ele.
-   * Forjar `?setor=` não abre o painel de outro setor.
+   * O Gestor é preso ao próprio setor: os parâmetros da URL são ignorados para
+   * ele. Forjar `?setor=` ou `?subsetor=` não abre o painel de outro setor —
+   * as pílulas são do Admin, e esta é a linha que faz disso verdade, não a
+   * ausência do seletor na tela.
    */
-  const sectorId = isAdmin ? (setor ?? sectors[0]?.id ?? null) : user.sectorId;
+  const sectorId = isAdmin ? (setor ?? scopes[0]?.sectorId ?? null) : user.sectorId;
+  const subsectorId = isAdmin ? subsetor : undefined;
 
   if (!sectorId) {
     return (
@@ -54,18 +57,27 @@ export default async function MySectorPage({
     );
   }
 
-  // Admin com parâmetro forjado: só vale setor que existe.
-  if (isAdmin && !sectors.some((s) => s.id === sectorId)) notFound();
+  /*
+   * Admin com parâmetro forjado: só vale a combinação que existe. Conferir o
+   * subsetor contra a lista (e não só a existência dele) é o que impede pedir
+   * um subsetor de OUTRO setor junto de um `?setor=` válido.
+   */
+  if (isAdmin) {
+    const valid = scopes.some(
+      (s) => s.sectorId === sectorId && s.subsectorId === (subsectorId || undefined),
+    );
+    if (!valid) notFound();
+  }
 
-  const data = await getSectorOverview(sectorId);
+  const data = await getSectorOverview({ sectorId, subsectorId: subsectorId || undefined });
 
   return (
     <AppShell eyebrow="Menu" title="Meu Setor">
       <PageHeader
-        title={`Meu Setor · ${data.sectorLabel}`}
+        title={`Meu Setor · ${data.subsectorLabel ?? data.sectorLabel}`}
         description="Avanço dos colaboradores nos treinamentos e o que eles acharam dos vídeos."
       />
-      <SectorOverviewView data={data} sectors={sectors} />
+      <SectorOverviewView data={data} scopes={scopes} />
     </AppShell>
   );
 }
