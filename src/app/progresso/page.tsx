@@ -43,12 +43,13 @@ export default async function ProgressPage() {
         </div>
       </Card>
 
-      {/* Detalhamento das pendências, agrupado por setor. */}
-      {data.pending.length > 0 && (
-        <Card className="mt-4 p-5">
-          <PendingContent groups={data.pending} />
-        </Card>
-      )}
+      {/* Detalhamento das pendências. O Card é renderizado SEMPRE, inclusive
+          vazio: sumir da página ao concluir a última pendência desmontaria o
+          player aberto, que é a outra metade do bug do formulário de estrelas
+          que piscava. `PendingContent` traz o próprio estado vazio. */}
+      <Card className="mt-4 p-5">
+        <PendingContent groups={data.pending} />
+      </Card>
 
       {/* Progresso por área. */}
       <Card className="mt-4 p-5">

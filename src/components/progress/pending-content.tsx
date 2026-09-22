@@ -1,25 +1,20 @@
 "use client";
 
-import { AlertTriangle, FileText, PlayCircle } from "lucide-react";
+import { useMemo, useState } from "react";
+import { AlertTriangle, CheckCircle2, FileText, PlayCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Pagination } from "@/components/ui/pagination";
+import { paginate } from "@/lib/paginate";
 import { rejectionLevel } from "@/lib/video-comprehension";
-import { PendingItemPlayer, usePendingPlayer } from "./pending-item-player";
+import { PENDING_PAGE_SIZE, REDO_GROUP, flattenPending } from "@/lib/pending-content";
+import { PendingItemPlayer } from "./pending-item-player";
 import type { PendingCategory, PendingItem } from "@/lib/pending-content";
 
 const REDO_MESSAGE = "Que tal rever com calma? Assista ao vídeo de novo e responda.";
 
-function ItemRow({
-  item,
-  onPlay,
-  playing,
-  onClose,
-}: {
-  item: PendingItem;
-  onPlay: () => void;
-  playing: boolean;
-  onClose: () => void;
-}) {
+function ItemRow({ item, onPlay }: { item: PendingItem; onPlay: () => void }) {
   const isVideo = item.kind === "VIDEO";
   const level = rejectionLevel(item.rejections);
 
@@ -101,71 +96,104 @@ function ItemRow({
       </button>
 
       {level === 2 && <p className="mt-1.5 px-3 text-xs text-muted">{REDO_MESSAGE}</p>}
+    </div>
+  );
+}
 
-      {isVideo && <PendingItemPlayer item={item} open={playing} onClose={onClose} />}
+/** Separador de grupo dentro da página, com o total do grupo na lista inteira. */
+function GroupLabel({ label, count }: { label: string; count: number }) {
+  const redo = label === REDO_GROUP;
+  return (
+    <div className="mb-2.5 mt-6 flex items-center gap-2 first:mt-0">
+      <h4
+        className={cn(
+          "text-[11px] font-semibold uppercase tracking-widest",
+          redo ? "text-warning" : "text-muted",
+        )}
+      >
+        {label}
+      </h4>
+      <span
+        className={cn(
+          "flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-medium",
+          redo ? "bg-warning/20 text-warning" : "bg-surface-3 text-muted",
+        )}
+      >
+        {count}
+      </span>
     </div>
   );
 }
 
 export function PendingContent({ groups }: { groups: readonly PendingCategory[] }) {
-  const player = usePendingPlayer();
-  const total = groups.reduce((sum, group) => sum + group.items.length, 0);
+  /*
+   * O player NÃO mora dentro da linha, e isso não é organização: era a causa
+   * de o formulário de estrelas piscar e sumir. Enviar a resposta conclui o
+   * vídeo e revalida a rota; o item sai das pendências no mesmo instante e
+   * levava consigo a linha, o modal e tudo o que estava aberto dentro dele.
+   *
+   * Por isso o que se guarda aqui é uma CÓPIA do item, não o id: quando a
+   * lista já não tem mais aquele vídeo, o player continua tendo. É o mesmo
+   * arranjo de `my-evaluations-panel`, onde o modal vive no painel.
+   */
+  const [playing, setPlaying] = useState<PendingItem | null>(null);
+  const [page, setPage] = useState(1);
 
-  // Reprovados vêm primeiro, num grupo próprio: um vídeo a refazer perdido no
-  // meio de quarenta pendências não é sinalização.
-  const redo = groups.flatMap((g) => g.items.filter((i) => i.rejections > 0));
-  const rest = groups
-    .map((g) => ({ ...g, items: g.items.filter((i) => i.rejections === 0) }))
-    .filter((g) => g.items.length > 0);
+  const rows = useMemo(() => flattenPending(groups), [groups]);
+  // Totais por grupo da lista INTEIRA: o separador informa o tamanho do grupo,
+  // não quantos dele calharam de cair nesta página.
+  const totals = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const row of rows) map.set(row.group, (map.get(row.group) ?? 0) + 1);
+    return map;
+  }, [rows]);
 
-  function row(item: PendingItem) {
-    return (
-      <ItemRow
-        key={item.id}
-        item={item}
-        playing={player.openId === item.id}
-        onPlay={() => player.open(item.id)}
-        onClose={player.close}
-      />
-    );
-  }
+  // `paginate` puxa a página para dentro do intervalo: concluir o último item
+  // da página 4 não deixa ninguém olhando para uma página vazia.
+  const current = paginate(rows, page, PENDING_PAGE_SIZE);
 
   return (
     <section>
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-sm font-semibold text-foreground">Pendências por categoria</h3>
-        <span className="text-xs text-muted">{total} itens a concluir</span>
+        <span className="text-xs text-muted">{rows.length} itens a concluir</span>
       </div>
 
-      <div className="space-y-6">
-        {redo.length > 0 && (
+      {rows.length === 0 ? (
+        <EmptyState
+          icon={<CheckCircle2 className="h-5 w-5" />}
+          title="Tudo em dia"
+          description="Você concluiu todo o conteúdo das suas áreas. Quando algo novo for publicado, aparece aqui."
+        />
+      ) : (
+        <>
           <div>
-            <div className="mb-2.5 flex items-center gap-2">
-              <h4 className="text-[11px] font-semibold uppercase tracking-widest text-warning">
-                Refazer
-              </h4>
-              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-warning/20 px-1.5 text-[10px] font-medium text-warning">
-                {redo.length}
-              </span>
-            </div>
-            <div className="space-y-2">{redo.map(row)}</div>
+            {current.items.map((row, i) => (
+              <div key={row.item.id}>
+                {/* O rótulo reaparece no alto de cada página, e a cada troca de
+                    grupo dentro dela. */}
+                {(i === 0 || current.items[i - 1]?.group !== row.group) && (
+                  <GroupLabel label={row.group} count={totals.get(row.group) ?? 0} />
+                )}
+                <div className="mb-2">
+                  <ItemRow item={row.item} onPlay={() => setPlaying(row.item)} />
+                </div>
+              </div>
+            ))}
           </div>
-        )}
 
-        {rest.map((group) => (
-          <div key={group.category}>
-            <div className="mb-2.5 flex items-center gap-2">
-              <h4 className="text-[11px] font-semibold uppercase tracking-widest text-muted">
-                {group.category}
-              </h4>
-              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-surface-3 px-1.5 text-[10px] font-medium text-muted">
-                {group.items.length}
-              </span>
-            </div>
-            <div className="space-y-2">{group.items.map(row)}</div>
-          </div>
-        ))}
-      </div>
+          <Pagination
+            page={current}
+            onChange={setPage}
+            noun="pendências"
+            className="mt-4 border-t border-border pt-4"
+          />
+        </>
+      )}
+
+      {playing && (
+        <PendingItemPlayer item={playing} open onClose={() => setPlaying(null)} />
+      )}
     </section>
   );
 }
