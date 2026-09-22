@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import crypto from "node:crypto";
 import { sweepAvailability } from "@/lib/evaluation-schedule";
 import { drainOutbox, scheduleOutboxTick } from "@/lib/whatsapp/outbox";
+import { sweepStaleComprehensions } from "@/lib/video-comprehension-data";
 
 /**
  * Varredura de liberação de ciclos, protegida por token.
@@ -43,6 +44,13 @@ export async function GET(request: Request) {
   try {
     const released = await sweepAvailability();
 
+    // Respostas de compreensão paradas há mais de 3 dias. Falha aqui não
+    // derruba a varredura de avaliações, que é a razão original desta rota.
+    const comprehension = await sweepStaleComprehensions().catch((e) => {
+      console.error("[cron/evaluations] varredura de compreensão:", e);
+      return 0;
+    });
+
     // Drena a fila do WhatsApp na mesma passada. Vem DEPOIS da varredura de
     // propósito: o que ela acabou de liberar já sai nesta rodada, em vez de
     // esperar o agendador acordar.
@@ -58,7 +66,7 @@ export async function GET(request: Request) {
     });
     scheduleOutboxTick();
 
-    return NextResponse.json({ ok: true, released, whatsapp });
+    return NextResponse.json({ ok: true, released, comprehension, whatsapp });
   } catch (e) {
     console.error("[cron/evaluations] falha:", e);
     return NextResponse.json({ ok: false, error: "Falha na varredura." }, { status: 500 });

@@ -6,6 +6,8 @@ import {
   type ComprehensionAuthor,
   type GraderCandidate,
 } from "@/lib/video-comprehension-scope";
+import { isStale } from "@/lib/video-comprehension-alerts";
+import { notifyGraderQueue } from "@/lib/notifications/notify";
 import type { Role } from "@/types";
 import type {
   VideoComprehensionEntry,
@@ -155,4 +157,45 @@ export async function getVideoComprehensionResults(
   }
   subjects.sort((a, b) => a.subjectName.localeCompare(b.subjectName, "pt-BR"));
   return subjects;
+}
+
+/**
+ * Respostas sem nota há mais de `STALE_DAYS`, cutucando os Gestores que podem
+ * avaliá-las. Uma vez por resposta (`staleNotifiedAt`), não uma por rodada.
+ *
+ * Chamada pela rota de cron, ao lado de `sweepAvailability`. Sem ela, quem
+ * responde três vídeos e para nunca completa um grupo de 5 e a resposta fica
+ * esperando para sempre.
+ */
+export async function sweepStaleComprehensions(): Promise<number> {
+  const now = new Date();
+  const [rows, candidates] = await Promise.all([
+    prisma.videoComprehension.findMany({
+      where: { gradedAt: null, staleNotifiedAt: null },
+      select: {
+        id: true,
+        submittedAt: true,
+        staleNotifiedAt: true,
+        user: { select: { id: true, sectorId: true } },
+      },
+    }),
+    loadGraderCandidates(),
+  ]);
+
+  const stale = rows.filter((r) => isStale(r.submittedAt, r.staleNotifiedAt, now));
+  if (stale.length === 0) return 0;
+
+  const graderIds = new Set<string>();
+  for (const r of stale) {
+    const author: ComprehensionAuthor = { authorId: r.user.id, authorSectorId: r.user.sectorId };
+    for (const g of resolveGraders(author, candidates)) graderIds.add(g.id);
+  }
+
+  await prisma.videoComprehension.updateMany({
+    where: { id: { in: stale.map((r) => r.id) } },
+    data: { staleNotifiedAt: now },
+  });
+
+  await notifyGraderQueue([...graderIds]);
+  return stale.length;
 }
