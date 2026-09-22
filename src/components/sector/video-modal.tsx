@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { usePortalTarget } from "@/components/ui/use-portal-target";
 import { markVideoEnded } from "@/lib/sector-actions";
 import { ComprehensionForm } from "./comprehension-form";
+import { VideoRatingForm } from "./video-rating-form";
 import type { VideoItem } from "@/types/sector";
 
 export interface VideoModalProps {
@@ -106,6 +107,9 @@ function VideoModalContent({
   const [showTranscript, setShowTranscript] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [answered, setAnswered] = useState(false);
+  // Avaliação do vídeo: acende quando a resposta é registrada e sai ao enviar
+  // ou pular.
+  const [rating, setRating] = useState(false);
   const [asking, setAsking] = useState(askNow);
   const [ended, setEnded] = useState(Boolean(video.ended) || video.watched);
   const changed = useRef(false);
@@ -249,16 +253,20 @@ function VideoModalContent({
                     changed.current = true;
                     setAnswered(true);
                     setAsking(false);
+                    setRating(true);
                   }}
                   onLater={() => setAsking(false)}
                 />
               </div>
             )}
             {answered && (
-              <p className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/10 px-3 py-2 text-xs text-primary">
-                <CheckCircle2 className="h-3.5 w-3.5" /> Resposta enviada — vídeo concluído. O
-                gestor do seu setor vai avaliar.
-              </p>
+              <div className="mt-4 rounded-xl border border-primary/25 bg-primary/10 p-3">
+                <p className="inline-flex items-center gap-1.5 text-xs text-primary">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Resposta enviada — vídeo concluído. O
+                  gestor do seu setor vai avaliar.
+                </p>
+                {rating && <VideoRatingForm videoId={video.id} onDone={() => setRating(false)} />}
+              </div>
             )}
           </div>
 
