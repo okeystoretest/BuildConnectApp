@@ -100,3 +100,27 @@ export interface FormAnswerInput {
 /** Limites da escala linear no construtor. */
 export const SCALE_MIN_CHOICES: readonly number[] = [0, 1];
 export const SCALE_MAX_CHOICES: readonly number[] = [2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+/** Uma pergunta com o que ESTE respondente marcou, para releitura. */
+export interface FormAnswerView {
+  questionId: string;
+  kind: FormQuestionKind;
+  label: string;
+  helpText?: string;
+  /** Resposta já resolvida para leitura: texto, número ou rótulos escolhidos. */
+  answerLabel: string;
+  /** Falso quando a pergunta era opcional e ficou em branco. */
+  answered: boolean;
+}
+
+/** Uma resposta enviada, relida pelo próprio respondente. */
+export interface FormResponseDetail {
+  id: string;
+  formTitle: string;
+  description?: string;
+  submittedAtLabel: string;
+  submittedAtTimeLabel: string;
+  /** Rodada em que foi respondido; reabrir o formulário incrementa. */
+  round: number;
+  answers: FormAnswerView[];
+}

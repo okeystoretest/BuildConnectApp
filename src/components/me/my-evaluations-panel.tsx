@@ -5,6 +5,8 @@ import { ClipboardList, FileText, MonitorPlay, UserCheck, Users } from "lucide-r
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Tabs, TabPanel, type TabItem } from "@/components/ui/tabs";
+import { AnsweredEvaluationsPanel } from "@/components/me/answered-evaluations-panel";
 import { EvaluationFormModal } from "@/components/hr/evaluation-form-modal";
 import { FormResponseModal } from "@/components/forms/form-response-modal";
 import { ComprehensionGradeModal } from "@/components/me/comprehension-grade-modal";
@@ -12,14 +14,26 @@ import { submitRoundEvaluation } from "@/lib/evaluation-rounds-actions";
 import { getAssignedForm } from "@/lib/forms/response-actions";
 import { usePendingEvaluations } from "@/providers/pending-evaluations-provider";
 import { useToast } from "@/providers/toast-provider";
-import type { EvalForm, MyEvaluationTask, VideoComprehensionTask } from "@/types/evaluation";
+import type {
+  AnsweredEvaluation,
+  EvalForm,
+  MyEvaluationTask,
+  VideoComprehensionTask,
+} from "@/types/evaluation";
 import type { FormDraft } from "@/types/form";
 
 export interface MyEvaluationsPanelProps {
   tasks: readonly MyEvaluationTask[];
   /** Formulários dos instrumentos de rodada, indexados por slug. */
   forms: Record<string, EvalForm>;
+  /** Tudo o que este usuário já respondeu, para a aba "Concluídas". */
+  answered: readonly AnsweredEvaluation[];
 }
+
+const TABS: readonly TabItem[] = [
+  { id: "pendentes", label: "Pendentes" },
+  { id: "concluidas", label: "Concluídas" },
+];
 
 interface ActiveTask {
   task: MyEvaluationTask;
@@ -36,7 +50,8 @@ interface ActiveTask {
  * O usuário responde só o próprio formulário; a consolidação (com o nome de
  * cada avaliador) é vista pelo DHO na aba de Resultados.
  */
-export function MyEvaluationsPanel({ tasks, forms }: MyEvaluationsPanelProps) {
+export function MyEvaluationsPanel({ tasks, forms, answered }: MyEvaluationsPanelProps) {
+  const [tab, setTab] = useState("pendentes");
   const [active, setActive] = useState<ActiveTask | null>(null);
   const [activeForm, setActiveForm] = useState<FormDraft | null>(null);
   const [activeComprehension, setActiveComprehension] = useState<VideoComprehensionTask | null>(
@@ -75,17 +90,19 @@ export function MyEvaluationsPanel({ tasks, forms }: MyEvaluationsPanelProps) {
     setActive({ task, form });
   }
 
-  if (tasks.length === 0) {
-    return (
+  /*
+   * O estado vazio não pode ser um `return` antecipado: ele engoliria as abas
+   * e esconderia o histórico de quem está com a fila em dia — justamente quem
+   * mais tem o que reler.
+   */
+  const pending =
+    tasks.length === 0 ? (
       <EmptyState
         icon={<ClipboardList className="h-5 w-5" />}
         title="Nenhuma pendência"
         description="Quando você for designado para avaliar alguém, precisar fazer sua autoavaliação, receber um formulário do DHO ou tiver uma resposta de vídeo da sua equipe para avaliar, aparece aqui."
       />
-    );
-  }
-
-  return (
+    ) : (
     <div className="space-y-3">
       <p className="text-sm text-muted">
         Pendências para você. O DHO vê o resultado com o nome de cada avaliador.
@@ -164,6 +181,16 @@ export function MyEvaluationsPanel({ tasks, forms }: MyEvaluationsPanelProps) {
           </div>
         );
       })}
+
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <Tabs items={TABS} value={tab} onValueChange={setTab} />
+      <TabPanel tabId={tab}>
+        {tab === "pendentes" ? pending : <AnsweredEvaluationsPanel items={answered} />}
+      </TabPanel>
 
       {active && (
         <EvaluationFormModal

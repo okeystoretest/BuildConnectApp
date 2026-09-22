@@ -391,3 +391,48 @@ export interface VideoComprehensionSubject {
   lastLabel: string;
   entries: VideoComprehensionEntry[];
 }
+
+// ─────────────────────────────────────────────────────────────
+// Minhas Avaliações — aba "Concluídas"
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * A origem de uma avaliação já respondida. Espelha exatamente os tipos de
+ * `MyEvaluationTask`: o que sai da aba de pendências aparece na de concluídas,
+ * e não há terceiro lugar para uma resposta sumir.
+ */
+export type AnsweredEvaluationKind =
+  | "FEEDBACK"
+  | "AUTOAVALIACAO"
+  | "FORMULARIO"
+  | "COMPREENSAO_VIDEO";
+
+/** A nota de compreensão que o Gestor deu, exibida sem ida extra ao servidor. */
+export interface AnsweredComprehension {
+  videoTitle: string;
+  authorName: string;
+  /** 1–10. */
+  grade: number;
+  comment?: string;
+  passed: boolean;
+}
+
+/** Uma linha da aba "Concluídas": algo que ESTE usuário preencheu. */
+export interface AnsweredEvaluation {
+  /** Id da submissão: Evaluation, FormResponse ou VideoComprehension. */
+  id: string;
+  kind: AnsweredEvaluationKind;
+  /** Instrumento, formulário ou vídeo. */
+  title: string;
+  /** Sobre quem — "Você" na autoavaliação; ausente em formulário. */
+  subjectName?: string;
+  answeredAtLabel: string;
+  answeredAtTimeLabel: string;
+  /** Resumo numérico quando existe ("42/50", "8/10"). */
+  scoreLabel?: string;
+  /**
+   * A nota de compreensão vem inteira na lista: são três campos curtos, e
+   * buscá-los um a um custaria uma ida ao servidor para mostrar uma frase.
+   */
+  comprehension?: AnsweredComprehension;
+}

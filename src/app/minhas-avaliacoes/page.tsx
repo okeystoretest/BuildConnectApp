@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { MyEvaluationsPanel } from "@/components/me/my-evaluations-panel";
 import { getVerifiedSession } from "@/lib/auth/require-user";
 import { getMyEvaluationTasks } from "@/lib/evaluation-rounds";
+import { getMyAnsweredEvaluations } from "@/lib/my-evaluations-history";
 import { MULTI_RATER_SLUGS } from "@/lib/evaluation-rounds-config";
 import { getEvaluationForm } from "@/lib/evaluation-data";
 import type { EvalForm } from "@/types/evaluation";
@@ -18,9 +19,10 @@ export default async function MyEvaluationsPage() {
 
   // Cada rodada pode ser de um instrumento diferente (Matriz de Decisão,
   // Eficácia 360°) — carrega os formulários por slug e o painel escolhe o certo.
-  const [tasks, loadedForms] = await Promise.all([
+  const [tasks, loadedForms, answered] = await Promise.all([
     getMyEvaluationTasks(session.userId),
     Promise.all(MULTI_RATER_SLUGS.map((slug) => getEvaluationForm(slug))),
+    getMyAnsweredEvaluations(session.userId),
   ]);
 
   const forms: Record<string, EvalForm> = {};
@@ -32,10 +34,10 @@ export default async function MyEvaluationsPage() {
     <AppShell eyebrow="Menu" title="Minhas Avaliações">
       <PageHeader
         title="Minhas Avaliações"
-        description="Avaliações designadas a você e sua autoavaliação."
+        description="Avaliações designadas a você, sua autoavaliação e o histórico do que já respondeu."
       />
       <Card className="mt-6 p-5">
-        <MyEvaluationsPanel tasks={tasks} forms={forms} />
+        <MyEvaluationsPanel tasks={tasks} forms={forms} answered={answered} />
       </Card>
     </AppShell>
   );
