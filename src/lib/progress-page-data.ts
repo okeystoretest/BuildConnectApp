@@ -5,6 +5,7 @@ import type { Role } from "@/types";
 import type { SectorProgress, AreaProgress } from "@/types/content";
 import type { PendingCategory } from "@/lib/pending-content";
 import { formatBytes } from "@/lib/utils";
+import { COMPREHENSION_PASS_MIN } from "@/lib/video-comprehension";
 
 /**
  * Agregação de progresso do colaborador para a tela "Meu Progresso".
@@ -41,7 +42,7 @@ export async function getProgressPageData(userId: string, role: Role): Promise<P
   const inScope = { ...TRACKED_SUBSECTOR, ...(slugs === null ? {} : { slug: { in: slugs } }) };
 
   // Estrutura de setores → subsetores com seu conteúdo (vídeos e documentos).
-  const [sectors, completed] = await Promise.all([
+  const [sectors, completed, rejected, endedRows] = await Promise.all([
     prisma.sector.findMany({
       orderBy: { order: "asc" },
       include: {
@@ -49,9 +50,17 @@ export async function getProgressPageData(userId: string, role: Role): Promise<P
           where: inScope,
           orderBy: { order: "asc" },
           include: {
-            videos: { select: { id: true, title: true } },
+            videos: {
+              select: {
+                id: true,
+                title: true,
+                filePath: true,
+                thumbnailPath: true,
+                transcriptText: true,
+              },
+            },
             documents: {
-              select: { id: true, name: true, kind: true, sizeBytes: true },
+              select: { id: true, name: true, kind: true, sizeBytes: true, filePath: true },
             },
           },
         },
@@ -67,7 +76,25 @@ export async function getProgressPageData(userId: string, role: Role): Promise<P
       },
       select: { videoId: true, documentId: true },
     }),
+    // Reprovações por vídeo, para a sinalização de "Refazer".
+    prisma.videoComprehension.findMany({
+      where: { userId, grade: { lt: COMPREHENSION_PASS_MIN } },
+      select: { videoId: true },
+    }),
+    // Vídeos que já chegaram ao fim: o player reabre direto na pergunta.
+    prisma.contentProgress.findMany({
+      where: { userId, endedAt: { not: null } },
+      select: { videoId: true },
+    }),
   ]);
+
+  const rejectionsByVideo = new Map<string, number>();
+  for (const r of rejected) {
+    rejectionsByVideo.set(r.videoId, (rejectionsByVideo.get(r.videoId) ?? 0) + 1);
+  }
+  const endedVideoIds = new Set(
+    endedRows.map((r) => r.videoId).filter((id): id is string => Boolean(id)),
+  );
 
   const doneVideoIds = new Set<string>();
   const doneDocIds = new Set<string>();
@@ -112,6 +139,12 @@ export async function getProgressPageData(userId: string, role: Role): Promise<P
           title: v.title,
           sector: sub.label,
           meta: "Vídeo",
+          subsectorSlug: sub.slug,
+          filePath: v.filePath ?? undefined,
+          thumbnailPath: v.thumbnailPath ?? undefined,
+          transcriptText: v.transcriptText ?? undefined,
+          ended: endedVideoIds.has(v.id),
+          rejections: rejectionsByVideo.get(v.id) ?? 0,
         });
       }
       for (const d of sub.documents) {
@@ -122,6 +155,9 @@ export async function getProgressPageData(userId: string, role: Role): Promise<P
           title: d.name,
           sector: sub.label,
           meta: `${d.kind} · ${formatBytes(d.sizeBytes)}`,
+          subsectorSlug: sub.slug,
+          filePath: d.filePath ?? undefined,
+          rejections: 0,
         });
       }
     }
