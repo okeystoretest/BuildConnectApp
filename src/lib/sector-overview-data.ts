@@ -6,7 +6,6 @@ import { isPassing } from "@/lib/video-comprehension";
 import { averageOf } from "@/lib/video-rating";
 import {
   approvedAverage,
-  belongsToSubsector,
   progressPct,
   splitGrades,
   type MemberEvaluation,
@@ -29,27 +28,20 @@ export interface VideoQualityRow {
   average: number | null;
 }
 
-/** Uma pílula do seletor: o setor inteiro, ou um subsetor dele. */
+/** Uma pílula do seletor: um setor. */
 export interface OverviewScope {
   sectorId: string;
   sectorLabel: string;
-  /** Ausente na pílula do setor inteiro. */
-  subsectorId?: string;
-  subsectorLabel?: string;
 }
 
-/** O que se está olhando: o setor todo, ou um subsetor. */
+/** O que se está olhando. */
 export interface OverviewTarget {
   sectorId: string;
-  subsectorId?: string;
 }
 
 export interface SectorOverview {
   sectorId: string;
   sectorLabel: string;
-  /** Rótulo do subsetor quando o recorte é de um só. */
-  subsectorId?: string;
-  subsectorLabel?: string;
   memberCount: number;
   totalItems: number;
   doneItems: number;
@@ -62,39 +54,18 @@ export interface SectorOverview {
 }
 
 /**
- * As pílulas do seletor do Admin: cada setor, seguido dos seus subsetores.
+ * As pílulas do seletor do Admin: um setor, uma pílula.
  *
- * Só subsetores PADRAO. Vitrine não tem material a concluir, então uma pílula
- * dela mostraria uma equipe com progresso 0 de 0 — um painel que não responde
- * nada.
+ * O recorte por subsetor existiu até 22/09 e saiu: ele dividia a equipe em
+ * listas que o gestor não pedia e mexia no denominador junto, de modo que a
+ * mesma pessoa tinha um percentual em cada pílula.
  */
 export async function listScopesForOverview(): Promise<OverviewScope[]> {
   const sectors = await prisma.sector.findMany({
     orderBy: { order: "asc" },
-    select: {
-      id: true,
-      label: true,
-      subsectors: {
-        where: TRACKED_SUBSECTOR,
-        orderBy: { order: "asc" },
-        select: { id: true, label: true },
-      },
-    },
+    select: { id: true, label: true },
   });
-
-  const scopes: OverviewScope[] = [];
-  for (const sector of sectors) {
-    scopes.push({ sectorId: sector.id, sectorLabel: sector.label });
-    for (const sub of sector.subsectors) {
-      scopes.push({
-        sectorId: sector.id,
-        sectorLabel: sector.label,
-        subsectorId: sub.id,
-        subsectorLabel: sub.label,
-      });
-    }
-  }
-  return scopes;
+  return sectors.map((sector) => ({ sectorId: sector.id, sectorLabel: sector.label }));
 }
 
 /**
@@ -103,15 +74,14 @@ export async function listScopesForOverview(): Promise<OverviewScope[]> {
  * vê, os dois percebem.
  */
 export async function getSectorOverview(target: OverviewTarget): Promise<SectorOverview> {
-  const { sectorId, subsectorId } = target;
+  const { sectorId } = target;
 
   /*
-   * O recorte do CONTEÚDO. Escolher um subsetor faz do painel o painel
-   * daquele treinamento: o denominador passa a ser o material dele, e não o
-   * do setor inteiro — senão o progresso diria "3 de 40" para quem concluiu
-   * os 3 itens do subsetor escolhido.
+   * O recorte do CONTEÚDO: todo o material PADRAO do setor. A vitrine fica
+   * fora — não há o que concluir nela, e contá-la no denominador travaria o
+   * progresso de todo mundo abaixo de 100%.
    */
-  const subsectorScope = { sectorId, ...TRACKED_SUBSECTOR, ...(subsectorId ? { id: subsectorId } : {}) };
+  const contentScope = { sectorId, ...TRACKED_SUBSECTOR };
 
   const [sector, roster, subsectors] = await Promise.all([
     prisma.sector.findUnique({ where: { id: sectorId }, select: { label: true } }),
@@ -126,11 +96,10 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
         role: true,
         avatarPath: true,
         createdAt: true,
-        subsectors: { select: { subsectorId: true } },
       },
     }),
     prisma.subsector.findMany({
-      where: subsectorScope,
+      where: contentScope,
       select: {
         id: true,
         label: true,
@@ -141,17 +110,11 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
   ]);
 
   /*
-   * O recorte das PESSOAS, pela mesma regra de acesso do sistema
-   * (`belongsToSubsector`): quem marcou o subsetor, mais quem não marcou
-   * nenhum. A consulta não filtra isto no banco porque a regra "vazio = todos"
-   * não se escreve num `where` sem duplicá-la — e duplicada ela sai do lugar
-   * com o tempo.
+   * Todo mundo lotado no setor. A marcação de subsetor no cadastro decide o
+   * ACESSO da pessoa, e não quem aparece aqui: o painel responde "como está a
+   * equipe do setor", e uma equipe recortada responderia outra pergunta.
    */
-  const members = subsectorId
-    ? roster.filter((u) =>
-        belongsToSubsector({ subsectorIds: u.subsectors.map((s) => s.subsectorId) }, subsectorId),
-      )
-    : roster;
+  const members = roster;
 
   const memberIds = members.map((m) => m.id);
   const videoIds = subsectors.flatMap((s) => s.videos.map((v) => v.id));
@@ -163,8 +126,8 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
         userId: { in: memberIds },
         completed: true,
         OR: [
-          { video: { subsector: subsectorScope } },
-          { document: { subsector: subsectorScope } },
+          { video: { subsector: contentScope } },
+          { document: { subsector: contentScope } },
         ],
       },
       select: { userId: true },
@@ -301,9 +264,6 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
   return {
     sectorId,
     sectorLabel: sector?.label ?? "—",
-    subsectorId,
-    // O rótulo sai da lista já carregada: com `id` no filtro, ela tem um item.
-    subsectorLabel: subsectorId ? subsectors[0]?.label : undefined,
     memberCount: members.length,
     totalItems,
     doneItems,

@@ -62,16 +62,15 @@ export function SectorOverviewView({
       </div>
 
       <Card className="mt-4 p-5">
-        <Tabs items={TABS} value={tab} onValueChange={setTab} />
+        {/* A busca divide a linha com as abas, encostada à direita: ela opera
+            sobre a aba aberta, e ficar ao lado dela diz isso sem legenda.
+            `flex-wrap` e não largura encolhida: no celular o campo desce para
+            a linha de baixo inteiro, porque uma busca espremida ao lado das
+            abas num telefone não dá para usar. */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Tabs items={TABS} value={tab} onValueChange={setTab} />
 
-        {/* Pílulas e busca ABAIXO das abas: primeiro se escolhe o que olhar
-            (pessoas ou vídeos), depois de onde e qual. O seletor só aparece
-            para quem alcança mais de um escopo — o Gestor é preso ao próprio
-            setor no servidor, e para ele a lista vem vazia. */}
-        <div className="mt-4 space-y-3">
-          <ScopePills scopes={scopes} sectorId={data.sectorId} subsectorId={data.subsectorId} />
-
-          <div className="relative max-w-sm">
+          <div className="relative w-full sm:w-64">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
             <Input
               type="search"
@@ -87,6 +86,14 @@ export function SectorOverviewView({
               className="pl-9"
             />
           </div>
+        </div>
+
+        {/* As pílulas de setor ficam abaixo: primeiro se escolhe o que olhar
+            (pessoas ou vídeos), depois de qual setor. O seletor só aparece para
+            quem alcança mais de um — o Gestor é preso ao próprio setor no
+            servidor, e para ele a lista vem vazia. */}
+        <div className="mt-4">
+          <ScopePills scopes={scopes} sectorId={data.sectorId} />
         </div>
 
         <TabPanel tabId={tab} className="mt-5">

@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 export default async function MySectorPage({
   searchParams,
 }: {
-  searchParams: Promise<{ setor?: string; subsetor?: string }>;
+  searchParams: Promise<{ setor?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect(LOGIN_EXPIRED_PATH);
@@ -31,16 +31,19 @@ export default async function MySectorPage({
 
   const isAdmin = role === "ADMIN";
   const scopes = isAdmin ? await listScopesForOverview() : [];
-  const { setor, subsetor } = await searchParams;
+  const { setor } = await searchParams;
 
   /*
-   * O Gestor é preso ao próprio setor: os parâmetros da URL são ignorados para
-   * ele. Forjar `?setor=` ou `?subsetor=` não abre o painel de outro setor —
-   * as pílulas são do Admin, e esta é a linha que faz disso verdade, não a
-   * ausência do seletor na tela.
+   * O Gestor é preso ao próprio setor: o parâmetro da URL é ignorado para ele.
+   * Forjar `?setor=` não abre o painel de outro setor — as pílulas são do
+   * Admin, e esta é a linha que faz disso verdade, não a ausência do seletor
+   * na tela.
+   *
+   * Um `?subsetor=` de link antigo simplesmente não é lido: o painel abre o
+   * setor inteiro, em vez de responder "página não encontrada" a quem guardou
+   * o endereço.
    */
   const sectorId = isAdmin ? (setor ?? scopes[0]?.sectorId ?? null) : user.sectorId;
-  const subsectorId = isAdmin ? subsetor : undefined;
 
   if (!sectorId) {
     return (
@@ -57,30 +60,15 @@ export default async function MySectorPage({
     );
   }
 
-  /*
-   * Admin com parâmetro forjado: só vale a combinação que existe. Conferir o
-   * subsetor contra a lista (e não só a existência dele) é o que impede pedir
-   * um subsetor de OUTRO setor junto de um `?setor=` válido.
-   */
-  if (isAdmin) {
-    const valid = scopes.some(
-      (s) => s.sectorId === sectorId && s.subsectorId === (subsectorId || undefined),
-    );
-    if (!valid) notFound();
-  }
+  // Admin com parâmetro forjado: só vale setor que existe.
+  if (isAdmin && !scopes.some((s) => s.sectorId === sectorId)) notFound();
 
-  const data = await getSectorOverview({ sectorId, subsectorId: subsectorId || undefined });
+  const data = await getSectorOverview({ sectorId });
 
   return (
     <AppShell eyebrow="Menu" title="Meu Setor">
       <PageHeader
-        // O setor vai junto do subsetor: "Logística Interna" sozinho não diz
-        // de quem é, e dois setores podem ter subsetores de nome parecido.
-        title={
-          data.subsectorLabel
-            ? `Meu Setor · ${data.sectorLabel} › ${data.subsectorLabel}`
-            : `Meu Setor · ${data.sectorLabel}`
-        }
+        title={`Meu Setor · ${data.sectorLabel}`}
         description="Avanço dos colaboradores nos treinamentos e o que eles acharam dos vídeos."
       />
       <SectorOverviewView data={data} scopes={scopes} />

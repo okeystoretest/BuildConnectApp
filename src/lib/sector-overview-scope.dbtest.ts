@@ -4,12 +4,14 @@ import { prisma } from "@/lib/db/prisma";
 import { getSectorOverview, listScopesForOverview } from "./sector-overview-data";
 
 /**
- * O recorte por subsetor das pílulas do Meu Setor, contra o Postgres.
+ * O recorte do painel do Meu Setor, contra o Postgres.
  *
- * O cenário que importa é o do cadastro pela metade: marcar subsetores é
- * opcional, e quem não marca nenhum acessa TODOS os do seu setor. O painel
- * segue essa mesma regra — se ele inventasse outra, o gestor veria uma equipe
- * e a pessoa teria acesso a outra.
+ * O recorte é o SETOR — só ele. O subsetor foi removido do painel em 22/09:
+ * a pílula de subsetor dividia a equipe em listas que o gestor não pedia, e o
+ * denominador mudava junto, o que fazia a mesma pessoa ter dois percentuais.
+ *
+ * O que continua valendo: o material da VITRINE nunca entra no denominador,
+ * porque não há o que concluir nela.
  */
 
 const MARK = "#SUBSCOPE";
@@ -99,35 +101,29 @@ after(async () => {
   await prisma.$disconnect();
 });
 
-test("a pílula do setor mostra todo mundo e todo o material PADRAO", async () => {
+test("o painel conta todo mundo do setor e todo o material PADRAO", async () => {
   const out = await getSectorOverview({ sectorId });
   assert.equal(out.memberCount, 3);
   // 5, e não 9: a vitrine nunca é material a concluir.
   assert.equal(out.totalItems, 5);
-  assert.equal(out.subsectorLabel, undefined);
 });
 
-test("a pílula de subsetor recorta as pessoas E o denominador", async () => {
-  const out = await getSectorOverview({ sectorId, subsectorId: subAId });
-  // Quem marcou o A, mais quem não marcou nada — nunca quem marcou só o B.
-  assert.equal(out.memberCount, 2);
-  assert.ok(out.members.some((m) => m.userId === soA));
-  assert.ok(out.members.some((m) => m.userId === semMarcacao));
-  assert.ok(!out.members.some((m) => m.userId === soB));
-  // O denominador vira o do subsetor: 2 itens, não os 5 do setor.
-  assert.equal(out.totalItems, 2);
-  assert.equal(out.members.every((m) => m.totalItems === 2), true);
+test("quem marcou um subsetor conta igual a quem não marcou nenhum", async () => {
+  // A marcação de subsetor no cadastro ainda decide o ACESSO da pessoa, mas
+  // não divide mais o painel: os três estão no mesmo setor, logo na mesma
+  // lista, com o mesmo denominador.
+  const out = await getSectorOverview({ sectorId });
+  const ids = out.members.map((m) => m.userId);
+  assert.ok(ids.includes(soA));
+  assert.ok(ids.includes(soB));
+  assert.ok(ids.includes(semMarcacao));
+  assert.equal(
+    out.members.every((m) => m.totalItems === 5),
+    true,
+  );
 });
 
-test("o outro subsetor recorta para o outro lado", async () => {
-  const out = await getSectorOverview({ sectorId, subsectorId: subBId });
-  assert.equal(out.memberCount, 2);
-  assert.ok(out.members.some((m) => m.userId === soB));
-  assert.ok(out.members.some((m) => m.userId === semMarcacao));
-  assert.equal(out.totalItems, 3);
-});
-
-test("concluir no subsetor A não move o progresso do subsetor B", async () => {
+test("concluir um vídeo move o progresso de quem concluiu, e só dele", async () => {
   const video = await prisma.video.findFirst({
     where: { subsectorId: subAId },
     select: { id: true },
@@ -136,17 +132,19 @@ test("concluir no subsetor A não move o progresso do subsetor B", async () => {
     data: { userId: soA, videoId: video!.id, completed: true, endedAt: new Date() },
   });
 
-  const a = await getSectorOverview({ sectorId, subsectorId: subAId });
-  assert.equal(a.members.find((m) => m.userId === soA)?.doneItems, 1);
-
-  const b = await getSectorOverview({ sectorId, subsectorId: subBId });
-  assert.equal(b.members.find((m) => m.userId === semMarcacao)?.doneItems, 0);
+  const out = await getSectorOverview({ sectorId });
+  assert.equal(out.members.find((m) => m.userId === soA)?.doneItems, 1);
+  assert.equal(out.members.find((m) => m.userId === semMarcacao)?.doneItems, 0);
 });
 
-test("as pílulas trazem o setor e seus subsetores PADRAO, nunca a vitrine", async () => {
+test("o seletor traz uma pílula por setor, e nenhuma de subsetor", async () => {
   const scopes = await listScopesForOverview();
   const meus = scopes.filter((s) => s.sectorId === sectorId);
-  assert.equal(meus.length, 3); // o setor + dois subsetores
-  assert.equal(meus[0]?.subsectorId, undefined);
-  assert.ok(!meus.some((s) => s.subsectorId === vitrineId));
+  assert.equal(meus.length, 1);
+  assert.equal(meus[0]?.sectorLabel, `Setor ${MARK}`);
+  // Nenhum escopo, de setor nenhum, carrega subsetor.
+  assert.equal(
+    scopes.every((s) => !("subsectorId" in s)),
+    true,
+  );
 });
