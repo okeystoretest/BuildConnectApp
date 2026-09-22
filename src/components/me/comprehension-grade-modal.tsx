@@ -29,7 +29,7 @@ const GRADES = Array.from(
 
 /**
  * O Gestor lê a resposta do colaborador sobre uma Instrução em Vídeo e dá a
- * nota de 0 a 10 (comentário opcional). O vídeo abre em outra aba: o Gestor
+ * nota de 1 a 10 (comentário opcional). O vídeo abre em outra aba: o Gestor
  * pode nunca ter visto aquela instrução.
  */
 export function ComprehensionGradeModal({ task, onClose, onGraded }: ComprehensionGradeModalProps) {
@@ -74,7 +74,12 @@ export function ComprehensionGradeModal({ task, onClose, onGraded }: Comprehensi
         </div>
       }
     >
-      <div className="space-y-5">
+      {/* O `Modal` não dá padding ao corpo de propósito — há conteúdos que
+          precisam sangrar até a borda. Quem precisa de respiro traz o seu, e
+          `p-6` é o mesmo respiro do cabeçalho e do rodapé (`px-6`): sem ele a
+          resposta, os botões de nota e o comentário encostavam na borda,
+          desalinhados de um título que começava mais à direita. */}
+      <div className="space-y-5 p-6">
         {task.videoPath && (
           <a
             href={task.videoPath}
@@ -104,7 +109,7 @@ export function ComprehensionGradeModal({ task, onClose, onGraded }: Comprehensi
           <div
             role="radiogroup"
             aria-label="Nota"
-            className="mt-2 grid grid-cols-6 gap-1.5 sm:grid-cols-10"
+            className="mt-2 grid grid-cols-5 gap-1.5 sm:grid-cols-10"
           >
             {GRADES.map((n) => (
               <button
