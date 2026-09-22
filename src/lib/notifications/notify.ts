@@ -116,3 +116,75 @@ export async function notifyCycleAvailableInApp(
     });
   });
 }
+
+/**
+ * Reprovado: o vídeo volta a pendente e o colaborador é chamado de volta.
+ *
+ * O link já abre o player reproduzindo (ver `sector-page`): clicar no aviso
+ * leva ao vídeo, não à lista de vídeos.
+ */
+export async function notifyComprehensionRejected(params: {
+  userId: string;
+  videoId: string;
+  videoTitle: string;
+  subsectorSlug: string;
+}): Promise<void> {
+  await silently("reprovação de compreensão", async () => {
+    await prisma.notification.create({
+      data: {
+        kind: "TREINAMENTO",
+        title: "Vamos rever esse vídeo?",
+        body: `Opa! Não foi dessa vez — assista ao vídeo "${params.videoTitle}" novamente.`,
+        href: `/setores/${params.subsectorSlug}?aba=instrucoes-video&video=${params.videoId}&assistir=1`,
+        audience: [],
+        targetUserId: params.userId,
+      },
+    });
+  });
+}
+
+/**
+ * Fila do Gestor num novo patamar de 5. Quem decide é `graderQueueAlert`; aqui
+ * só se lê o estado, grava-se o aviso e guarda-se o patamar novo.
+ *
+ * A contagem é a mesma de Minhas Avaliações, então o aviso nunca discorda do
+ * contador vermelho.
+ *
+ * Os `await import` são obrigatórios, não estilo: `video-comprehension-data`
+ * importa este módulo (a varredura de respostas paradas), então os dois se
+ * referenciam. O import dinâmico quebra o ciclo em tempo de carga.
+ */
+export async function notifyGraderQueue(graderIds: readonly string[]): Promise<void> {
+  await silently("fila do gestor", async () => {
+    const { countPendingComprehensionTasks } = await import("@/lib/video-comprehension-data");
+    const { graderQueueAlert } = await import("@/lib/video-comprehension-alerts");
+
+    for (const graderId of graderIds) {
+      const pending = await countPendingComprehensionTasks(graderId);
+      const state = await prisma.graderAlertState.findUnique({
+        where: { graderId },
+        select: { lastNotifiedCount: true },
+      });
+      const decision = graderQueueAlert(pending, state?.lastNotifiedCount ?? 0);
+
+      if (decision.notify) {
+        await prisma.notification.create({
+          data: {
+            kind: "AVALIACAO",
+            title: "Respostas esperando sua nota",
+            body: `${pending} respostas de compreensão de vídeo aguardam avaliação.`,
+            href: "/minhas-avaliacoes",
+            audience: [],
+            targetUserId: graderId,
+          },
+        });
+      }
+
+      await prisma.graderAlertState.upsert({
+        where: { graderId },
+        create: { graderId, lastNotifiedCount: decision.lastNotified },
+        update: { lastNotifiedCount: decision.lastNotified, lastNotifiedAt: new Date() },
+      });
+    }
+  });
+}
