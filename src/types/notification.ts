@@ -4,7 +4,9 @@ export type NotificationKind =
   | "CONTEUDO"
   | "AVALIACAO"
   | "FORMULARIO"
-  | "SISTEMA";
+  | "SISTEMA"
+  // Reprovação na compreensão de vídeo: o colaborador é chamado a reassistir.
+  | "TREINAMENTO";
 
 /**
  * O item do sino, já recortado para o usuário logado: a audiência ficou no
@@ -28,6 +30,7 @@ export const NOTIFICATION_ICON: Record<NotificationKind, string> = {
   AVALIACAO: "ClipboardCheck",
   FORMULARIO: "ClipboardList",
   SISTEMA: "Bell",
+  TREINAMENTO: "GraduationCap",
 };
 
 export const NOTIFICATION_TONE: Record<NotificationKind, "info" | "accent" | "primary" | "neutral"> =
@@ -38,4 +41,5 @@ export const NOTIFICATION_TONE: Record<NotificationKind, "info" | "accent" | "pr
     AVALIACAO: "primary",
     FORMULARIO: "primary",
     SISTEMA: "neutral",
+    TREINAMENTO: "accent",
   };

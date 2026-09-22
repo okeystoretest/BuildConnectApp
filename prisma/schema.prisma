@@ -85,6 +85,8 @@ model User {
   // escreveu e as que ele avaliou como Gestor.
   videoComprehensions      VideoComprehension[] @relation("VideoComprehensionAuthor")
   videoComprehensionGrades VideoComprehension[] @relation("VideoComprehensionGrader")
+  // Patamar de fila já avisado a este Gestor (aviso de 5 em 5).
+  graderAlertState         GraderAlertState?    @relation("GraderAlertState")
   contentPosts       ContentPost[]      @relation("ContentPostOwner")
   authoredPosts      ContentPost[]      @relation("ContentPostAuthor")
   // Roteiros de card que este usuário gerou ou editou por último.
@@ -586,16 +588,33 @@ model VideoComprehension {
   answer      String   @db.Text
   submittedAt DateTime @default(now())
 
-  // Nota do Gestor (0–10). Nula enquanto pendente.
+  // Nota do Gestor (1–10). Nula enquanto pendente. Abaixo de 7 reprova: o
+  // vídeo volta a pendente e o colaborador responde de novo.
   grade         Int?
   graderComment String?   @db.Text
   gradedById    String?
   gradedBy      User?     @relation("VideoComprehensionGrader", fields: [gradedById], references: [id], onDelete: SetNull)
   gradedAt      DateTime?
 
-  @@unique([userId, videoId])
+  /// 1 na primeira resposta; +1 a cada reprovação. Não há teto.
+  attempt Int @default(1)
+
+  /// Varredura de 3 dias: o gestor já foi cutucado sobre esta resposta.
+  staleNotifiedAt DateTime?
+
+  @@unique([userId, videoId, attempt])
   @@index([gradedAt])
   @@index([videoId])
+  @@index([userId, videoId])
+}
+
+/// Último patamar de fila já avisado a cada Gestor, para o aviso de 5 em 5 não
+/// repetir. Uma linha por Gestor, criada na primeira vez que ele é avisado.
+model GraderAlertState {
+  graderId          String   @id
+  grader            User     @relation("GraderAlertState", fields: [graderId], references: [id], onDelete: Cascade)
+  lastNotifiedCount Int      @default(0)
+  lastNotifiedAt    DateTime @default(now())
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1108,6 +1127,7 @@ enum NotificationKind {
   AVALIACAO
   FORMULARIO
   SISTEMA
+  TREINAMENTO
 }
 
 model Notification {
