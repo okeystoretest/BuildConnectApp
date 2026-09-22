@@ -41,9 +41,19 @@ export async function submitVideoRating(input: {
   }
   const { videoId, audio, image, clarity, comment } = parsed.data;
 
-  // Nada marcado e nada escrito: sucesso sem gravar. O botão "Pular" passa por
-  // aqui, e uma linha vazia estragaria o denominador das médias.
-  if (isEmptyRating({ audio, image, clarity, comment })) return { ok: true };
+  /*
+   * Nada marcado e nada escrito. Uma linha vazia estragaria o denominador das
+   * médias, então ela não é criada — e, se já existir uma, é APAGADA.
+   *
+   * Apagar importa desde que a avaliação pode ser refeita: quem reabre o
+   * vídeo, desmarca tudo e envia está dizendo "não quero mais avaliar". Só
+   * não gravar deixaria a nota antiga no banco enquanto a tela mostra vazio,
+   * e o gestor continuaria vendo uma avaliação que a pessoa retirou.
+   */
+  if (isEmptyRating({ audio, image, clarity, comment })) {
+    await prisma.videoRating.deleteMany({ where: { userId: user.id, videoId } });
+    return { ok: true };
+  }
 
   const video = await prisma.video.findUnique({
     where: { id: videoId },
@@ -76,4 +86,37 @@ export async function submitVideoRating(input: {
     console.error("[submitVideoRating] falha:", error);
     return { ok: false, error: "Não foi possível enviar sua avaliação." };
   }
+}
+
+/** O que a pessoa já respondeu sobre este vídeo, para o formulário reabrir preenchido. */
+export interface MyVideoRating {
+  audio: number | null;
+  image: number | null;
+  clarity: number | null;
+  comment: string;
+}
+
+/**
+ * A avaliação que o usuário logado deu a este vídeo, ou nula se nunca avaliou.
+ *
+ * Buscada só quando o formulário abre, e não junto da listagem: carregar a
+ * avaliação de todo vídeo de todo card para exibir zero formulários seria
+ * pagar uma consulta por miniatura.
+ */
+export async function getMyVideoRating(videoId: string): Promise<MyVideoRating | null> {
+  const user = await getCurrentUser();
+  if (!user) return null;
+
+  const row = await prisma.videoRating.findUnique({
+    where: { userId_videoId: { userId: user.id, videoId } },
+    select: { audio: true, image: true, clarity: true, comment: true },
+  });
+  if (!row) return null;
+
+  return {
+    audio: row.audio,
+    image: row.image,
+    clarity: row.clarity,
+    comment: row.comment ?? "",
+  };
 }

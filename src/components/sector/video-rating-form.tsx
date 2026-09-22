@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Loader2, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { submitVideoRating } from "@/lib/video-rating-actions";
+import { getMyVideoRating, submitVideoRating } from "@/lib/video-rating-actions";
 import {
   RATING_COMMENT_MAX,
   RATING_CRITERIA,
@@ -14,6 +14,10 @@ import {
   type RatingCriterion,
 } from "@/lib/video-rating";
 
+type Stars = Record<RatingCriterion, number | null>;
+
+const EMPTY: Stars = { audio: null, image: null, clarity: null };
+
 /**
  * Avaliação da qualidade do vídeo, exibida assim que a resposta de compreensão
  * é registrada — DENTRO do painel que já está aberto, nunca numa janela nova:
@@ -21,19 +25,41 @@ import {
  *
  * Tudo é opcional. "Pular" e "Enviar" levam ao mesmo lugar: avaliar não pode
  * virar obrigação disfarçada no fim do fluxo.
+ *
+ * A avaliação pode ser REFEITA. Ao abrir, o formulário busca o que a pessoa já
+ * tinha respondido e nasce preenchido — sem isso, reavaliar seria começar do
+ * zero e "editar" viraria "apagar sem querer". Enviar substitui a avaliação
+ * anterior; desmarcar tudo e enviar a retira.
  */
 export function VideoRatingForm({ videoId, onDone }: { videoId: string; onDone: () => void }) {
-  const [stars, setStars] = useState<Record<RatingCriterion, number | null>>({
-    audio: null,
-    image: null,
-    clarity: null,
-  });
+  const [stars, setStars] = useState<Stars>(EMPTY);
   const [comment, setComment] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Nulo enquanto a leitura não voltou: o formulário só aceita toque depois de
+  // saber o que já existe, senão o primeiro clique some ao chegar a resposta.
+  const [previous, setPrevious] = useState<boolean | null>(null);
   const [pending, start] = useTransition();
 
+  useEffect(() => {
+    let live = true;
+    void getMyVideoRating(videoId).then((mine) => {
+      if (!live) return;
+      if (mine) {
+        setStars({ audio: mine.audio, image: mine.image, clarity: mine.clarity });
+        setComment(mine.comment);
+      }
+      setPrevious(Boolean(mine));
+    });
+    return () => {
+      live = false;
+    };
+  }, [videoId]);
+
+  const loading = previous === null;
+  const busy = pending || loading;
+
   function send() {
-    if (pending) return;
+    if (busy) return;
     setError(null);
     start(async () => {
       const res = await submitVideoRating({
@@ -49,10 +75,12 @@ export function VideoRatingForm({ videoId, onDone }: { videoId: string; onDone: 
   }
 
   return (
-    <section aria-label="Avaliação do vídeo" className="mt-3">
+    <section aria-label="Avaliação do vídeo" aria-busy={loading} className="mt-3">
       <h4 className="text-sm font-semibold text-foreground">Como foi esse vídeo para você?</h4>
       <p className="mt-0.5 text-xs text-muted">
-        Opcional — ajuda o gestor a saber qual conteúdo precisa ser melhorado.
+        {previous
+          ? "Você já avaliou este vídeo. Enviar substitui a avaliação anterior."
+          : "Opcional — ajuda o gestor a saber qual conteúdo precisa ser melhorado."}
       </p>
 
       <div className="mt-3 space-y-2.5">
@@ -70,7 +98,7 @@ export function VideoRatingForm({ videoId, onDone }: { videoId: string; onDone: 
                       role="radio"
                       aria-checked={stars[criterion.key] === value}
                       aria-label={`${criterion.label}: ${value} de ${RATING_MAX}`}
-                      disabled={pending}
+                      disabled={busy}
                       onClick={() =>
                         setStars((s) => ({
                           ...s,
@@ -79,7 +107,7 @@ export function VideoRatingForm({ videoId, onDone }: { videoId: string; onDone: 
                           [criterion.key]: s[criterion.key] === value ? null : value,
                         }))
                       }
-                      className="focus-ring rounded p-0.5"
+                      className="focus-ring rounded p-0.5 disabled:opacity-50"
                     >
                       <Star
                         className={cn(
@@ -103,18 +131,23 @@ export function VideoRatingForm({ videoId, onDone }: { videoId: string; onDone: 
         rows={2}
         placeholder="Quer comentar algo sobre o vídeo? (opcional)"
         className="mt-3"
-        disabled={pending}
+        disabled={busy}
       />
 
       {error && <p className="mt-2 text-xs text-danger">{error}</p>}
 
-      <div className="mt-3 flex flex-wrap justify-end gap-2">
+      <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+        {loading && (
+          <span className="mr-auto inline-flex items-center gap-1.5 text-[11px] text-muted">
+            <Loader2 className="h-3 w-3 animate-spin" /> Buscando sua avaliação…
+          </span>
+        )}
         <Button variant="ghost" onClick={onDone} disabled={pending}>
-          Pular
+          {previous ? "Fechar" : "Pular"}
         </Button>
-        <Button onClick={send} disabled={pending}>
+        <Button onClick={send} disabled={busy}>
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Star className="h-4 w-4" />}
-          Enviar avaliação
+          {previous ? "Salvar avaliação" : "Enviar avaliação"}
         </Button>
       </div>
     </section>

@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Play, Captions, MessageSquareText, Share2 } from "lucide-react";
+import { CheckCircle2, Play, Captions, MessageSquareText, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EditableMediaActions } from "./editable-media-actions";
 import type { MediaEditValue } from "./media-edit-modal";
@@ -13,17 +13,14 @@ import { useToast } from "@/providers/toast-provider";
 import type { VideoItem } from "@/types/sector";
 
 /**
- * Situação de uma Instrução em Vídeo para o usuário. Só leitura: "assistido"
- * não é clique. Vitrines (Coleção, Workshop) não têm regra de conclusão e não
- * mostram selo.
+ * Pendência de resposta: chegou ao fim e ainda não respondeu à pergunta de
+ * compreensão. Clicar abre o player já com a pergunta — é a resposta que
+ * conclui o vídeo. Vitrines (Coleção, Workshop) não têm regra de conclusão.
  *
- *  - Responder: chegou ao fim e ainda não respondeu à pergunta de
- *    compreensão — clicar abre o player já com a pergunta. É a resposta que
- *    conclui o vídeo.
- *  - Assistido: respondeu.
- *  - Avaliada: o Gestor já deu a nota à resposta.
+ * É o único elemento clicável da miniatura além do play, e por isso fica no
+ * canto ESQUERDO, longe do selo de estado.
  */
-function WatchBadge({
+function AnswerButton({
   video,
   comprehension,
   onAnswer,
@@ -32,35 +29,55 @@ function WatchBadge({
   comprehension: boolean;
   onAnswer: () => void;
 }) {
-  const base =
-    "inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[10px] font-medium";
-
   if (!comprehension) return null;
+  if (!video.ended || video.watched || video.comprehension) return null;
 
-  if (video.ended && !video.watched && !video.comprehension) {
-    return (
-      <button
-        type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onAnswer();
-        }}
-        className={cn(
-          base,
-          "focus-ring border-accent/30 bg-accent/15 text-accent transition-colors hover:bg-accent/25",
-        )}
-      >
-        <MessageSquareText className="h-3 w-3" /> Responder
-      </button>
-    );
-  }
-  if (comprehension && video.comprehension === "AVALIADA") {
-    return <span className={cn(base, "border-primary/25 bg-primary/15 text-primary")}>✓ Avaliada</span>;
-  }
-  if (video.watched) {
-    return <span className={cn(base, "border-primary/25 bg-primary/15 text-primary")}>✓ Assistido</span>;
-  }
-  return null;
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onAnswer();
+      }}
+      className="focus-ring inline-flex items-center gap-1 rounded-md border border-accent/30 bg-accent/15 px-2 py-0.5 text-[10px] font-medium text-accent transition-colors hover:bg-accent/25"
+    >
+      <MessageSquareText className="h-3 w-3" /> Responder
+    </button>
+  );
+}
+
+/**
+ * Selo "Assistido": a resposta de compreensão foi enviada. Só leitura —
+ * assistido não é clique.
+ *
+ * Pill BRANCA nos dois temas, de propósito. Ela pousa sobre a miniatura, que
+ * é uma imagem qualquer: um selo que acompanhasse o tema ficaria escuro sobre
+ * um quadro escuro. Branco sólido com sombra é o que se enxerga sobre
+ * qualquer frame.
+ *
+ * "Avaliado" (o gestor já deu a nota) NÃO aparece aqui — vive dentro do
+ * player, em `video-modal`.
+ */
+function WatchedPill({
+  video,
+  comprehension,
+  className,
+}: {
+  video: VideoItem;
+  comprehension: boolean;
+  className?: string;
+}) {
+  if (!comprehension || !video.watched) return null;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-900 shadow-md ring-1 ring-black/10",
+        className,
+      )}
+    >
+      <CheckCircle2 className="h-3 w-3" /> Assistido
+    </span>
+  );
 }
 
 /** Selo de transcrição disponível. */
@@ -232,10 +249,17 @@ export function VideoCard({
         {/* Vídeo compartilhado: quem edita e exclui é o subsetor dono. */}
         {!video.sharedFrom && <EditableMediaActions {...admin} suggestions={suggestions} />}
 
-        {/* Irmão do botão de play, não filho: <button> dentro de <button> é
-            HTML inválido e o React avisa no console. */}
+        {/* Irmãos do botão de play, não filhos: <button> dentro de <button> é
+            HTML inválido e o React avisa no console.
+
+            Ação à esquerda, estado à direita — os dois nunca aparecem juntos
+            (responder é antes de assistir), mas os cantos fixos evitam que o
+            selo dance de lado conforme o vídeo avança. */}
         <span className="absolute left-3 top-3 z-10">
-          <WatchBadge video={video} comprehension={comprehension} onAnswer={player.answer} />
+          <AnswerButton video={video} comprehension={comprehension} onAnswer={player.answer} />
+        </span>
+        <span className="absolute right-3 top-3 z-10">
+          <WatchedPill video={video} comprehension={comprehension} />
         </span>
 
         <button
@@ -307,7 +331,8 @@ export function VideoListRow({
           </div>
         </div>
 
-        <WatchBadge video={video} comprehension={comprehension} onAnswer={player.answer} />
+        <AnswerButton video={video} comprehension={comprehension} onAnswer={player.answer} />
+        <WatchedPill video={video} comprehension={comprehension} className="shrink-0" />
 
         {/* Vídeo compartilhado: quem edita e exclui é o subsetor dono. */}
         {!video.sharedFrom && (

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CheckCircle2, FileText, VideoOff, X } from "lucide-react";
+import { CheckCircle2, FileText, Star, VideoOff, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { usePortalTarget } from "@/components/ui/use-portal-target";
@@ -117,6 +117,19 @@ function VideoModalContent({
   const askable = comprehension && !video.comprehension && !answered;
   // Instruções: concluir é responder. Vitrines não têm regra de conclusão.
   const completed = comprehension && (video.watched || answered);
+  /*
+   * O selo "Avaliado" mora AQUI, e não na miniatura do card: quem está olhando
+   * a grade quer saber o que falta assistir, e saber que o gestor já deu a
+   * nota só interessa a quem abriu aquele vídeo.
+   */
+  const graded = comprehension && video.comprehension === "AVALIADA";
+  /*
+   * Quem já respondeu pode avaliar o vídeo a qualquer momento, inclusive
+   * reabrindo para trocar as estrelas — o servidor substitui a avaliação
+   * anterior. Sem este botão, avaliar só existia na janela de segundos logo
+   * depois de enviar a resposta, e quem clicasse em "Pular" perdia a chance.
+   */
+  const rateable = comprehension && (answered || video.watched || Boolean(video.comprehension));
 
   // Fim de uma Instrução em Vídeo: grava uma vez e abre a pergunta (se ainda
   // não respondida). Nas vitrines não acontece nada.
@@ -238,9 +251,15 @@ function VideoModalContent({
                 <FileText className="h-4 w-4" />
                 {showTranscript ? "Ocultar Transcrição" : "Mostrar Transcrição"}
               </Button>
+              {rateable && !rating && (
+                <Button variant="secondary" onClick={() => setRating(true)}>
+                  <Star className="h-4 w-4" />
+                  Avaliar este vídeo
+                </Button>
+              )}
               {completed && (
                 <span className="inline-flex items-center gap-1 text-xs font-medium text-primary">
-                  <CheckCircle2 className="h-3.5 w-3.5" /> Assistido
+                  <CheckCircle2 className="h-3.5 w-3.5" /> {graded ? "Avaliado" : "Assistido"}
                 </span>
               )}
             </div>
@@ -265,7 +284,14 @@ function VideoModalContent({
                   <CheckCircle2 className="h-3.5 w-3.5" /> Resposta enviada — vídeo concluído. O
                   gestor do seu setor vai avaliar.
                 </p>
-                {rating && <VideoRatingForm videoId={video.id} onDone={() => setRating(false)} />}
+              </div>
+            )}
+
+            {/* Caixa própria, fora da confirmação da resposta: avaliar o vídeo
+                também acontece muito depois, quando a pessoa reabre o player. */}
+            {rating && (
+              <div className="mt-4 rounded-xl border border-border bg-surface-2 p-3">
+                <VideoRatingForm videoId={video.id} onDone={() => setRating(false)} />
               </div>
             )}
           </div>
