@@ -25,6 +25,14 @@ const eslintConfig = [
     ],
   },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
+  {
+    // Módulos CommonJS carregados por `node --require` (ver
+    // scripts/http-request-timeout.cjs, que o `npm start` injeta antes do
+    // Next): rodam antes de qualquer ESM, então `require()` é a única forma
+    // de importar neles — a regra do TypeScript não se aplica aqui.
+    files: ["**/*.cjs"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
 ];
 
 export default eslintConfig;
