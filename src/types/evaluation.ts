@@ -367,9 +367,13 @@ export interface VideoComprehensionTask {
 export interface VideoComprehensionEntry {
   id: string;
   videoTitle: string;
+  /** Agrupa as tentativas do mesmo vídeo no cálculo da média. */
+  videoId: string;
+  /** 1 na primeira resposta; +1 a cada reprovação. */
+  attempt: number;
   submittedAtLabel: string;
   answer: string;
-  /** 0–10. */
+  /** 1–10. */
   grade: number;
   graderName: string;
   gradedAtLabel: string;

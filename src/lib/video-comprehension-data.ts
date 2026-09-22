@@ -109,6 +109,8 @@ export async function getVideoComprehensionResults(
       id: true,
       answer: true,
       submittedAt: true,
+      attempt: true,
+      videoId: true,
       grade: true,
       graderComment: true,
       gradedAt: true,
@@ -139,6 +141,8 @@ export async function getVideoComprehensionResults(
     const entry: VideoComprehensionEntry = {
       id: r.id,
       videoTitle: r.video.title,
+      videoId: r.videoId,
+      attempt: r.attempt,
       submittedAtLabel: whenLabel(r.submittedAt),
       answer: r.answer,
       grade: r.grade,
@@ -152,8 +156,17 @@ export async function getVideoComprehensionResults(
 
   const subjects = [...bySubject.values()];
   for (const s of subjects) {
-    const sum = s.entries.reduce((acc, e) => acc + e.grade, 0);
-    s.average = Math.round((sum / s.entries.length) * 10) / 10;
+    // A média usa a ÚLTIMA nota de cada vídeo, não todas as tentativas. Somar
+    // as reprovadas puniria duas vezes quem foi reprovado e depois aprovado —
+    // a média deixaria de medir compreensão e passaria a medir histórico.
+    // `entries` chega ordenado por `gradedAt` desc, então o primeiro de cada
+    // vídeo é o mais recente.
+    const latest = new Map<string, number>();
+    for (const e of s.entries) {
+      if (!latest.has(e.videoId)) latest.set(e.videoId, e.grade);
+    }
+    const grades = [...latest.values()];
+    s.average = Math.round((grades.reduce((acc, g) => acc + g, 0) / grades.length) * 10) / 10;
   }
   subjects.sort((a, b) => a.subjectName.localeCompare(b.subjectName, "pt-BR"));
   return subjects;

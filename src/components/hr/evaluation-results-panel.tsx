@@ -504,7 +504,15 @@ function ComprehensionResults({ subject }: { subject: VideoComprehensionSubject 
         <article key={entry.id} className="rounded-xl border border-border bg-surface p-4">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
-              <h4 className="truncate text-sm font-semibold text-foreground">{entry.videoTitle}</h4>
+              <h4 className="truncate text-sm font-semibold text-foreground">
+                {entry.videoTitle}
+                {/* Só a partir da 2ª: marcar "tentativa 1" em todo registro seria ruído. */}
+                {entry.attempt > 1 && (
+                  <span className="ml-2 rounded-full bg-surface-3 px-2 py-0.5 text-[10px] font-medium text-muted">
+                    tentativa {entry.attempt}
+                  </span>
+                )}
+              </h4>
               <p className="mt-0.5 text-[11px] text-muted">Respondido em {entry.submittedAtLabel}</p>
             </div>
             <p className="shrink-0 text-xl font-semibold text-foreground">
