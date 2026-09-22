@@ -10,7 +10,7 @@ import type { SectorEvaluations } from "@/types/evaluation";
 import { ContentToolbar, type ViewMode } from "@/components/sector/content-toolbar";
 import { VideoCard } from "@/components/sector/video-card";
 import { DocumentGrid } from "@/components/sector/document-grid";
-import { LinksPanel } from "@/components/sector/links-panel";
+import { AppShortcuts } from "@/components/sector/app-shortcuts";
 import { UploadAction } from "@/components/sector/upload-action";
 import { FileUploadModal } from "@/components/sector/file-upload-modal";
 import { VideoBatchUploadModal } from "@/components/sector/video-batch-upload-modal";
@@ -36,7 +36,6 @@ const TABS: readonly TabItem[] = [
   { id: "chamados", label: "Chamados" },
   { id: "dashboard", label: "Dashboard" },
   { id: "avaliacoes", label: "Avaliações" },
-  { id: "sites", label: "Aplicativos" },
   { id: "ia", label: "Inteligência Artificial" },
 ];
 
@@ -146,6 +145,16 @@ export function ItSectorView({
         {uploadLabel && <UploadAction label={uploadLabel} onClick={openUpload} />}
       </div>
 
+      {/* Atalhos abaixo da barra de abas, fora do TabPanel: eles não pertencem
+          a aba nenhuma e não devem reanimar a cada troca. */}
+      <AppShortcuts
+        slug="ti"
+        links={content.links}
+        sourceLabel={content.appsSourceLabel}
+        onCreate={() => openLinkModal(null)}
+        onEdit={(link) => openLinkModal(link)}
+      />
+
       <TabPanel tabId={active} className="mt-5">
         {active === "chamados" && <KanbanBoard tickets={tickets} />}
         {active === "dashboard" && <ItDashboard data={dashboard} tickets={tickets} />}
@@ -211,15 +220,6 @@ export function ItSectorView({
               description="Os ciclos de avaliação dos colaboradores deste setor aparecem aqui quando ficam disponíveis."
             />
           ))}
-
-        {active === "sites" && (
-          <LinksPanel
-            slug="ti"
-            links={content.links}
-            onCreate={() => openLinkModal(null)}
-            onEdit={(link) => openLinkModal(link)}
-          />
-        )}
 
         {active === "ia" && showAi && aiSettings && <AiSettingsPanel settings={aiSettings} />}
       </TabPanel>

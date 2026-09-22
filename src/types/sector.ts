@@ -1,10 +1,15 @@
 export type SectorKind = "VITRINE" | "PADRAO";
 
+/*
+ * "sites" saiu: Aplicativos deixou de ser aba e virou atalho abaixo da barra
+ * (ver `app-shortcuts`). Tirar daqui é o que impede alguém recriar a aba sem
+ * perceber — e links antigos com `?aba=sites` continuam abrindo a primeira
+ * aba, porque a resolução ignora id desconhecido.
+ */
 export type TabId =
   | "fotos"
   | "videos"
   | "workshop"
-  | "sites"
   | "instrucoes-video"
   | "documentos"
   | "avaliacoes"
@@ -66,7 +71,7 @@ export interface DocumentItem {
   filePath: string;
 }
 
-/** Atalho de plataforma exibido na aba "Aplicativos". */
+/** Atalho de plataforma, exibido abaixo da barra de abas do setor. */
 export interface LinkItem {
   id: string;
   label: string;

@@ -9,7 +9,7 @@ import { EvaluationsPanel } from "@/components/hr/evaluations-panel";
 import type { SectorEvaluations } from "@/types/evaluation";
 import { ContentToolbar, type ViewMode } from "@/components/sector/content-toolbar";
 import { DocumentGrid } from "@/components/sector/document-grid";
-import { LinksPanel } from "@/components/sector/links-panel";
+import { AppShortcuts } from "@/components/sector/app-shortcuts";
 import { UploadAction } from "@/components/sector/upload-action";
 import { FileUploadModal } from "@/components/sector/file-upload-modal";
 import { LinkModal } from "@/components/sector/link-modal";
@@ -23,7 +23,6 @@ import type { LinkItem, SectorContent } from "@/types/sector";
 const TABS: readonly TabItem[] = [
   { id: "documentos", label: "Documentos" },
   { id: "avaliacoes", label: "Avaliações" },
-  { id: "sites", label: "Aplicativos" },
 ];
 
 export interface DriverSectorViewProps {
@@ -72,6 +71,16 @@ export function DriverSectorView({ content, evaluations, welcome }: DriverSector
         )}
       </div>
 
+      {/* Atalhos abaixo da barra de abas, fora do TabPanel: eles não pertencem
+          a aba nenhuma e não devem reanimar a cada troca. */}
+      <AppShortcuts
+        slug="motoristas"
+        links={content.links}
+        sourceLabel={content.appsSourceLabel}
+        onCreate={() => openLinkModal(null)}
+        onEdit={(link) => openLinkModal(link)}
+      />
+
       <TabPanel tabId={active} className="mt-5">
         {active === "documentos" && (
           <div className="space-y-4">
@@ -108,14 +117,6 @@ export function DriverSectorView({ content, evaluations, welcome }: DriverSector
             />
           ))}
 
-        {active === "sites" && (
-          <LinksPanel
-            slug="motoristas"
-            links={content.links}
-            onCreate={() => openLinkModal(null)}
-            onEdit={(link) => openLinkModal(link)}
-          />
-        )}
       </TabPanel>
 
       <FileUploadModal

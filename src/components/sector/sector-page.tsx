@@ -12,7 +12,7 @@ import { FilterPills } from "./filter-pills";
 import { VideoCard, VideoListRow } from "./video-card";
 import { PhotoGrid } from "./photo-grid";
 import { DocumentGrid } from "./document-grid";
-import { LinksPanel } from "./links-panel";
+import { AppShortcuts } from "./app-shortcuts";
 import { UploadAction } from "./upload-action";
 import { PhotoUploadModal } from "./photo-upload-modal";
 import { FileUploadModal } from "./file-upload-modal";
@@ -62,27 +62,25 @@ const AVALIACOES_TAB: TabDef = {
   label: "Avaliações",
   permission: "evaluations.view",
 };
-// Aplicativos é consulta: visível para todos. Criar/editar seguem no painel.
-const SITES_TAB: TabDef = { id: "sites", label: "Aplicativos" };
 /** Aba da ferramenta Cronograma — só entra quando o subsetor a habilita. */
 const CRONOGRAMA_TAB: TabDef = { id: "cronograma", label: "Cronograma" };
 
-const PADRAO_TABS: readonly TabDef[] = [
-  INSTRUCOES_TAB,
-  DOCUMENTOS_TAB,
-  AVALIACOES_TAB,
-  SITES_TAB,
-];
+/*
+ * Aplicativos não é mais aba. Os atalhos vivem abaixo da barra de abas, à
+ * vista em qualquer uma delas (ver `app-shortcuts`). Links antigos com
+ * `?aba=sites` não quebram: a resolução da aba inicial, logo abaixo, cai na
+ * primeira quando a pedida não existe.
+ */
+const PADRAO_TABS: readonly TabDef[] = [INSTRUCOES_TAB, DOCUMENTOS_TAB, AVALIACOES_TAB];
 
 /**
  * Ordem própria dos subsetores com Cronograma (Vendas e Marketing): a
- * ferramenta vem logo depois das instruções, e Aplicativos sobe para antes de
- * Avaliações e Documentos. Os demais setores padrão mantêm PADRAO_TABS.
+ * ferramenta vem logo depois das instruções. Os demais setores padrão mantêm
+ * PADRAO_TABS.
  */
 const CRONOGRAMA_LAYOUT_TABS: readonly TabDef[] = [
   INSTRUCOES_TAB,
   CRONOGRAMA_TAB,
-  SITES_TAB,
   AVALIACOES_TAB,
   DOCUMENTOS_TAB,
 ];
@@ -257,6 +255,16 @@ export function SectorPage({
         )}
       </div>
 
+      {/* Atalhos abaixo da barra de abas, fora do TabPanel: eles não pertencem
+          a aba nenhuma e não devem reanimar a cada troca. */}
+      <AppShortcuts
+        slug={sector.slug}
+        links={sector.links}
+        sourceLabel={sector.appsSourceLabel}
+        onCreate={() => openLinkModal(null)}
+        onEdit={(link) => openLinkModal(link)}
+      />
+
       <TabPanel tabId={activeId} className="mt-5">
         {activeId === "fotos" && <PhotoGrid photos={sector.photos} />}
 
@@ -350,15 +358,6 @@ export function SectorPage({
           <CronogramaPanel slug={sector.slug} sectorLabel={sector.name} data={cronograma} />
         )}
 
-        {activeId === "sites" && (
-          <LinksPanel
-            slug={sector.slug}
-            links={sector.links}
-            sourceLabel={sector.appsSourceLabel}
-            onCreate={() => openLinkModal(null)}
-            onEdit={(link) => openLinkModal(link)}
-          />
-        )}
       </TabPanel>
 
       <PhotoUploadModal
