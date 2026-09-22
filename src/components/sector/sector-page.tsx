@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { Tabs, TabPanel, type TabItem } from "@/components/ui/tabs";
@@ -139,6 +139,21 @@ export function SectorPage({
     url.searchParams.set("aba", tabId);
     window.history.replaceState(window.history.state, "", url.toString());
   }, []);
+  /**
+   * Veio do aviso de reprovação (`?video=&assistir=1`): abre aquele vídeo já
+   * reproduzindo e limpa a URL, para o F5 não reabrir o player.
+   */
+  const [autoOpenId, setAutoOpenId] = useState<string | null>(null);
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const id = url.searchParams.get("video");
+    if (!id || url.searchParams.get("assistir") !== "1") return;
+    setAutoOpenId(id);
+    url.searchParams.delete("video");
+    url.searchParams.delete("assistir");
+    window.history.replaceState(window.history.state, "", url.toString());
+  }, []);
+
   const [query, setQuery] = useState("");
   const [view, setView] = useState<ViewMode>("grid");
   const [activeFilters, setActiveFilters] = useState<readonly string[]>([]);
@@ -273,6 +288,7 @@ export function SectorPage({
                     video={video}
                     suggestions={filters}
                     comprehension={instrucoes}
+                    autoOpen={video.id === autoOpenId}
                   />
                 ))}
               </div>
@@ -285,6 +301,7 @@ export function SectorPage({
                     video={video}
                     suggestions={filters}
                     comprehension={instrucoes}
+                    autoOpen={video.id === autoOpenId}
                   />
                 ))}
               </div>

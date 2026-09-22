@@ -186,13 +186,18 @@ export interface VideoCardProps {
    * (Coleção, Workshop) não passam — só rastreiam a conclusão.
    */
   comprehension?: boolean;
+  /**
+   * Veio do aviso de reprovação: abre o player deste vídeo já reproduzindo.
+   * Quem decide é a página do setor, lendo `?video=&assistir=1`.
+   */
+  autoOpen?: boolean;
 }
 
 /** Abrir/fechar o player, com a variante "abrir já na pergunta". */
-function usePlayer() {
+function usePlayer(autoOpen = false) {
   const router = useRouter();
   const [state, setState] = useState<{ open: boolean; askNow: boolean }>({
-    open: false,
+    open: autoOpen,
     askNow: false,
   });
   return {
@@ -206,8 +211,14 @@ function usePlayer() {
   };
 }
 
-export function VideoCard({ slug, video, suggestions, comprehension = false }: VideoCardProps) {
-  const player = usePlayer();
+export function VideoCard({
+  slug,
+  video,
+  suggestions,
+  comprehension = false,
+  autoOpen = false,
+}: VideoCardProps) {
+  const player = usePlayer(autoOpen);
   const { deleting, ...admin } = useVideoAdmin(slug, video, comprehension);
 
   return (
@@ -251,6 +262,7 @@ export function VideoCard({ slug, video, suggestions, comprehension = false }: V
         video={video}
         open={player.open}
         askNow={player.askNow}
+        autoPlay={autoOpen}
         comprehension={comprehension}
         onClose={player.close}
         onChanged={player.changed}
@@ -259,8 +271,14 @@ export function VideoCard({ slug, video, suggestions, comprehension = false }: V
   );
 }
 
-export function VideoListRow({ slug, video, suggestions, comprehension = false }: VideoCardProps) {
-  const player = usePlayer();
+export function VideoListRow({
+  slug,
+  video,
+  suggestions,
+  comprehension = false,
+  autoOpen = false,
+}: VideoCardProps) {
+  const player = usePlayer(autoOpen);
   const { deleting, ...admin } = useVideoAdmin(slug, video, comprehension);
 
   return (
@@ -305,6 +323,7 @@ export function VideoListRow({ slug, video, suggestions, comprehension = false }
         video={video}
         open={player.open}
         askNow={player.askNow}
+        autoPlay={autoOpen}
         comprehension={comprehension}
         onClose={player.close}
         onChanged={player.changed}

@@ -22,6 +22,13 @@ export interface VideoModalProps {
   comprehension?: boolean;
   /** Abrir já com a pergunta visível (o card estava em "Responder"). */
   askNow?: boolean;
+  /**
+   * Abrir já reproduzindo (veio do aviso de reprovação). O navegador pode
+   * recusar: sem gesto do usuário só autoriza vídeo mudo, e treinamento mudo
+   * é pior que play manual. Recusou, o vídeo fica carregado com os controles
+   * nativos à vista.
+   */
+  autoPlay?: boolean;
   /** Progresso ou resposta gravados: quem abriu recarrega a página ao fechar. */
   onChanged?: () => void;
 }
@@ -42,6 +49,7 @@ export function VideoModal({
   onClose,
   comprehension,
   askNow,
+  autoPlay,
   onChanged,
 }: VideoModalProps) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -70,6 +78,7 @@ export function VideoModal({
       onClose={onClose}
       comprehension={Boolean(comprehension)}
       askNow={Boolean(askNow)}
+      autoPlay={Boolean(autoPlay)}
       onChanged={onChanged}
       rootRef={rootRef}
     />,
@@ -82,6 +91,7 @@ function VideoModalContent({
   onClose,
   comprehension,
   askNow,
+  autoPlay,
   onChanged,
   rootRef,
 }: {
@@ -89,6 +99,7 @@ function VideoModalContent({
   onClose: () => void;
   comprehension: boolean;
   askNow: boolean;
+  autoPlay: boolean;
   onChanged?: () => void;
   rootRef: React.RefObject<HTMLDivElement>;
 }) {
@@ -123,6 +134,15 @@ function VideoModalContent({
       if (changed.current) onChangedRef.current?.();
     };
   }, []);
+
+  // Play automático com desistência silenciosa. Nunca cai para mudo: os
+  // controles nativos já estão à vista quando o navegador recusa.
+  useEffect(() => {
+    if (!autoPlay) return;
+    const el = videoRef.current;
+    if (!el) return;
+    void el.play().catch(() => {});
+  }, [autoPlay]);
 
   const hasTranscript = Boolean(video.transcriptText?.trim());
 
