@@ -24,9 +24,12 @@ function ItemRow({
   const level = rejectionLevel(item.rejections);
 
   /*
-   * Cor NUNCA sozinha (WCAG 1.4.1): junto com o âmbar vão o ícone de alerta,
-   * o selo "Refazer" e, no nível 2, a frase abaixo. Quem não distingue as
-   * cores continua recebendo o recado.
+   * Uma reprovação pinta de âmbar; duas ou mais, de vermelho — e da terceira
+   * em diante o estado não muda mais (ver `rejectionLevel`).
+   *
+   * Cor NUNCA sozinha (WCAG 1.4.1): junto vão o ícone de alerta, o selo
+   * "Refazer" e, no vermelho, a frase abaixo do arquivo. Quem não distingue
+   * as cores continua recebendo o recado.
    */
   const tone =
     level === 2
@@ -61,11 +64,13 @@ function ItemRow({
         <span
           className={cn(
             "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
-            level > 0
-              ? "bg-warning/20 text-warning"
-              : isVideo
-                ? "bg-primary/15 text-primary"
-                : "bg-info/15 text-info",
+            level === 2
+              ? "bg-danger/20 text-danger"
+              : level === 1
+                ? "bg-warning/20 text-warning"
+                : isVideo
+                  ? "bg-primary/15 text-primary"
+                  : "bg-info/15 text-info",
           )}
         >
           {level > 0 ? (
