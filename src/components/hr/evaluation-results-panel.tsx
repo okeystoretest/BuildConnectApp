@@ -468,7 +468,9 @@ function ComprehensionSubjectCard({
         <p className="mt-0.5 text-xs text-muted">{subject.sector}</p>
         <p className="mt-1 text-[11px] text-muted">
           {subject.count} {subject.count === 1 ? "resposta" : "respostas"} · média{" "}
-          {subject.average.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} · última em{" "}
+          {subject.average === null
+            ? "—"
+            : subject.average.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} · última em{" "}
           {subject.lastLabel}
         </p>
       </div>
@@ -491,7 +493,9 @@ function ComprehensionResults({ subject }: { subject: VideoComprehensionSubject 
         </div>
         <div className="text-right">
           <p className="text-2xl font-semibold text-foreground">
-            {subject.average.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
+            {subject.average === null
+            ? "—"
+            : subject.average.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}
             <span className="text-sm text-muted">/10</span>
           </p>
           <p className="text-[11px] text-muted">

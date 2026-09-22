@@ -386,8 +386,8 @@ export interface VideoComprehensionSubject {
   subjectName: string;
   sector: string;
   count: number;
-  /** Média das notas, uma casa decimal. */
-  average: number;
+  /** Média das notas APROVADAS, uma casa decimal. Nula quando não há nenhuma. */
+  average: number | null;
   lastLabel: string;
   entries: VideoComprehensionEntry[];
 }

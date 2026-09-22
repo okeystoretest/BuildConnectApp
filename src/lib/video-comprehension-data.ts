@@ -7,6 +7,7 @@ import {
   type GraderCandidate,
 } from "@/lib/video-comprehension-scope";
 import { isStale } from "@/lib/video-comprehension-alerts";
+import { approvedAverage, splitGrades } from "@/lib/sector-overview";
 import { notifyGraderQueue } from "@/lib/notifications/notify";
 import type { Role } from "@/types";
 import type {
@@ -156,17 +157,16 @@ export async function getVideoComprehensionResults(
 
   const subjects = [...bySubject.values()];
   for (const s of subjects) {
-    // A média usa a ÚLTIMA nota de cada vídeo, não todas as tentativas. Somar
-    // as reprovadas puniria duas vezes quem foi reprovado e depois aprovado —
-    // a média deixaria de medir compreensão e passaria a medir histórico.
-    // `entries` chega ordenado por `gradedAt` desc, então o primeiro de cada
-    // vídeo é o mais recente.
-    const latest = new Map<string, number>();
-    for (const e of s.entries) {
-      if (!latest.has(e.videoId)) latest.set(e.videoId, e.grade);
-    }
-    const grades = [...latest.values()];
-    s.average = Math.round((grades.reduce((acc, g) => acc + g, 0) / grades.length) * 10) / 10;
+    /*
+     * Regra definida em 22/09: a média considera SÓ as notas aprovadas. As
+     * reprovadas continuam listadas, com a nota e o número da tentativa, mas
+     * fora do cálculo.
+     *
+     * Substitui a regra anterior (última nota de cada vídeo), para esta tela e
+     * "Meu Setor" não exibirem médias diferentes da mesma pessoa.
+     */
+    const { approved } = splitGrades(s.entries.map((e) => ({ grade: e.grade })));
+    s.average = approvedAverage(approved);
   }
   subjects.sort((a, b) => a.subjectName.localeCompare(b.subjectName, "pt-BR"));
   return subjects;
