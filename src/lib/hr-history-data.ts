@@ -102,14 +102,28 @@ export async function getEmployeeHistory(userId: string): Promise<EmployeeHistor
       fullName: true,
       role: true,
       active: true,
+      sectorId: true,
       sector: { select: { label: true } },
     },
   });
   if (!user || !user.active) return null;
 
-  // --- Catálogo de conteúdo e progresso do colaborador ---
-  // Só subsetores PADRAO: vídeos de vitrine não são material a concluir.
-  const tracked = { subsector: TRACKED_SUBSECTOR };
+  /*
+   * --- Catálogo de conteúdo e progresso do colaborador ---
+   *
+   * Só subsetores PADRAO (vitrine não é material a concluir) e só os do SETOR
+   * DE LOTAÇÃO desta pessoa.
+   *
+   * O recorte por setor faltava, e era o bug visível na tela: esta consulta
+   * varria o acervo PADRAO da empresa inteira, então alguém da Retaguarda com
+   * 40 itens aparecia devendo 120. A régua aqui tem de ser a mesma de
+   * "Meu Progresso" e de "Meu Setor" — três telas que mostram o mesmo número
+   * para a mesma pessoa, ou nenhuma delas é levada a sério.
+   *
+   * Sem lotação não há material: o filtro devolve lista vazia em vez de
+   * devolver tudo.
+   */
+  const tracked = { subsector: { ...TRACKED_SUBSECTOR, sectorId: user.sectorId ?? "" } };
   const [completed, videos, documents] = await Promise.all([
     prisma.contentProgress.findMany({
       // `completed: false` é "chegou ao fim, não respondeu" — ainda não conta.

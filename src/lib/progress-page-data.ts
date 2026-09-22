@@ -36,10 +36,49 @@ function pct(done: number, total: number): number {
   return total === 0 ? 0 : Math.round((done / total) * 100);
 }
 
+/** Nada a mostrar: quem não tem setor de lotação não tem material a concluir. */
+const EMPTY_PROGRESS: ProgressPageData = {
+  overall: 0,
+  mappedAreas: 0,
+  pendingItems: 0,
+  consumedItems: 0,
+  totalItems: 0,
+  sectors: [],
+  pending: [],
+};
+
 export async function getProgressPageData(userId: string, role: Role): Promise<ProgressPageData> {
   // `null` = Admin, sem recorte de setor.
   const slugs = await resolveAccessibleSlugs(userId, role);
-  const inScope = { ...TRACKED_SUBSECTOR, ...(slugs === null ? {} : { slug: { in: slugs } }) };
+
+  /*
+   * Recorte por SETOR DE LOTAÇÃO, somado ao de subsetores acessíveis.
+   *
+   * Os dois são necessários e dizem coisas diferentes. `resolveAccessibleSlugs`
+   * responde "o que esta pessoa pode ABRIR", e um vínculo de subsetor pode
+   * atravessar setores — era isso que inflava o denominador: quem tinha um
+   * subsetor marcado fora da própria lotação carregava o material inteiro
+   * daquele outro setor como pendência sua, e 40 itens viravam 120.
+   *
+   * Progresso é sobre o que a pessoa PRECISA concluir, que é o material do
+   * setor em que ela está lotada. O Admin, que não tem lotação para recortar,
+   * continua vendo tudo.
+   */
+  const lotacao =
+    slugs === null
+      ? null
+      : ((
+          await prisma.user.findUnique({ where: { id: userId }, select: { sectorId: true } })
+        )?.sectorId ?? null);
+
+  // Não-Admin sem setor de lotação não tem material a concluir. Sem esta
+  // guarda o filtro sumiria e a pessoa herdaria o acervo da empresa inteira.
+  if (slugs !== null && lotacao === null) return EMPTY_PROGRESS;
+
+  const inScope = {
+    ...TRACKED_SUBSECTOR,
+    ...(slugs === null ? {} : { slug: { in: slugs }, sectorId: lotacao as string }),
+  };
 
   // Estrutura de setores → subsetores com seu conteúdo (vídeos e documentos).
   const [sectors, completed, rejected, endedRows] = await Promise.all([
