@@ -560,7 +560,9 @@ model ContentProgress {
   document   Document? @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   completed   Boolean   @default(true)
-  completedAt DateTime  @default(now())
+  // Nulo quando `completed` é falso. Reprovar na compreensão devolve o vídeo a
+  // pendente, e uma linha não concluída não pode carregar data de conclusão.
+  completedAt DateTime? @default(now())
 
   // Quando o vídeo chegou ao fim para este usuário. Nas vitrines isso já
   // conclui (`completed`); nas Instruções em Vídeo só libera a pergunta de

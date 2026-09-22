@@ -10,10 +10,17 @@ import { canGrade } from "@/lib/video-comprehension-scope";
 import { loadGraderCandidates } from "@/lib/video-comprehension-data";
 import {
   COMPREHENSION_GRADE_MAX,
+  COMPREHENSION_GRADE_MIN,
   COMPREHENSION_MAX,
   COMPREHENSION_MIN,
   hasComprehension,
+  isPassing,
 } from "@/lib/video-comprehension";
+import { resolveGraders } from "@/lib/video-comprehension-scope";
+import {
+  notifyComprehensionRejected,
+  notifyGraderQueue,
+} from "@/lib/notifications/notify";
 import type { Role } from "@/types";
 
 interface ActionResult {
@@ -66,22 +73,49 @@ export async function submitVideoComprehension(input: {
     return { ok: false, error: "Assista ao vídeo até o fim antes de responder." };
   }
 
+  // Tentativa pendente bloqueia: responder de novo enquanto o Gestor não deu a
+  // nota criaria duas respostas na fila sobre o mesmo vídeo.
+  const awaiting = await prisma.videoComprehension.findFirst({
+    where: { userId: user.id, videoId, gradedAt: null },
+    select: { id: true },
+  });
+  if (awaiting) return { ok: false, error: "Sua resposta anterior ainda está em avaliação." };
+
   try {
     const now = new Date();
+    const last = await prisma.videoComprehension.findFirst({
+      where: { userId: user.id, videoId },
+      orderBy: { attempt: "desc" },
+      select: { attempt: true },
+    });
+    const attempt = (last?.attempt ?? 0) + 1;
+
     await prisma.$transaction([
-      prisma.videoComprehension.create({ data: { userId: user.id, videoId, answer } }),
-      // Responder é o que conclui o vídeo.
+      prisma.videoComprehension.create({ data: { userId: user.id, videoId, answer, attempt } }),
+      // Responder é o que conclui o vídeo. Reprovar desfaz isto.
       prisma.contentProgress.update({
         where: { userId_videoId: { userId: user.id, videoId } },
         data: { completed: true, completedAt: now },
       }),
     ]);
+
+    // Fila do Gestor num novo patamar de 5. Depois do commit e sem lançar: o
+    // aviso é consequência do envio, não condição dele.
+    const candidates = await loadGraderCandidates();
+    const graders = resolveGraders(
+      { authorId: user.id, authorSectorId: user.sectorId },
+      candidates,
+    );
+    void notifyGraderQueue(graders.map((g) => g.id));
+
     // A pendência nasce em Minhas Avaliações dos Gestores.
     revalidatePath("/minhas-avaliacoes");
     return { ok: true };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      return { ok: false, error: "Você já respondeu sobre este vídeo." };
+      // Dois envios simultâneos: o unique [userId, videoId, attempt] barra o
+      // segundo.
+      return { ok: false, error: "Sua resposta anterior ainda está em avaliação." };
     }
     console.error("[submitVideoComprehension] falha:", error);
     return { ok: false, error: "Não foi possível enviar sua resposta." };
@@ -90,12 +124,14 @@ export async function submitVideoComprehension(input: {
 
 const gradeSchema = z.object({
   id: z.string().min(1),
-  grade: z.number().int().min(0).max(COMPREHENSION_GRADE_MAX),
+  grade: z.number().int().min(COMPREHENSION_GRADE_MIN).max(COMPREHENSION_GRADE_MAX),
   comment: z.string().trim().max(2000).optional(),
 });
 
 /**
- * Nota do Gestor (0–10) a uma resposta de compreensão. Quem pode dar a nota
+ * Nota do Gestor (1–10) a uma resposta de compreensão. Abaixo de 7 reprova: o
+ * vídeo volta a pendente, o `endedAt` é zerado (obriga a reassistir) e o
+ * colaborador é avisado pelo sino. Quem pode dar a nota
  * sai de `resolveGraders` (Gestores do setor do autor; Admin/DHO no fallback)
  * — conferido aqui, não só na lista da tela. O primeiro que avalia fecha:
  * o update é condicionado a `gradedAt IS NULL`.
@@ -112,12 +148,22 @@ export async function gradeVideoComprehension(input: {
   }
 
   const parsed = gradeSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: `Nota inválida: use um inteiro de 0 a ${COMPREHENSION_GRADE_MAX}.` };
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: `Nota inválida: use um inteiro de ${COMPREHENSION_GRADE_MIN} a ${COMPREHENSION_GRADE_MAX}.`,
+    };
+  }
   const { id, grade, comment } = parsed.data;
 
   const target = await prisma.videoComprehension.findUnique({
     where: { id },
-    select: { gradedAt: true, user: { select: { id: true, sectorId: true } } },
+    select: {
+      gradedAt: true,
+      videoId: true,
+      video: { select: { title: true, subsector: { select: { slug: true } } } },
+      user: { select: { id: true, sectorId: true } },
+    },
   });
   if (!target) return { ok: false, error: "Resposta não encontrada." };
   if (target.gradedAt) return { ok: false, error: "Esta resposta já foi avaliada." };
@@ -140,6 +186,23 @@ export async function gradeVideoComprehension(input: {
       },
     });
     if (count === 0) return { ok: false, error: "Outro gestor acabou de avaliar esta resposta." };
+
+    // Reprovado: o vídeo volta a pendente e o `endedAt` é zerado — sem isso, o
+    // colaborador responderia de novo sem reassistir.
+    if (!isPassing(grade)) {
+      await prisma.contentProgress.update({
+        where: { userId_videoId: { userId: target.user.id, videoId: target.videoId } },
+        data: { completed: false, completedAt: null, endedAt: null },
+      });
+      void notifyComprehensionRejected({
+        userId: target.user.id,
+        videoId: target.videoId,
+        videoTitle: target.video.title,
+        subsectorSlug: target.video.subsector.slug,
+      });
+      revalidatePath("/progresso");
+    }
+
     revalidatePath("/minhas-avaliacoes");
     revalidatePath("/setores/rh");
     return { ok: true };
