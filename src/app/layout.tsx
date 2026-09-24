@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Outfit, JetBrains_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 import { RoleProvider } from "@/providers/role-provider";
 import { SidebarProvider } from "@/providers/sidebar-provider";
@@ -18,15 +18,52 @@ import { getVerifiedSession } from "@/lib/auth/require-user";
 import { canUseDhoTools } from "@/lib/auth/access";
 import type { CurrentUser, Role } from "@/types";
 
-const outfit = Outfit({
-  subsets: ["latin"],
+// Fontes servidas do repositório, e não buscadas no Google durante o build.
+//
+// `next/font/google` faz duas chamadas HTTP a cada build — o CSS em
+// fonts.googleapis.com e os .woff2 em fonts.gstatic.com — e o build inteiro
+// morre se a resposta vier fora do formato esperado. Foi o que derrubou o
+// deploy de 24/09: o loader do Next assume que toda URL termina em extensão
+// de fonte e faz `.exec(url)[1]` sem conferir, então estourou com "Cannot
+// read properties of null (reading '1')", sem citar fonte em lugar nenhum.
+// E `.next` está no .dockerignore: não há cache para amparar, todo build no
+// Docker refaz a busca do zero.
+//
+// Com os arquivos aqui, o build não fala com ninguém. O ganho maior não é
+// evitar aquele erro — é o build voltar a ser reproduzível: reconstruir um
+// commit antigo passa a dar o mesmo resultado de sempre, que é exatamente o
+// que se precisa na hora de um rollback.
+//
+// São os mesmos bytes que a aplicação já servia: os arquivos do subset LATIN
+// do Google Fonts (Outfit v15, JetBrains Mono v24). Em runtime nada muda —
+// o navegador sempre pegou a fonte da nossa origem, nunca do Google, e a
+// política `font-src 'self'` do next.config continua valendo.
+//
+// O subset latin (U+0000-00FF mais pontuação) cobre o português inteiro,
+// acentos e cedilha incluídos — e era o subset que este arquivo já declarava.
+// Caractere fora dele (ł, ř, ő) cai no system-ui, glifo a glifo.
+//
+// PARA ATUALIZAR: baixe o .woff2 latin novo em fonts.googleapis.com/css2 e
+// troque o arquivo. Nada aqui se atualiza sozinho, e é essa a intenção.
+
+// Variável de 100 a 900, como o Google declarava: um arquivo cobre a faixa
+// toda. A tela usa 400, 500, 600 e 700.
+const outfit = localFont({
+  src: "./fonts/outfit-latin-variable.woff2",
+  weight: "100 900",
+  style: "normal",
   variable: "--font-outfit",
   display: "swap",
 });
 
-const jetbrains = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500"],
+// Faixa 400–500 de propósito, e não a do arquivo: o Google servia só essas
+// duas faces, então `font-mono font-bold` sempre foi engordado pelo
+// navegador. Abrir a faixa aqui mudaria o traço desses lugares — esta troca
+// muda de onde vêm os bytes, não o desenho da tela.
+const jetbrains = localFont({
+  src: "./fonts/jetbrains-mono-latin-variable.woff2",
+  weight: "400 500",
+  style: "normal",
   variable: "--font-jetbrains",
   display: "swap",
 });
