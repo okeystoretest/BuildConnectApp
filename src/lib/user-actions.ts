@@ -13,6 +13,8 @@ import { processAndStoreImage, ImageProcessingError } from "@/lib/storage/images
 import { removeFile } from "@/lib/storage/files";
 import { toAbsolutePath } from "@/lib/storage/config";
 import { ensureCycleSchedule } from "@/lib/evaluation-schedule";
+import { notifyNewEmployeeInApp } from "@/lib/notifications/notify";
+import { notifyNewEmployee } from "@/lib/whatsapp/notify";
 import { USERNAME_PATTERN, MIN_PASSWORD_LENGTH } from "@/types/user-form";
 import { isValidPhone, normalizePhone } from "@/lib/phone";
 
@@ -195,6 +197,26 @@ export async function createUser(formData: FormData): Promise<UserActionResult> 
         // Falha na agenda não deve derrubar o cadastro; loga e segue.
         console.error("[createUser] agenda de ciclos:", e);
       }
+    }
+
+    /*
+     * A equipe do setor é avisada da chegada, no sino e no WhatsApp, para que
+     * o gestor planeje o treinamento com antecedência.
+     *
+     * DEPOIS do commit, e não dentro da transação: enfileirar lá mandaria
+     * mensagem sobre um cadastro que ainda pode rolar para trás. Nenhuma das
+     * duas lança — o aviso é consequência do cadastro, não condição dele.
+     */
+    if (createdUserId) {
+      const chegada = {
+        userId: createdUserId,
+        fullName: data.fullName,
+        role: data.role,
+        sectorId,
+      };
+      await notifyNewEmployeeInApp(chegada);
+      // `void`: o DHO não espera o WhatsApp para ver o modal com a senha.
+      void notifyNewEmployee({ ...chegada, unitLabel: data.unit });
     }
 
     revalidatePath("/setores/rh");

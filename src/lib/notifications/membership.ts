@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import type { Role } from "@/types";
 
 /**
  * Lotação, nos dois sentidos, com a MESMA regra de `resolveAccessibleSlugs`
@@ -44,4 +45,32 @@ export async function activeUserIdsInSubsector(slug: string): Promise<string[]> 
     select: { id: true },
   });
   return users.map((u) => u.id);
+}
+
+/**
+ * A EQUIPE ativa do setor, com o papel de cada um — a lotação inteira, em
+ * todos os subsetores dele.
+ *
+ * Recorte mais largo que `activeUserIdsInSubsector` de propósito: a chegada de
+ * um colega é notícia do setor, não de um subsetor. Aqui não há a regra de
+ * "sem marcação, vale o setor todo" porque o setor JÁ é a unidade consultada.
+ *
+ * Traz o papel porque quem chama precisa dele: a notificação de integração
+ * manda na hora para o GESTOR e pela fila para o resto. Uma consulta só, para
+ * os dois canais não discordarem sobre quem é a equipe.
+ */
+export async function activeMembersOfSector(
+  sectorId: string | null,
+): Promise<{ id: string; role: Role }[]> {
+  if (!sectorId) return [];
+  return prisma.user.findMany({
+    where: { active: true, sectorId },
+    select: { id: true, role: true },
+  });
+}
+
+/** Só os ids de `activeMembersOfSector`, para quem não precisa do papel. */
+export async function activeUserIdsInSector(sectorId: string | null): Promise<string[]> {
+  const members = await activeMembersOfSector(sectorId);
+  return members.map((m) => m.id);
 }

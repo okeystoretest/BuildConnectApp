@@ -1156,6 +1156,7 @@ enum NotificationKind {
   FORMULARIO
   SISTEMA
   TREINAMENTO
+  INTEGRACAO
 }
 
 model Notification {
@@ -1371,6 +1372,7 @@ enum WhatsappKind {
   AVALIACAO
   FORMULARIO
   CHAMADO_TI
+  INTEGRACAO
 }
 
 enum WhatsappStatus {

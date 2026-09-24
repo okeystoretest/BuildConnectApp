@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after, beforeEach } from "node:test";
 import { prisma } from "@/lib/db/prisma";
-import { notifyCycleAvailable, notifyFormAvailable } from "./notify";
+import { notifyCycleAvailable, notifyFormAvailable, notifyNewEmployee } from "./notify";
 import { publishFormFor, reopenFormFor, closeFormFor, saveFormFor, type FormActor } from "@/lib/forms/core";
 import type { FormDraft } from "@/types/form";
 
@@ -149,4 +149,110 @@ test("ciclo liberado avisa o GESTOR do setor, e só ele", async () => {
 test("setor nulo não enfileira nada, e não quebra", async () => {
   await notifyCycleAvailable(null);
   assert.equal(await prisma.whatsappMessage.count({ where: { user: { username: { contains: MARK } } } }), 0);
+});
+
+// ─────────────────────────────────────────────────────────────
+// Integração: chegou gente nova no setor
+// ─────────────────────────────────────────────────────────────
+
+/** Remetente falso: registra o que sairia, sem WhatsApp nenhum. */
+function remetenteFalso() {
+  const enviados: string[] = [];
+  return {
+    enviados,
+    sender: async (_jid: string, text: string) => {
+      enviados.push(text);
+    },
+    resolveJid: async (c: string[]) => c[0]!,
+  };
+}
+
+test("novo integrante: o GESTOR recebe na hora, a equipe fica na fila", async () => {
+  const setor = await prisma.sector.findFirst({ select: { id: true } });
+  assert.ok(setor, "o seed precisa ter criado setores");
+
+  const gestor = await makeUser("GESTOR", setor.id);
+  const colega = await makeUser("COLABORADOR", setor.id);
+  const novato = await makeUser("COLABORADOR", setor.id);
+
+  const falso = remetenteFalso();
+  const agora = new Date();
+  await notifyNewEmployee(
+    { userId: novato, fullName: "Maria Silva", role: "COLABORADOR", sectorId: setor.id },
+    { ...falso, now: agora },
+  );
+
+  const fila = await prisma.whatsappMessage.findMany({
+    where: { userId: { in: [gestor, colega, novato] } },
+    select: { userId: true, kind: true, status: true, sendAfter: true, text: true },
+  });
+  const doGestor = fila.find((m) => m.userId === gestor);
+  const doColega = fila.find((m) => m.userId === colega);
+
+  assert.ok(doGestor, "o gestor precisa ser avisado");
+  assert.equal(doGestor.status, "ENVIADO", "quem planeja o treinamento recebe imediatamente");
+  assert.equal(doGestor.kind, "INTEGRACAO");
+
+  assert.ok(doColega, "a equipe também é avisada");
+  assert.equal(doColega.status, "PENDENTE", "a equipe sai pela fila, sem rajada");
+  assert.ok(
+    doColega.sendAfter.getTime() > agora.getTime(),
+    "a mensagem da equipe é agendada para depois, não disparada junto",
+  );
+
+  assert.ok(
+    falso.enviados.some((t) => t.includes("Maria Silva")),
+    "a mensagem do gestor nomeia quem chegou",
+  );
+  assert.ok(
+    doColega.text?.includes("Maria Silva"),
+    "a mensagem da equipe também nomeia quem chegou",
+  );
+});
+
+test("novo integrante: o próprio novato não recebe mensagem sobre si", async () => {
+  const setor = await prisma.sector.findFirst({ select: { id: true } });
+  assert.ok(setor);
+  const novato = await makeUser("COLABORADOR", setor.id);
+
+  await notifyNewEmployee(
+    { userId: novato, fullName: "Maria Silva", role: "COLABORADOR", sectorId: setor.id },
+    remetenteFalso(),
+  );
+
+  assert.equal(
+    await prisma.whatsappMessage.count({ where: { userId: novato } }),
+    0,
+    "ninguém é avisado da própria chegada",
+  );
+});
+
+test("novo integrante: cadastro de ADMIN não manda nada", async () => {
+  const setor = await prisma.sector.findFirst({ select: { id: true } });
+  assert.ok(setor);
+  await makeUser("GESTOR", setor.id);
+  const novoAdmin = await makeUser("COLABORADOR", setor.id);
+
+  await notifyNewEmployee(
+    { userId: novoAdmin, fullName: "Admin Tecnico", role: "ADMIN", sectorId: setor.id },
+    remetenteFalso(),
+  );
+
+  assert.equal(
+    await prisma.whatsappMessage.count({ where: { user: { username: { contains: MARK } } } }),
+    0,
+    "conta ADMIN entra em silêncio",
+  );
+});
+
+test("novo integrante sem setor não manda nada, e não quebra", async () => {
+  const novato = await makeUser("COLABORADOR", null);
+  await notifyNewEmployee(
+    { userId: novato, fullName: "Sem Setor", role: "COLABORADOR", sectorId: null },
+    remetenteFalso(),
+  );
+  assert.equal(
+    await prisma.whatsappMessage.count({ where: { user: { username: { contains: MARK } } } }),
+    0,
+  );
 });

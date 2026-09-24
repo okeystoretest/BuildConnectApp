@@ -1,5 +1,8 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
+import { activeUserIdsInSector } from "./membership";
+import { ROLE_LABEL } from "@/lib/permissions";
+import type { Role } from "@/types";
 
 /**
  * Os gatilhos do sino — espelho de `whatsapp/notify.ts`.
@@ -186,5 +189,55 @@ export async function notifyGraderQueue(graderIds: readonly string[]): Promise<v
         update: { lastNotifiedCount: decision.lastNotified, lastNotifiedAt: new Date() },
       });
     }
+  });
+}
+
+export interface NewEmployeeInput {
+  /** O recém-cadastrado. Excluído dos destinatários: ninguém se avisa. */
+  userId: string;
+  fullName: string;
+  role: Role;
+  sectorId: string | null;
+}
+
+/**
+ * Chegou gente nova no setor, para a EQUIPE INTEIRA dele.
+ *
+ * Uma linha por destinatário (`targetUserId`), e não uma linha de `audience`
+ * de setor, por duas razões. A audiência entregaria o aviso também a quem
+ * fosse cadastrado semanas depois — que veria a chegada de um colega antigo
+ * como novidade — e não teria como excluir o próprio novato, que está no setor
+ * e se veria anunciado. O preço é uma linha por pessoa da equipe, na mesma
+ * ordem de grandeza das atribuições de formulário.
+ *
+ * Sem `href`: /meu-setor exige a permissão `sector.overview`, que o
+ * colaborador não tem. Um aviso que leva a um `notFound` é pior que um aviso
+ * sem link.
+ *
+ * ADMIN não dispara: são contas técnicas ou do próprio DHO, e anunciá-las à
+ * equipe é ruído.
+ */
+export async function notifyNewEmployeeInApp(input: NewEmployeeInput): Promise<void> {
+  if (input.role === "ADMIN" || !input.sectorId) return;
+  await silently("novo integrante", async () => {
+    const [sector, ids] = await Promise.all([
+      prisma.sector.findUnique({ where: { id: input.sectorId! }, select: { label: true } }),
+      activeUserIdsInSector(input.sectorId),
+    ]);
+    const destinatarios = ids.filter((id) => id !== input.userId);
+    if (destinatarios.length === 0) return;
+
+    const onde = sector ? ` ${sector.label}` : "";
+    await prisma.notification.createMany({
+      data: destinatarios.map((id) => ({
+        kind: "INTEGRACAO" as const,
+        title: "Novo integrante no setor",
+        // "entrou" e não "foi cadastrado": vale para qualquer pessoa, sem
+        // supor gênero a partir do nome.
+        body: `${input.fullName} entrou no setor${onde} como ${ROLE_LABEL[input.role]}. Prepare a integração e o treinamento.`,
+        audience: [],
+        targetUserId: id,
+      })),
+    });
   });
 }

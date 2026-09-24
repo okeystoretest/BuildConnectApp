@@ -41,7 +41,7 @@ export async function unlinkWhatsapp(): Promise<{ ok: boolean; error?: string }>
 export interface WhatsappLogRow {
   id: string;
   name: string;
-  kind: "AVALIACAO" | "FORMULARIO" | "CHAMADO_TI";
+  kind: "AVALIACAO" | "FORMULARIO" | "CHAMADO_TI" | "INTEGRACAO";
   status: "PENDENTE" | "ENVIADO" | "FALHOU";
   error?: string;
   when: string;

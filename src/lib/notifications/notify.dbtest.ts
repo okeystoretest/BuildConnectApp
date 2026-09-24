@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test, { after, before, beforeEach } from "node:test";
 import { prisma } from "@/lib/db/prisma";
-import { notifyCycleAvailableInApp, notifyFormAvailableInApp, notifyNewContent } from "./notify";
+import {
+  notifyCycleAvailableInApp,
+  notifyFormAvailableInApp,
+  notifyNewContent,
+  notifyNewEmployeeInApp,
+} from "./notify";
 
 /**
  * Os gatilhos do sino contra o Postgres: quem recebe o quê.
@@ -113,4 +118,69 @@ test("ciclo Pré-Efetivo: só os GESTORES do setor, individualmente", async () =
   assert.equal(rows[0]!.targetUserId, gestor);
   assert.equal(rows[0]!.kind, "AVALIACAO");
   assert.deepEqual(rows[0]!.audience, []);
+});
+
+// ─────────────────────────────────────────────────────────────
+// Integração: chegou gente nova no setor
+// ─────────────────────────────────────────────────────────────
+
+test("notifyNewEmployeeInApp: avisa a equipe do setor, menos o próprio novato", async () => {
+  const novato = await makeUser("COLABORADOR", sectorId);
+
+  await notifyNewEmployeeInApp({
+    userId: novato,
+    fullName: `Maria Silva ${MARK}`,
+    role: "COLABORADOR",
+    sectorId,
+  });
+
+  const linhas = await prisma.notification.findMany({
+    where: { kind: "INTEGRACAO", body: { contains: MARK } },
+    select: { targetUserId: true, title: true, body: true, audience: true },
+  });
+  const alvos = linhas.map((l) => l.targetUserId);
+
+  assert.ok(alvos.includes(gestor), "o gestor do setor deve ser avisado");
+  assert.ok(alvos.includes(colab), "o colaborador do setor deve ser avisado");
+  assert.ok(!alvos.includes(novato), "o novato não é avisado da própria chegada");
+  assert.ok(
+    linhas.every((l) => l.audience.length === 0),
+    "o aviso é por alvo individual, não por audiência de setor",
+  );
+  assert.ok(
+    linhas.every((l) => l.body.includes("Maria Silva")),
+    "o corpo deve nomear quem chegou",
+  );
+});
+
+test("notifyNewEmployeeInApp: cadastro de ADMIN não avisa ninguém", async () => {
+  const novoAdmin = await makeUser("COLABORADOR", sectorId);
+
+  await notifyNewEmployeeInApp({
+    userId: novoAdmin,
+    fullName: `Admin Tecnico ${MARK}`,
+    role: "ADMIN",
+    sectorId,
+  });
+
+  const total = await prisma.notification.count({
+    where: { kind: "INTEGRACAO", body: { contains: MARK } },
+  });
+  assert.equal(total, 0, "conta ADMIN entra em silêncio");
+});
+
+test("notifyNewEmployeeInApp: sem setor, ninguém é avisado", async () => {
+  const semSetor = await makeUser("COLABORADOR", null);
+
+  await notifyNewEmployeeInApp({
+    userId: semSetor,
+    fullName: `Sem Setor ${MARK}`,
+    role: "COLABORADOR",
+    sectorId: null,
+  });
+
+  const total = await prisma.notification.count({
+    where: { kind: "INTEGRACAO", body: { contains: MARK } },
+  });
+  assert.equal(total, 0, "sem setor não há equipe a avisar");
 });

@@ -1,7 +1,9 @@
 import { prisma } from "@/lib/db/prisma";
-import { activeUserIdsInSubsector } from "@/lib/notifications/membership";
-import { ticketText } from "./messages";
+import { activeMembersOfSector, activeUserIdsInSubsector } from "@/lib/notifications/membership";
+import { newEmployeeManagerText, newEmployeeTeamText, ticketText } from "./messages";
 import { enqueue, sendNow, type SendNowOptions } from "./outbox";
+import { ROLE_LABEL } from "@/lib/permissions";
+import type { Role } from "@/types";
 
 /**
  * Os gatilhos das notificações por WhatsApp.
@@ -101,5 +103,67 @@ export async function notifyNewItTicket(
   await silently("chamado de TI", async () => {
     const ids = await activeUserIdsInSubsector(options.slug ?? TI_SLUG);
     return sendNow(ids, "CHAMADO_TI", ticketText(code), options);
+  });
+}
+
+export interface NewEmployeeInput {
+  /** O recém-cadastrado. Excluído dos destinatários: ninguém se avisa. */
+  userId: string;
+  fullName: string;
+  role: Role;
+  sectorId: string | null;
+  unitLabel?: string | null;
+}
+
+/**
+ * Chegou gente nova no setor, para a EQUIPE INTEIRA dele — por dois caminhos.
+ *
+ * O GESTOR sai por `sendNow`: é ele que planeja o treinamento, e um aviso que
+ * chega duas horas depois já perdeu parte da antecedência que era o objetivo.
+ * São poucos por setor, então não há rajada.
+ *
+ * O resto da equipe sai por `enqueue`, com o sorteio de sempre. Um setor de
+ * quarenta pessoas disparado de uma vez é exatamente o padrão que faz o
+ * WhatsApp bloquear o número — e, para dar as boas-vindas, a hora exata não
+ * muda nada.
+ *
+ * ADMIN não dispara: são contas técnicas ou do próprio DHO, e anunciá-las à
+ * equipe é ruído.
+ */
+export async function notifyNewEmployee(
+  input: NewEmployeeInput,
+  options: SendNowOptions = {},
+): Promise<void> {
+  if (input.role === "ADMIN" || !input.sectorId) return;
+  await silently("novo integrante", async () => {
+    const [sector, equipe] = await Promise.all([
+      prisma.sector.findUnique({ where: { id: input.sectorId! }, select: { label: true } }),
+      activeMembersOfSector(input.sectorId),
+    ]);
+    const sectorLabel = sector?.label ?? "";
+    const outros = equipe.filter((m) => m.id !== input.userId);
+    if (outros.length === 0) return;
+
+    const gestores = outros.filter((m) => m.role === "GESTOR").map((m) => m.id);
+    const demais = outros.filter((m) => m.role !== "GESTOR").map((m) => m.id);
+
+    if (gestores.length > 0) {
+      await sendNow(
+        gestores,
+        "INTEGRACAO",
+        newEmployeeManagerText({
+          fullName: input.fullName,
+          roleLabel: ROLE_LABEL[input.role],
+          sectorLabel,
+          unitLabel: input.unitLabel,
+        }),
+        options,
+      );
+    }
+    if (demais.length > 0) {
+      await enqueue(demais, "INTEGRACAO", {
+        text: newEmployeeTeamText({ fullName: input.fullName, sectorLabel }),
+      });
+    }
   });
 }

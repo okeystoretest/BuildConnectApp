@@ -351,3 +351,21 @@ test("destinatário excluído no meio da drenagem não derruba os demais", async
   assert.equal(enviados.length, 3, "os três chegaram a ser enviados");
   assert.equal(res.enviados, 3, "e nenhum erro abortou o laço");
 });
+
+test("enfileirar com texto próprio manda esse texto, não o padrão do tipo", async () => {
+  const a = await makeUser("11987654321");
+  const proprio = `Maria Silva entrou no setor Retaguarda. ${MARK}`;
+  await enqueue([a], "INTEGRACAO", { now: AGORA, delayMs: semEspera, text: proprio });
+
+  const textos: string[] = [];
+  await drainOutbox({
+    now: AGORA,
+    delayMs: semEspera,
+    resolveJid: async (c) => c[0]!,
+    sender: async (_jid, text) => {
+      textos.push(text);
+    },
+  });
+
+  assert.deepEqual(textos, [proprio]);
+});

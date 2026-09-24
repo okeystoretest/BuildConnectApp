@@ -44,7 +44,12 @@ const STATUS_LABEL = {
 
 const ROW_TONE = { ENVIADO: "primary", PENDENTE: "info", FALHOU: "danger" } as const;
 const ROW_LABEL = { ENVIADO: "Enviado", PENDENTE: "Na fila", FALHOU: "Falhou" } as const;
-const KIND_LABEL = { AVALIACAO: "Avaliação", FORMULARIO: "Formulário", CHAMADO_TI: "Chamado" } as const;
+const KIND_LABEL = {
+  AVALIACAO: "Avaliação",
+  FORMULARIO: "Formulário",
+  CHAMADO_TI: "Chamado",
+  INTEGRACAO: "Integração",
+} as const;
 
 export function WhatsappPanel() {
   const { success, error } = useToast();

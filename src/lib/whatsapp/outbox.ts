@@ -42,6 +42,13 @@ export function randomDelayMs(): number {
 const MAX_ATTEMPTS = 3;
 
 export interface EnqueueOptions {
+  /**
+   * Texto da mensagem. Ausente, vale o padrão do tipo (`MESSAGE_TEXT`) — que
+   * é o caso de avaliação e formulário, cujo aviso não varia. Presente quando
+   * a mensagem carrega dado do momento: o nome de quem acabou de entrar, por
+   * exemplo, que nenhum texto fixo teria como dizer.
+   */
+  text?: string;
   /** Injetados no teste. */
   now?: Date;
   delayMs?: () => number;
@@ -80,7 +87,7 @@ export async function enqueue(
   let cursor = anchor ? Math.max(now.getTime(), anchor.getTime() + delay()) : now.getTime();
   const data = unique.map((userId, index) => {
     if (index > 0) cursor += delay();
-    return { userId, kind, sendAfter: new Date(cursor) };
+    return { userId, kind, sendAfter: new Date(cursor), text: options.text ?? null };
   });
 
   await prisma.whatsappMessage.createMany({ data });
