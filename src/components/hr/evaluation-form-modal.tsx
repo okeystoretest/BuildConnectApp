@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, ClipboardCheck, Loader2, X } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
@@ -60,6 +60,22 @@ export function EvaluationFormModal({
   const [page, setPage] = useState(0);
   const [submitting, startSubmit] = useTransition();
 
+  /*
+   * Largura que a barra de rolagem da lista rouba do conteúdo.
+   *
+   * A faixa da escala é IRMÃ da lista, e não rola junto — então ela tem a
+   * largura cheia do cartão enquanto a lista tem a largura menos a barra.
+   * Como as duas são grades ancoradas à direita, a régua da faixa terminava
+   * à direita das notas por exatamente essa diferença.
+   *
+   * Medido, e não fixado num número: a barra vale ~11px no Chrome com
+   * `scrollbar-width: thin`, 6px onde vale o `::-webkit-scrollbar` do
+   * .scrollbar-slim, e ZERO no macOS, onde ela flutua sobre o conteúdo.
+   * Qualquer constante estaria errada em dois dos três casos.
+   */
+  const listaRef = useRef<HTMLDivElement>(null);
+  const [scrollGutter, setScrollGutter] = useState(0);
+
   const totalQuestions = useMemo(
     () => form.sections.reduce((n, s) => n + s.questions.length, 0),
     [form],
@@ -106,6 +122,22 @@ export function EvaluationFormModal({
     () => Array.from({ length: form.scaleMax }, (_, i) => i + 1),
     [form.scaleMax],
   );
+
+  // Remede a cada troca de seção (a lista muda de altura, e a barra pode
+  // aparecer ou sumir) e a cada mudança de tamanho do elemento, que é o que
+  // cobre o redimensionar da janela.
+  useEffect(() => {
+    const el = listaRef.current;
+    if (!el) {
+      setScrollGutter(0);
+      return;
+    }
+    const medir = () => setScrollGutter(el.offsetWidth - el.clientWidth);
+    medir();
+    const observador = new ResizeObserver(medir);
+    observador.observe(el);
+    return () => observador.disconnect();
+  }, [open, page, isSummary]);
 
   function setAnswer(questionId: string, value: number) {
     setAnswers((prev) => ({ ...prev, [questionId]: value }));
@@ -251,14 +283,26 @@ export function EvaluationFormModal({
               {/* Faixa da escala: o critério à esquerda, a régua à direita.
                   Oculta no celular, onde a linha empilha e os botões descem
                   para baixo da pergunta. */}
-              <div className="hidden shrink-0 items-center gap-4 border-b border-border bg-surface-2 px-5 py-3.5 sm:grid" style={{ gridTemplateColumns: `minmax(0,1fr) auto` }}>
+              <div
+                className="hidden shrink-0 items-center gap-4 border-b border-border bg-surface-2 py-3.5 pl-5 sm:grid"
+                style={{
+                  gridTemplateColumns: `minmax(0,1fr) auto`,
+                  // pl-5 na classe e o resto aqui: é a folga da barra somada ao
+                  // mesmo px-5 que as linhas usam, para a régua terminar onde as
+                  // notas terminam.
+                  paddingRight: `calc(1.25rem + ${scrollGutter}px)`,
+                }}
+              >
                 <span className="text-sm font-bold uppercase tracking-wide text-muted">
                   Critério de avaliação
                 </span>
                 {/* items-start porque com a palavra embaixo as colunas ficam de
                     alturas diferentes ("Quase sempre" quebra, "Sempre" não), e
                     quem precisa ficar alinhado é o número. */}
-                <div className={"flex items-start " + rowGapClass}>
+                {/* px-0.5 espelha o da faixa de botões das linhas, que existe lá
+                    para o anel de foco não ser recortado. Sem ele aqui, os
+                    rótulos ficariam 2px fora dos círculos. */}
+                <div className={"flex items-start px-0.5 " + rowGapClass}>
                   {scaleValues.map((v) => (
                     <div key={v} className={"flex flex-col items-center gap-1 " + cellClass}>
                       <span className="text-base font-bold text-foreground">{badgeFor(v)}</span>
@@ -273,7 +317,7 @@ export function EvaluationFormModal({
               </div>
 
               {/* Linhas: um critério por linha. É ESTE o contêiner que rola. */}
-              <div className="scrollbar-slim min-h-0 flex-1 overflow-y-auto">
+              <div ref={listaRef} className="scrollbar-slim min-h-0 flex-1 overflow-y-auto">
                 {currentSection.questions.map((q, idx) => {
                   const rowNumber = globalIndex(form, page, idx);
                   const selected = answers[q.id];
