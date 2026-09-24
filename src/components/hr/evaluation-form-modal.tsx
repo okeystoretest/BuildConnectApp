@@ -90,11 +90,17 @@ export function EvaluationFormModal({
   // Escalas longas (Matriz de Decisão: 1–10) não cabem com o alvo cheio.
   // Reduz o círculo e permite rolagem horizontal da faixa no celular.
   const dense = form.scaleMax > 6;
-  // Largura do alvo. O cabeçalho da tabela e as linhas PRECISAM usar a mesma
-  // medida para as colunas casarem; por isso ela sai de um lugar só, em vez de
-  // dois literais mantidos em sincronia à mão.
-  const cellClass = dense ? "w-9" : "w-11";
-  const dotClass = cellClass + (dense ? " h-9 text-sm" : " h-11 text-base");
+  // Diâmetro do alvo.
+  const dotClass = dense ? "h-9 w-9 text-sm" : "h-11 w-11 text-base";
+  // Largura da COLUNA, que deixou de ser a mesma coisa que o diâmetro. A faixa
+  // da escala e as linhas PRECISAM usar esta medida igual, ou os círculos saem
+  // de baixo dos rótulos; por isso ela continua saindo de um lugar só.
+  //
+  // Com legenda a coluna abre a partir de `lg`, para caber a palavra inteira
+  // ("Insatisfatório" não quebra em duas linhas). Abaixo de `lg` ela segue do
+  // tamanho do círculo e quem informa é a linha de legenda: numa janela de
+  // ~700px as duas coisas juntas espremeriam o texto do critério a nada.
+  const cellClass = legend ? "w-11 lg:w-20" : dense ? "w-9" : "w-11";
   const rowGapClass = dense ? "gap-1.5 sm:gap-2" : "gap-3 sm:gap-4";
   const scaleValues = useMemo(
     () => Array.from({ length: form.scaleMax }, (_, i) => i + 1),
@@ -204,120 +210,152 @@ export function EvaluationFormModal({
           <Progress value={progressPct} />
         </div>
 
-        {/* Corpo */}
-        <div className="scrollbar-slim flex-1 overflow-y-auto px-7 py-6">
+        {/* Corpo. Nas seções de critérios ele NÃO rola: quem rola é a lista
+            dentro do cartão, abaixo da faixa da escala. No resumo, que é
+            conteúdo corrido, volta a rolar inteiro. */}
+        <div
+          className={
+            "scrollbar-slim px-7 py-6 " +
+            (isSummary
+              ? "flex-1 overflow-y-auto"
+              : "flex min-h-0 flex-1 flex-col overflow-hidden")
+          }
+        >
           {!isSummary && legend && (
-            /* Acima da tabela, e não abaixo: a legenda serve para decidir a
-               nota, então precisa ser lida antes da primeira linha. Ao rolar
-               ela sai de vista — por isso cada botão também carrega a palavra
-               no `title` e no rótulo acessível. */
-            <p className="mb-3 text-sm leading-relaxed text-muted">
+            /* Some a partir de `lg`, onde a palavra passa a viver na faixa da
+               escala, sob o próprio número — ler "Quase sempre" na coluna do 4
+               é mais direto que traduzir de uma linha à parte. Abaixo de `lg`
+               não cabe fazer isso, e no celular não há faixa nenhuma; sem esta
+               linha a escala voltaria a ser números mudos. As duas nunca
+               aparecem juntas. Cada botão segue carregando a palavra no
+               `title` e no rótulo acessível, em qualquer largura. */
+            <p className="mb-3 shrink-0 text-sm leading-relaxed text-muted lg:hidden">
               <span className="font-semibold text-foreground">Legenda: </span>
               {legend.map((l, i) => `${i + 1} = ${l}`).join("   ·   ")}
             </p>
           )}
 
           {!isSummary && currentSection && (
-            // overflow-clip (e não overflow-hidden) recorta os cantos
-            // arredondados SEM criar um contêiner de rolagem — é o que deixa o
-            // cabeçalho abaixo grudar na borda do corpo rolável. Com
-            // overflow-hidden, o sticky se ancoraria neste box, que não rola, e
-            // o cabeçalho subiria junto com as linhas até sumir.
-            <div className="overflow-clip rounded-xl border border-border">
-              {/* Cabeçalho da tabela: critério + escala (oculto no mobile, onde
-                  a linha empilha). Sticky: a lista de critérios rola dentro do
-                  corpo do modal e a faixa da escala saía de vista logo no
-                  primeiro rolar, deixando os círculos sem legenda. */}
-              <div className="sticky top-0 z-10 hidden items-center gap-4 border-b border-border bg-surface-2 px-5 py-3.5 sm:grid" style={{ gridTemplateColumns: `minmax(0,1fr) auto` }}>
+            // O cartão é uma COLUNA: faixa fixa em cima, lista rolável embaixo.
+            //
+            // A faixa já foi `sticky`, e cobria as linhas que passavam por baixo
+            // dela — meia pergunta aparecendo acima dela. É o que sticky faz, e
+            // nenhum ajuste de `top` conserta: enquanto a faixa morar DENTRO do
+            // que rola, ela sobrepõe. Sendo irmã da lista, a área rolável começa
+            // ABAIXO da faixa: não há o que cobrir, e a escala segue à vista o
+            // tempo todo do mesmo jeito.
+            //
+            // overflow-hidden aqui só recorta os cantos arredondados — o
+            // contêiner de rolagem agora é explícito, na lista.
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border">
+              {/* Faixa da escala: o critério à esquerda, a régua à direita.
+                  Oculta no celular, onde a linha empilha e os botões descem
+                  para baixo da pergunta. */}
+              <div className="hidden shrink-0 items-center gap-4 border-b border-border bg-surface-2 px-5 py-3.5 sm:grid" style={{ gridTemplateColumns: `minmax(0,1fr) auto` }}>
                 <span className="text-sm font-bold uppercase tracking-wide text-muted">
                   Critério de avaliação
                 </span>
-                <div className={"flex items-center " + rowGapClass}>
+                {/* items-start porque com a palavra embaixo as colunas ficam de
+                    alturas diferentes ("Quase sempre" quebra, "Sempre" não), e
+                    quem precisa ficar alinhado é o número. */}
+                <div className={"flex items-start " + rowGapClass}>
                   {scaleValues.map((v) => (
                     <div key={v} className={"flex flex-col items-center gap-1 " + cellClass}>
                       <span className="text-base font-bold text-foreground">{badgeFor(v)}</span>
+                      {legend && (
+                        <span className="hidden text-center text-[11px] font-medium leading-tight text-muted lg:block">
+                          {legend[v - 1]}
+                        </span>
+                      )}
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Linhas: um critério por linha */}
-              {currentSection.questions.map((q, idx) => {
-                const rowNumber = globalIndex(form, page, idx);
-                const selected = answers[q.id];
-                return (
-                  <div
-                    key={q.id}
-                    className={
-                      "flex flex-col gap-3 border-b border-border px-5 py-4 last:border-0 transition-colors sm:grid sm:items-center sm:gap-4 " +
-                      (idx % 2 === 0 ? "bg-surface" : "bg-surface-2/40")
-                    }
-                    style={{ gridTemplateColumns: `minmax(0,1fr) auto` }}
-                  >
-                    <div className="min-w-0">
-                      <p className="text-base font-semibold leading-snug text-foreground">
-                        <span className="mr-2 text-muted">{rowNumber}.</span>
-                        {q.label}
-                      </p>
-                      {q.helpText && (
-                        <p className="mt-1 text-sm leading-relaxed text-muted">{q.helpText}</p>
-                      )}
-                    </div>
-
+              {/* Linhas: um critério por linha. É ESTE o contêiner que rola. */}
+              <div className="scrollbar-slim min-h-0 flex-1 overflow-y-auto">
+                {currentSection.questions.map((q, idx) => {
+                  const rowNumber = globalIndex(form, page, idx);
+                  const selected = answers[q.id];
+                  return (
                     <div
+                      key={q.id}
                       className={
-                        // A faixa só rola de fato nas escalas longas (1–10) em
-                        // tela estreita; nas curtas ela cabe inteira.
-                        //
-                        // overflow-y-hidden é obrigatório: com overflow-x-auto o
-                        // navegador computa overflow-y como auto, e qualquer
-                        // transbordo de 1px viraria barra de rolagem vertical na
-                        // linha respondida.
-                        //
-                        // O padding dá a folga para o anel do botão ativo não
-                        // ser recortado pela borda de rolagem. Ele é sombra, não
-                        // caixa: ao contrário do scale que havia aqui antes, não
-                        // entra na área rolável e não força barra horizontal.
-                        "scrollbar-slim flex max-w-full items-center overflow-x-auto overflow-y-hidden px-0.5 py-1 " +
-                        rowGapClass
+                        "flex flex-col gap-3 border-b border-border px-5 py-4 last:border-0 transition-colors sm:grid sm:items-center sm:gap-4 " +
+                        (idx % 2 === 0 ? "bg-surface" : "bg-surface-2/40")
                       }
-                      role="radiogroup"
-                      aria-label={q.label}
+                      style={{ gridTemplateColumns: `minmax(0,1fr) auto` }}
                     >
-                      {scaleValues.map((v) => {
-                        const active = selected === v;
-                        return (
-                          <button
-                            key={v}
-                            type="button"
-                            role="radio"
-                            aria-checked={active}
-                            aria-label={legend ? `${v} — ${legend[v - 1]}` : labelFor(v)}
-                            title={legend ? legend[v - 1] : hasLabels ? labelFor(v) : undefined}
-                            onClick={() => setAnswer(q.id, v)}
-                            className={
-                              "focus-ring flex shrink-0 items-center justify-center rounded-full border-2 font-bold transition-all " +
-                              dotClass +
-                              " " +
-                              (active
-                                ? "border-primary bg-primary text-primary-foreground shadow-md ring-2 ring-primary/40"
-                                : "border-border bg-surface text-muted hover:border-primary/50 hover:text-foreground")
-                            }
-                          >
-                            {badgeFor(v)}
-                          </button>
-                        );
-                      })}
+                      <div className="min-w-0">
+                        <p className="text-base font-semibold leading-snug text-foreground">
+                          <span className="mr-2 text-muted">{rowNumber}.</span>
+                          {q.label}
+                        </p>
+                        {q.helpText && (
+                          <p className="mt-1 text-sm leading-relaxed text-muted">{q.helpText}</p>
+                        )}
+                      </div>
+
+                      <div
+                        className={
+                          // A faixa só rola de fato nas escalas longas (1–10) em
+                          // tela estreita; nas curtas ela cabe inteira.
+                          //
+                          // overflow-y-hidden é obrigatório: com overflow-x-auto o
+                          // navegador computa overflow-y como auto, e qualquer
+                          // transbordo de 1px viraria barra de rolagem vertical na
+                          // linha respondida.
+                          //
+                          // O padding dá a folga para o anel do botão ativo não
+                          // ser recortado pela borda de rolagem. Ele é sombra, não
+                          // caixa: ao contrário do scale que havia aqui antes, não
+                          // entra na área rolável e não força barra horizontal.
+                          "scrollbar-slim flex max-w-full items-center overflow-x-auto overflow-y-hidden px-0.5 py-1 " +
+                          rowGapClass
+                        }
+                        role="radiogroup"
+                        aria-label={q.label}
+                      >
+                        {scaleValues.map((v) => {
+                          const active = selected === v;
+                          return (
+                            // A célula carrega a largura da COLUNA e o botão fica
+                            // centrado nela. Com legenda a coluna é mais larga que
+                            // o círculo, e é isto que mantém cada círculo debaixo
+                            // do seu rótulo na faixa.
+                            <div key={v} className={"flex shrink-0 justify-center " + cellClass}>
+                              <button
+                                type="button"
+                                role="radio"
+                                aria-checked={active}
+                                aria-label={legend ? `${v} — ${legend[v - 1]}` : labelFor(v)}
+                                title={legend ? legend[v - 1] : hasLabels ? labelFor(v) : undefined}
+                                onClick={() => setAnswer(q.id, v)}
+                                className={
+                                  "focus-ring flex shrink-0 items-center justify-center rounded-full border-2 font-bold transition-all " +
+                                  dotClass +
+                                  " " +
+                                  (active
+                                    ? "border-primary bg-primary text-primary-foreground shadow-md ring-2 ring-primary/40"
+                                    : "border-border bg-surface text-muted hover:border-primary/50 hover:text-foreground")
+                                }
+                              >
+                                {badgeFor(v)}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           )}
 
           {/* Legenda da escala (quando rotulada) */}
           {!isSummary && hasLabels && (
-            <p className="mt-4 text-sm text-muted">
+            <p className="mt-4 shrink-0 text-sm text-muted">
               <span className="font-semibold text-foreground">Legenda: </span>
               {form.scaleLabels.map((l) => `${l.charAt(0)} = ${l}`).join("   ·   ")}
             </p>
