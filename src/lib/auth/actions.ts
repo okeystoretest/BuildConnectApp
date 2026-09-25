@@ -4,9 +4,10 @@ import { z } from "zod";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db/prisma";
 import { verifyPassword } from "@/lib/auth/password";
-import { createSession, destroySession } from "@/lib/auth/session";
+import { createSession, destroySession, getSession } from "@/lib/auth/session";
 import { resolveAccessibleSlugs } from "@/lib/auth/access";
 import { consume, reset, clientIp } from "@/lib/rate-limit";
+import { recordActivity } from "@/lib/activity-log";
 import type { Role } from "@/types";
 
 /**
@@ -97,6 +98,8 @@ export async function login(formData: {
       v: user.sessionVersion,
     });
 
+    await recordActivity(user.id, "LOGIN");
+
     return { ok: true };
   } catch (error) {
     console.error("[login] falha inesperada:", error);
@@ -108,6 +111,18 @@ export async function login(formData: {
 }
 
 export async function logout(): Promise<void> {
+  /*
+   * O log é gravado ANTES de destruir a sessão: depois dela não há mais de
+   * onde tirar o userId — o cookie é a única fonte.
+   *
+   * Sessão já expirada devolve nulo aqui. Nesse caso não há evento a gravar (e
+   * gravar um evento sem dono não seria possível), mas o redirect tem de
+   * acontecer de todo jeito: quem clicou em "sair" com a sessão vencida
+   * precisa chegar ao /login como qualquer outro.
+   */
+  const session = await getSession();
+  if (session) await recordActivity(session.userId, "LOGOUT");
+
   await destroySession();
   redirect("/login");
 }
