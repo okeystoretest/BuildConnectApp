@@ -1,7 +1,34 @@
 "use client";
 
+import Link, { useLinkStatus } from "next/link";
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { OverviewScope } from "@/lib/sector-overview-data";
+
+/**
+ * Conteúdo de uma pílula, com o estado de carregando do próprio link.
+ *
+ * `useLinkStatus` só responde dentro do `Link` a que pertence, então isto é um
+ * componente e não um trecho no meio do `map`: é a única posição da árvore de
+ * onde dá para saber que ESTA pílula, e não outra, está navegando.
+ *
+ * O spinner ocupa lugar ao lado do rótulo em vez de substituí-lo. Trocar o
+ * texto pelo spinner mudaria a largura da pílula no meio do clique e empurraria
+ * as vizinhas — o movimento que a pessoa lê como "a página piscou".
+ */
+function PillContent({ label }: { label: string }) {
+  const { pending } = useLinkStatus();
+
+  return (
+    <span
+      aria-busy={pending || undefined}
+      className={cn("flex items-center gap-1.5 transition-opacity", pending && "opacity-70")}
+    >
+      {pending && <Loader2 className="h-3 w-3 shrink-0 animate-spin" aria-hidden="true" />}
+      {label}
+    </span>
+  );
+}
 
 /**
  * Seletor de setor do painel: uma pílula por setor.
@@ -11,10 +38,20 @@ import type { OverviewScope } from "@/lib/sector-overview-data";
  * existem enquanto ele está aberto. Aqui a lista inteira fica à vista e trocar
  * custa um clique.
  *
- * Substitui a navegação: cada pílula é um link de verdade (`<a>`), então o
- * painel de um setor tem endereço próprio, abre em nova aba e volta no botão
- * do navegador. O servidor confere o setor de novo — as pílulas serem só do
- * Admin é aparência, não é a trava.
+ * Substitui a navegação: cada pílula é um link de verdade, então o painel de
+ * um setor tem endereço próprio, abre em nova aba e volta no botão do
+ * navegador. O servidor confere o setor de novo — as pílulas serem só do Admin
+ * é aparência, não é a trava.
+ *
+ * `Link` e não `<a>`: a âncora nativa fazia o navegador recarregar o documento
+ * inteiro a cada troca de setor. Além do branco entre as duas telas, a recarga
+ * remontava o `SectorOverviewView` do zero e levava junto a aba aberta e o
+ * texto digitado na busca — trocar de setor devolvia a pessoa a "Colaboradores"
+ * com o campo limpo. Com `Link`, só o conteúdo do servidor é refeito; o estado
+ * do cliente sobrevive porque o componente nunca é desmontado.
+ *
+ * `scroll={false}` pelo mesmo motivo: a rolagem ao topo a cada clique é um
+ * salto visual, e as pílulas ficam no meio da página.
  */
 export function ScopePills({
   scopes,
@@ -31,9 +68,10 @@ export function ScopePills({
         {scopes.map((scope) => {
           const active = scope.sectorId === sectorId;
           return (
-            <a
+            <Link
               key={scope.sectorId}
               href={`/meu-setor?setor=${scope.sectorId}`}
+              scroll={false}
               aria-current={active ? "page" : undefined}
               className={cn(
                 "focus-ring whitespace-nowrap rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors",
@@ -42,8 +80,8 @@ export function ScopePills({
                   : "border-border-strong bg-surface-2 text-foreground hover:border-primary/50",
               )}
             >
-              {scope.sectorLabel}
-            </a>
+              <PillContent label={scope.sectorLabel} />
+            </Link>
           );
         })}
       </div>
