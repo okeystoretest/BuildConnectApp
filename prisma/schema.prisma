@@ -53,6 +53,8 @@ model User {
   subsectors UserSubsector[]
   // Vídeos de boas-vindas de setor já assistidos por este usuário.
   welcomeViews SubsectorWelcomeView[]
+  // Registro de login/logout desta pessoa (ver ActivityEvent).
+  activityEvents ActivityEvent[]
 
   // Caminho do avatar já tratado (.webp). Nunca o binário.
   avatarPath String?
@@ -1147,6 +1149,38 @@ model ReportAttachment {
 // ─────────────────────────────────────────────────────────────
 // Notificações
 // ─────────────────────────────────────────────────────────────
+
+// ─────────────────────────────────────────────────────────────
+// Registro de atividade
+// ─────────────────────────────────────────────────────────────
+
+enum ActivityEventKind {
+  LOGIN
+  LOGOUT
+}
+
+/// Eventos que não têm outra origem no banco.
+///
+/// Só entra aqui o que não pode ser derivado: login e logout, porque a sessão
+/// é um cookie assinado e não deixa rastro no servidor. Vídeo assistido,
+/// resposta de compreensão, chamado aberto e os demais JÁ têm data na tabela
+/// deles e são lidos de lá — duplicá-los aqui criaria duas verdades sobre o
+/// mesmo fato, que divergem no dia em que uma das duas for corrigida.
+model ActivityEvent {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  kind ActivityEventKind
+
+  /// Detalhe por tipo. Existe para o próximo tipo de evento não pedir
+  /// migration; hoje LOGIN e LOGOUT não guardam nada.
+  meta Json?
+
+  occurredAt DateTime @default(now())
+
+  @@index([userId, occurredAt])
+}
 
 enum NotificationKind {
   CHAMADO_TI
