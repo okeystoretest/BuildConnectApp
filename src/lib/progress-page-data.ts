@@ -2,7 +2,6 @@ import { prisma } from "@/lib/db/prisma";
 import { resolveAccessibleSlugs } from "@/lib/auth/access";
 import { TRACKED_SUBSECTOR } from "@/lib/progress-scope";
 import type { Role } from "@/types";
-import type { SectorProgress, AreaProgress } from "@/types/content";
 import type { PendingCategory } from "@/lib/pending-content";
 import { formatBytes } from "@/lib/utils";
 import { COMPREHENSION_PASS_MIN } from "@/lib/video-comprehension";
@@ -16,7 +15,6 @@ import { COMPREHENSION_PASS_MIN } from "@/lib/video-comprehension";
  * alcança tudo, vê tudo. Vitrines nunca entram (`TRACKED_SUBSECTOR`).
  *
  * Tudo é derivado de dados reais:
- *  - progresso por área: % de vídeos e % de documentos concluídos por subsetor;
  *  - cards de resumo: geral, áreas mapeadas, itens pendentes;
  *  - donut: consumo total (concluídos ÷ total);
  *  - pendências: vídeos/documentos ainda não concluídos, agrupados por setor.
@@ -28,7 +26,6 @@ export interface ProgressPageData {
   pendingItems: number;
   consumedItems: number;
   totalItems: number;
-  sectors: SectorProgress[];
   pending: PendingCategory[];
 }
 
@@ -43,7 +40,6 @@ const EMPTY_PROGRESS: ProgressPageData = {
   pendingItems: 0,
   consumedItems: 0,
   totalItems: 0,
-  sectors: [],
   pending: [],
 };
 
@@ -142,7 +138,6 @@ export async function getProgressPageData(userId: string, role: Role): Promise<P
     if (c.documentId) doneDocIds.add(c.documentId);
   }
 
-  const sectorBlocks: SectorProgress[] = [];
   const pendingBySector = new Map<string, PendingCategory>();
 
   let totalVideos = 0;
@@ -150,8 +145,6 @@ export async function getProgressPageData(userId: string, role: Role): Promise<P
   let mappedAreas = 0;
 
   for (const sector of sectors) {
-    const areas: AreaProgress[] = [];
-
     for (const sub of sector.subsectors) {
       const vTotal = sub.videos.length;
       const dTotal = sub.documents.length;
@@ -159,15 +152,6 @@ export async function getProgressPageData(userId: string, role: Role): Promise<P
       mappedAreas += 1;
       totalVideos += vTotal;
       totalDocs += dTotal;
-
-      const vDone = sub.videos.filter((v: { id: string }) => doneVideoIds.has(v.id)).length;
-      const dDone = sub.documents.filter((d: { id: string }) => doneDocIds.has(d.id)).length;
-
-      areas.push({
-        area: sub.label,
-        videos: pct(vDone, vTotal),
-        documents: pct(dDone, dTotal),
-      });
 
       // Pendências deste subsetor, acumuladas no setor.
       for (const v of sub.videos) {
@@ -200,10 +184,6 @@ export async function getProgressPageData(userId: string, role: Role): Promise<P
         });
       }
     }
-
-    if (areas.length > 0) {
-      sectorBlocks.push({ sector: sector.label, icon: sector.icon, areas });
-    }
   }
 
   const totalItems = totalVideos + totalDocs;
@@ -216,7 +196,6 @@ export async function getProgressPageData(userId: string, role: Role): Promise<P
     pendingItems: totalItems - consumedItems,
     consumedItems,
     totalItems,
-    sectors: sectorBlocks,
     pending: Array.from(pendingBySector.values()),
   };
 }

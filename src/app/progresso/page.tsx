@@ -5,11 +5,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { Card } from "@/components/ui/card";
 import { DonutChart } from "@/components/ui/donut-chart";
-import { ProgressLegend } from "@/components/progress/progress-legend";
-import { SectorProgressBlock } from "@/components/progress/sector-progress-block";
 import { PendingContent } from "@/components/progress/pending-content";
-import { EmptyState } from "@/components/ui/empty-state";
-import { BarChart3 } from "lucide-react";
 import { getVerifiedSession } from "@/lib/auth/require-user";
 import { getProgressPageData } from "@/lib/progress-page-data";
 import type { Role } from "@/types";
@@ -51,27 +47,6 @@ export default async function ProgressPage() {
         <PendingContent groups={data.pending} />
       </Card>
 
-      {/* Progresso por área. */}
-      <Card className="mt-4 p-5">
-        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold text-foreground">Progresso por Área</h2>
-          <ProgressLegend />
-        </div>
-
-        {data.sectors.length > 0 ? (
-          <div className="space-y-7">
-            {data.sectors.map((sector) => (
-              <SectorProgressBlock key={sector.sector} sector={sector} />
-            ))}
-          </div>
-        ) : (
-          <EmptyState
-            icon={<BarChart3 className="h-5 w-5" />}
-            title="Nenhum conteúdo mapeado ainda"
-            description="Quando houver vídeos e documentos cadastrados nas áreas, seu progresso aparece aqui."
-          />
-        )}
-      </Card>
     </AppShell>
   );
 }

@@ -18,18 +18,6 @@ export interface Ticket {
   proofUrl?: string;
 }
 
-export interface AreaProgress {
-  area: string;
-  videos: number;
-  documents: number;
-}
-
-export interface SectorProgress {
-  sector: string;
-  icon: string;
-  areas: readonly AreaProgress[];
-}
-
 export interface CompanyValue {
   title: string;
   body: string;
