@@ -8,10 +8,14 @@ import { getEmployeeHistory, searchEmployeesByName } from "@/lib/hr-history-data
 import type { EmployeeHistory, EmployeeSummary } from "@/types/hr";
 
 /**
- * Mesma régua das duas actions: quem administra o DHO — Admin, ou Gestor
+ * Mesma régua das actions do módulo: quem administra o DHO — Admin, ou Gestor
  * lotado no DHO. Devolve o motivo da recusa, ou null quando pode seguir.
+ *
+ * Exportada porque a linha do tempo de atividade é do mesmo módulo e tem de
+ * passar pela MESMA porta: uma segunda cópia da regra seria uma segunda porta
+ * para fechar no dia em que ela mudar.
  */
-async function requireDhoAdmin(): Promise<string | null> {
+export async function requireDhoAdmin(): Promise<string | null> {
   const user = await getCurrentUser();
   if (!user) return "Sessão expirada.";
   if (!(await canAdministerDho(user.id, user.role as Role))) return "Acesso restrito ao DHO.";

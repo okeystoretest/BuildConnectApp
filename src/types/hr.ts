@@ -1,3 +1,4 @@
+import type { ActivityCursor, ActivityItem } from "@/lib/activity-timeline";
 import type { Role } from "@/types";
 
 export interface ContentBreakdown {
@@ -58,6 +59,14 @@ export interface EmployeeHistory {
    * construção, então é aqui que a dificuldade aparece.
    */
   rejections: number;
+  /**
+   * Primeira página da linha do tempo, já resolvida.
+   *
+   * Vem junto do histórico, e não numa segunda chamada: disparar outra ida ao
+   * servidor ao selecionar um colaborador deixaria o bloco piscando vazio a
+   * cada troca de seleção.
+   */
+  activity: { events: ActivityItem[]; nextCursor: ActivityCursor | null };
   pendingItems: number;
   /** Pendências detalhadas, agrupadas por tipo de mídia. */
   pendingGroups: readonly PendingGroup[];

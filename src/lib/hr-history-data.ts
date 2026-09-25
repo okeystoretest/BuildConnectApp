@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
+import { getActivityPage } from "@/lib/activity-timeline-data";
 import { ROLE_LABEL } from "@/lib/permissions";
 import { TRACKED_SUBSECTOR } from "@/lib/progress-scope";
 import { approvedAverage, splitGrades } from "@/lib/sector-overview";
@@ -199,6 +200,9 @@ export async function getEmployeeHistory(userId: string): Promise<EmployeeHistor
   // tipo gerado pelo Prisma não sabe disso.
   const { approved, rejections } = splitGrades(grades.map((g) => ({ grade: g.grade ?? 0 })));
 
+  // --- Primeira página da linha do tempo ---
+  const activity = await getActivityPage({ userId });
+
   return {
     id: user.id,
     name: user.fullName,
@@ -215,5 +219,6 @@ export async function getEmployeeHistory(userId: string): Promise<EmployeeHistor
     average: approvedAverage(approved),
     approvedCount: approved.length,
     rejections,
+    activity,
   };
 }
