@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   approvedAverage,
+  groupPending,
   memberStatus,
   progressPct,
   splitGrades,
+  type PendingContentItem,
 } from "./sector-overview";
 
 test("a média só considera notas aprovadas", () => {
@@ -64,4 +66,48 @@ test("setor sem conteúdo nenhum é não iniciado, nunca concluído", () => {
 
 test("mais concluídos que o total (conteúdo removido depois) ainda é concluído", () => {
   assert.equal(memberStatus(14, 12), "CONCLUIDO");
+});
+
+// ── Agrupamento das pendências do modal do card ──────────────────────────────
+
+const VIDEO: PendingContentItem = {
+  id: "v1",
+  title: "Integração",
+  kind: "VIDEO",
+  subsector: "Onboarding",
+};
+const DOC: PendingContentItem = {
+  id: "d1",
+  title: "Manual",
+  kind: "DOCUMENTO",
+  subsector: "Onboarding",
+};
+
+test("as pendências vão agrupadas por tipo de mídia, vídeos primeiro", () => {
+  const [videos, documentos] = groupPending([DOC, VIDEO]);
+  assert.ok(videos && documentos);
+  assert.equal(videos.label, "Vídeos");
+  assert.equal(documentos.label, "Documentos");
+  assert.deepEqual(videos.items, [VIDEO]);
+  assert.deepEqual(documentos.items, [DOC]);
+});
+
+test("grupo sem item nenhum não aparece — cabeçalho vazio é ruído no modal", () => {
+  const groups = groupPending([VIDEO]);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0]?.label, "Vídeos");
+});
+
+test("sem pendência alguma, não há grupo", () => {
+  assert.deepEqual(groupPending([]), []);
+});
+
+test("a ordem de entrada é preservada dentro do grupo", () => {
+  const segundo = { ...VIDEO, id: "v2", title: "Segurança" };
+  const [videos] = groupPending([VIDEO, segundo]);
+  assert.ok(videos);
+  assert.deepEqual(
+    videos.items.map((i) => i.title),
+    ["Integração", "Segurança"],
+  );
 });

@@ -32,6 +32,78 @@ export interface MemberEvaluation {
   passed: boolean;
 }
 
+/** Um conteúdo que o colaborador ainda não concluiu. */
+export interface PendingContentItem {
+  id: string;
+  title: string;
+  kind: "VIDEO" | "DOCUMENTO";
+  /** De onde o item vem. O modal agrupa por mídia; a origem fica no item. */
+  subsector: string;
+}
+
+/** Pendências de um mesmo tipo de mídia, para o modal do card. */
+export interface PendingContentGroup {
+  label: string;
+  icon: string;
+  tone: "primary" | "info";
+  items: PendingContentItem[];
+}
+
+/**
+ * Uma avaliação de desempenho já respondida sobre este colaborador.
+ *
+ * `total` é soma de pontos e não tem escala própria: 34 não diz nada sem o
+ * teto do formulário, por isso `maxTotal` anda junto. Os dois são nulos quando
+ * a submissão é antiga e não guardou o total.
+ */
+export interface MemberPerformanceEvaluation {
+  id: string;
+  /** Título do tipo (Pré-Efetivo, Comportamental, Eficácia…). */
+  title: string;
+  total: number | null;
+  maxTotal: number | null;
+  /** "Ciclo 2" no Pré-Efetivo; vazio nas avulsas. */
+  cycleLabel?: string;
+  /** Quem preencheu. "—" quando o avaliador foi removido do cadastro. */
+  evaluatorName: string;
+  /** O próprio colaborador respondendo sobre si (rodadas de Eficácia). */
+  selfAssessment: boolean;
+  createdAtLabel: string;
+}
+
+/**
+ * Ordem fixa das mídias no modal de pendências, e os ícones de cada uma.
+ *
+ * Vídeo antes de documento porque é a mídia que o setor mais usa e a que
+ * costuma ter compreensão atrelada — quem abre o modal procura primeiro o
+ * vídeo que falta.
+ */
+const PENDING_MEDIA = [
+  { kind: "VIDEO", label: "Vídeos", icon: "PlayCircle", tone: "primary" },
+  { kind: "DOCUMENTO", label: "Documentos", icon: "FileText", tone: "info" },
+] as const satisfies readonly {
+  kind: PendingContentItem["kind"];
+  label: string;
+  icon: string;
+  tone: PendingContentGroup["tone"];
+}[];
+
+/**
+ * Agrupa as pendências por tipo de mídia, preservando a ordem de entrada
+ * dentro de cada grupo.
+ *
+ * Grupo vazio não é devolvido: um cabeçalho "Documentos" seguido de nada faria
+ * o modal parecer quebrado para quem só deve vídeos.
+ */
+export function groupPending(items: readonly PendingContentItem[]): PendingContentGroup[] {
+  return PENDING_MEDIA.map((media) => ({
+    label: media.label,
+    icon: media.icon,
+    tone: media.tone,
+    items: items.filter((item) => item.kind === media.kind),
+  })).filter((group) => group.items.length > 0);
+}
+
 /** Um colaborador no painel do setor. */
 export interface MemberOverview {
   userId: string;
@@ -47,9 +119,18 @@ export interface MemberOverview {
   /** Nula quando não há nenhuma nota aprovada. Nulo não é zero. */
   average: number | null;
   rejections: number;
+  /**
+   * Quantos itens faltam. Derivado de `pendingList` e não de
+   * `total - concluídos`: o botão do card abre a lista, e um número que não
+   * bate com o que o modal mostra é pior do que não ter o número.
+   */
   pending: number;
-  /** Da mais recente para a mais antiga. */
+  /** O que exatamente falta, para o modal de pendências. */
+  pendingList: PendingContentItem[];
+  /** Notas de compreensão de vídeo, da mais recente para a mais antiga. */
   evaluations: MemberEvaluation[];
+  /** Avaliações de desempenho respondidas, da mais recente para a mais antiga. */
+  performance: MemberPerformanceEvaluation[];
 }
 
 /** Em que ponto do conteúdo a pessoa está. */

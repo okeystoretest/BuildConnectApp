@@ -10,6 +10,8 @@ import {
   splitGrades,
   type MemberEvaluation,
   type MemberOverview,
+  type MemberPerformanceEvaluation,
+  type PendingContentItem,
 } from "@/lib/sector-overview";
 import type { Role } from "@/types";
 
@@ -104,7 +106,9 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
         id: true,
         label: true,
         videos: { select: { id: true, title: true, thumbnailPath: true } },
-        documents: { select: { id: true } },
+        // `name` entrou junto: o modal de pendências lista os itens, e uma
+        // lista de ids não diz a ninguém o que falta ler.
+        documents: { select: { id: true, name: true } },
       },
     }),
   ]);
@@ -120,7 +124,7 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
   const videoIds = subsectors.flatMap((s) => s.videos.map((v) => v.id));
   const totalItems = videoIds.length + subsectors.reduce((n, s) => n + s.documents.length, 0);
 
-  const [done, graded, ratings] = await Promise.all([
+  const [done, graded, ratings, performance, typeScales] = await Promise.all([
     prisma.contentProgress.findMany({
       where: {
         userId: { in: memberIds },
@@ -130,7 +134,10 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
           { document: { subsector: contentScope } },
         ],
       },
-      select: { userId: true },
+      // Antes vinha só `userId`, para contar. Agora vem o item: o card abre a
+      // lista do que falta, e para saber o que falta é preciso saber o que foi
+      // feito — a subtração sozinha dá um número, não uma lista.
+      select: { userId: true, videoId: true, documentId: true },
     }),
     // As notas vêm inteiras, e não só o número: o card lista as avaliações já
     // dadas àquela pessoa, e uma segunda consulta por colaborador aberto seria
@@ -153,10 +160,94 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
       where: { videoId: { in: videoIds } },
       select: { videoId: true, audio: true, image: true, clarity: true },
     }),
+    /*
+     * Avaliações de DESEMPENHO já respondidas sobre estes colaboradores. O
+     * Gestor alcança isto porque a matriz já lhe dá `evaluations.view`; o
+     * recorte é a equipe do setor dele, que é a mesma lista de sempre.
+     *
+     * `RASCUNHO` fica de fora: uma avaliação ainda sendo preenchida não é
+     * histórico, é trabalho em andamento de outra pessoa.
+     */
+    prisma.evaluation.findMany({
+      where: { subjectId: { in: memberIds }, status: "CONCLUIDA" },
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        subjectId: true,
+        total: true,
+        cycle: true,
+        isSelfAssessment: true,
+        createdAt: true,
+        type: { select: { id: true, title: true, scaleMax: true } },
+        evaluator: { select: { fullName: true } },
+      },
+    }),
+    /*
+     * Teto de pontos de cada formulário: nº de questões × nota máxima da
+     * escala. Sem ele, `total` é um número solto — "34" não informa nada sem
+     * saber se o máximo era 40 ou 170. São poucos tipos, então vêm todos de
+     * uma vez em vez de uma consulta por avaliação encontrada.
+     */
+    prisma.evaluationType.findMany({
+      select: {
+        id: true,
+        scaleMax: true,
+        sections: { select: { _count: { select: { questions: true } } } },
+      },
+    }),
   ]);
 
   const doneByUser = new Map<string, number>();
-  for (const d of done) doneByUser.set(d.userId, (doneByUser.get(d.userId) ?? 0) + 1);
+  // O que cada pessoa já concluiu, por id de conteúdo. É a outra metade da
+  // lista de pendências: catálogo do setor menos isto.
+  const doneIdsByUser = new Map<string, Set<string>>();
+  for (const d of done) {
+    doneByUser.set(d.userId, (doneByUser.get(d.userId) ?? 0) + 1);
+    const ids = doneIdsByUser.get(d.userId) ?? new Set<string>();
+    const contentId = d.videoId ?? d.documentId;
+    if (contentId) ids.add(contentId);
+    doneIdsByUser.set(d.userId, ids);
+  }
+
+  /*
+   * Catálogo do setor na ordem em que o modal mostra: por subsetor, vídeos
+   * antes de documentos. Montado uma vez e filtrado por pessoa — remontá-lo
+   * dentro do `map` de colaboradores seria refazer o mesmo trabalho N vezes.
+   */
+  const catalog: PendingContentItem[] = [];
+  for (const sub of subsectors) {
+    for (const v of sub.videos) {
+      catalog.push({ id: v.id, title: v.title, kind: "VIDEO", subsector: sub.label });
+    }
+    for (const d of sub.documents) {
+      catalog.push({ id: d.id, title: d.name, kind: "DOCUMENTO", subsector: sub.label });
+    }
+  }
+
+  // Teto de pontos por tipo de formulário, para `total` ganhar escala.
+  const maxTotalByType = new Map<string, number>();
+  for (const t of typeScales) {
+    const questions = t.sections.reduce((n, sec) => n + sec._count.questions, 0);
+    if (questions > 0) maxTotalByType.set(t.id, questions * t.scaleMax);
+  }
+
+  const performanceByUser = new Map<string, MemberPerformanceEvaluation[]>();
+  for (const e of performance) {
+    const entries = performanceByUser.get(e.subjectId) ?? [];
+    entries.push({
+      id: e.id,
+      title: e.type.title,
+      total: e.total,
+      maxTotal: e.total === null ? null : (maxTotalByType.get(e.type.id) ?? null),
+      cycleLabel: e.cycle === null ? undefined : `Ciclo ${e.cycle}`,
+      // O avaliador some do vínculo quando o cadastro dele é removido
+      // (`onDelete: SetNull`): a avaliação continua valendo, sem o nome.
+      evaluatorName: e.evaluator?.fullName ?? "—",
+      selfAssessment: e.isSelfAssessment,
+      createdAtLabel: dateLabelBR(e.createdAt),
+    });
+    performanceByUser.set(e.subjectId, entries);
+  }
 
   const gradesByUser = new Map<string, { grade: number }[]>();
   const evaluationsByUser = new Map<string, MemberEvaluation[]>();
@@ -185,6 +276,8 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
   const memberRows: MemberOverview[] = members.map((m) => {
     const { approved, rejections } = splitGrades(gradesByUser.get(m.id) ?? []);
     const doneItems = doneByUser.get(m.id) ?? 0;
+    const doneIds = doneIdsByUser.get(m.id) ?? new Set<string>();
+    const pendingList = catalog.filter((item) => !doneIds.has(item.id));
     return {
       userId: m.id,
       name: m.fullName,
@@ -196,8 +289,10 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
       progress: progressPct(doneItems, totalItems),
       average: approvedAverage(approved),
       rejections,
-      pending: Math.max(totalItems - doneItems, 0),
+      pending: pendingList.length,
+      pendingList,
       evaluations: evaluationsByUser.get(m.id) ?? [],
+      performance: performanceByUser.get(m.id) ?? [],
     };
   });
 
