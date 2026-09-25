@@ -9,6 +9,7 @@ import { DonutChart } from "@/components/ui/donut-chart";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { fetchEmployeeHistory, searchEmployees } from "@/lib/hr-actions-history";
+import { ActivityTimeline } from "./activity-timeline";
 import type { EmployeeHistory as History, EmployeeSummary } from "@/types/hr";
 
 function Icon({ name, className }: { name: string; className?: string }) {
@@ -294,43 +295,48 @@ export function EmployeeHistoryPanel({ roster, initial }: EmployeeHistoryPanelPr
               />
             </div>
 
-            {/* Média consolidada. Fica em bloco próprio, e não entre os cartões
-                de engajamento, porque não é contagem: os outros dizem QUANTO a
-                pessoa consumiu, este diz QUÃO BEM ela respondeu. */}
-            <section className="rounded-xl border border-border bg-surface p-5">
-              <h3 className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
-                <Icon name="Star" className="h-3 w-3" />
-                Média
-              </h3>
-              <p className="flex items-end gap-1.5">
-                <span
-                  className={cn(
-                    "text-5xl font-bold leading-none tracking-tight",
-                    history.average === null ? "text-muted" : "text-primary",
+            {/* Atividade e Média lado a lado: a linha do tempo diz O QUE a
+                pessoa fez, a média diz QUÃO BEM — lidas juntas, uma explica a
+                outra. A média não entra entre os cartões de engajamento porque
+                não é contagem. No celular empilham, Atividade primeiro. */}
+            <div className="grid gap-4 lg:grid-cols-[1fr_18rem]">
+              <ActivityTimeline userId={history.id} initial={history.activity} />
+
+              <section className="rounded-xl border border-border bg-surface p-5">
+                <h3 className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
+                  <Icon name="Star" className="h-3 w-3" />
+                  Média
+                </h3>
+                <p className="flex items-end gap-1.5">
+                  <span
+                    className={cn(
+                      "text-5xl font-bold leading-none tracking-tight",
+                      history.average === null ? "text-muted" : "text-primary",
+                    )}
+                  >
+                    {averageLabel(history.average)}
+                  </span>
+                  {history.average !== null && (
+                    <span className="pb-1 text-lg font-medium text-muted">/10</span>
                   )}
-                >
-                  {averageLabel(history.average)}
-                </span>
-                {history.average !== null && (
-                  <span className="pb-1 text-lg font-medium text-muted">/10</span>
-                )}
-              </p>
-              <p className="mt-2 text-sm text-foreground">
-                {history.average === null
-                  ? "Nenhuma nota aprovada ainda"
-                  : `Em ${history.approvedCount} ${history.approvedCount === 1 ? "nota aprovada" : "notas aprovadas"}`}
-              </p>
-              {/* A regra exclui as reprovadas, então a média nunca desce de 7.
-                  Sem este aviso, quem passou na sexta tentativa e quem passou
-                  de primeira leriam igual na tela. */}
-              {history.rejections > 0 && (
-                <p className="mt-1 text-xs text-warning">
-                  {history.rejections}{" "}
-                  {history.rejections === 1 ? "resposta reprovada" : "respostas reprovadas"} fora do
-                  cálculo
                 </p>
-              )}
-            </section>
+                <p className="mt-2 text-sm text-foreground">
+                  {history.average === null
+                    ? "Nenhuma nota aprovada ainda"
+                    : `Em ${history.approvedCount} ${history.approvedCount === 1 ? "nota aprovada" : "notas aprovadas"}`}
+                </p>
+                {/* A regra exclui as reprovadas, então a média nunca desce de 7.
+                    Sem este aviso, quem passou na sexta tentativa e quem passou
+                    de primeira leriam igual na tela. */}
+                {history.rejections > 0 && (
+                  <p className="mt-1 text-xs text-warning">
+                    {history.rejections}{" "}
+                    {history.rejections === 1 ? "resposta reprovada" : "respostas reprovadas"} fora do
+                    cálculo
+                  </p>
+                )}
+              </section>
+            </div>
 
             {/* Conteúdos pendentes — detalhamento por tipo em modal */}
             <section className="rounded-xl border border-border bg-surface p-5">
