@@ -43,8 +43,21 @@ export interface EmployeeHistory {
   /** Indicadores de engajamento (assistidos/lidos). */
   videosWatched: number;
   documentsRead: number;
-  /** Feedbacks recebidos — estrutura preparada para funcionalidade futura. */
-  feedbacksReceived: number;
+  /**
+   * Pontuação média consolidada: média das notas APROVADAS (7 ou mais) que o
+   * Gestor deu às respostas de compreensão de vídeo. Mesma régua de
+   * "Meu Setor" (`lib/sector-overview`), para as duas telas não exibirem
+   * números diferentes da mesma pessoa. Nula quando não há nota aprovada —
+   * nulo não é zero.
+   */
+  average: number | null;
+  /** Quantas notas entraram na média. A média sozinha não diz o peso dela. */
+  approvedCount: number;
+  /**
+   * Respostas reprovadas (abaixo de 7). A média nunca cai abaixo de 7 por
+   * construção, então é aqui que a dificuldade aparece.
+   */
+  rejections: number;
   pendingItems: number;
   /** Pendências detalhadas, agrupadas por tipo de mídia. */
   pendingGroups: readonly PendingGroup[];

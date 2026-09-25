@@ -19,6 +19,15 @@ function Icon({ name, className }: { name: string; className?: string }) {
 const TONE_TEXT = { primary: "text-primary", info: "text-info", accent: "text-accent" } as const;
 const TONE_BG = { primary: "bg-primary/15", info: "bg-info/15", accent: "bg-accent/15" } as const;
 
+/**
+ * Média ausente vira travessão, como no card de "Meu Setor". Exibir 0,0
+ * marcaria como péssimo quem apenas ainda não tem nota aprovada.
+ */
+function averageLabel(average: number | null): string {
+  if (average === null) return "—";
+  return average.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+
 /** Cartão de indicador de engajamento. */
 function EngagementCard({
   icon,
@@ -75,9 +84,9 @@ const SEARCH_DEBOUNCE_MS = 300;
  * está entre os recentes só aparece quando procurado. Ao escolher um
  * colaborador, o histórico é carregado via Server Action. Exibe progresso
  * geral (donut + breakdown), indicadores de engajamento (vídeos assistidos,
- * documentos e instruções lidos, feedbacks recebidos) e um detalhamento de
- * pendências agrupado por tipo de mídia (modal). Chamados foram removidos
- * deste módulo.
+ * documentos e instruções lidos), a média consolidada das notas de
+ * compreensão e um detalhamento de pendências agrupado por tipo de mídia
+ * (modal). Chamados foram removidos deste módulo.
  */
 export function EmployeeHistoryPanel({ roster, initial }: EmployeeHistoryPanelProps) {
   const [query, setQuery] = useState("");
@@ -268,7 +277,7 @@ export function EmployeeHistoryPanel({ roster, initial }: EmployeeHistoryPanelPr
             </div>
 
             {/* Indicadores de engajamento */}
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <EngagementCard
                 icon="PlayCircle"
                 tone="primary"
@@ -283,14 +292,45 @@ export function EmployeeHistoryPanel({ roster, initial }: EmployeeHistoryPanelPr
                 total={history.breakdown[1]?.total}
                 label="Documentos lidos"
               />
-              <EngagementCard
-                icon="MessageSquareHeart"
-                tone="primary"
-                value={history.feedbacksReceived}
-                label="Feedbacks recebidos"
-                hint="em breve"
-              />
             </div>
+
+            {/* Média consolidada. Fica em bloco próprio, e não entre os cartões
+                de engajamento, porque não é contagem: os outros dizem QUANTO a
+                pessoa consumiu, este diz QUÃO BEM ela respondeu. */}
+            <section className="rounded-xl border border-border bg-surface p-5">
+              <h3 className="mb-3 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
+                <Icon name="Star" className="h-3 w-3" />
+                Média
+              </h3>
+              <p className="flex items-end gap-1.5">
+                <span
+                  className={cn(
+                    "text-5xl font-bold leading-none tracking-tight",
+                    history.average === null ? "text-muted" : "text-primary",
+                  )}
+                >
+                  {averageLabel(history.average)}
+                </span>
+                {history.average !== null && (
+                  <span className="pb-1 text-lg font-medium text-muted">/10</span>
+                )}
+              </p>
+              <p className="mt-2 text-sm text-foreground">
+                {history.average === null
+                  ? "Nenhuma nota aprovada ainda"
+                  : `Em ${history.approvedCount} ${history.approvedCount === 1 ? "nota aprovada" : "notas aprovadas"}`}
+              </p>
+              {/* A regra exclui as reprovadas, então a média nunca desce de 7.
+                  Sem este aviso, quem passou na sexta tentativa e quem passou
+                  de primeira leriam igual na tela. */}
+              {history.rejections > 0 && (
+                <p className="mt-1 text-xs text-warning">
+                  {history.rejections}{" "}
+                  {history.rejections === 1 ? "resposta reprovada" : "respostas reprovadas"} fora do
+                  cálculo
+                </p>
+              )}
+            </section>
 
             {/* Conteúdos pendentes — detalhamento por tipo em modal */}
             <section className="rounded-xl border border-border bg-surface p-5">

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { ROLE_LABEL } from "@/lib/permissions";
 import { TRACKED_SUBSECTOR } from "@/lib/progress-scope";
+import { approvedAverage, splitGrades } from "@/lib/sector-overview";
 import type { Role } from "@/types";
 import type {
   EmployeeHistory,
@@ -18,7 +19,10 @@ import type {
  *    percentual geral.
  *  - Pendências detalhadas: os conteúdos ainda NÃO concluídos, com título,
  *    agrupados por tipo de mídia (para o detalhamento expandido).
- *  - Feedbacks recebidos: estrutura preparada (0 até a funcionalidade futura).
+ *  - Média consolidada: as notas de compreensão de vídeo aprovadas, pela
+ *    mesma regra de "Meu Setor" — a função vem de `lib/sector-overview` em vez
+ *    de ser reescrita aqui, porque duas cópias da regra viram dois números
+ *    para a mesma pessoa no dia em que uma delas mudar.
  *
  * Chamados foram removidos deste módulo por decisão de escopo.
  */
@@ -124,7 +128,7 @@ export async function getEmployeeHistory(userId: string): Promise<EmployeeHistor
    * devolver tudo.
    */
   const tracked = { subsector: { ...TRACKED_SUBSECTOR, sectorId: user.sectorId ?? "" } };
-  const [completed, videos, documents] = await Promise.all([
+  const [completed, videos, documents, grades] = await Promise.all([
     prisma.contentProgress.findMany({
       // `completed: false` é "chegou ao fim, não respondeu" — ainda não conta.
       where: { userId, completed: true, OR: [{ video: tracked }, { document: tracked }] },
@@ -132,6 +136,16 @@ export async function getEmployeeHistory(userId: string): Promise<EmployeeHistor
     }),
     prisma.video.findMany({ where: tracked, select: { id: true, title: true } }),
     prisma.document.findMany({ where: tracked, select: { id: true, name: true } }),
+    /*
+     * Notas já dadas às respostas de compreensão deste colaborador. Sem
+     * recorte de setor de propósito: a nota é da pessoa e continua valendo se
+     * ela mudar de lotação — apagar o histórico de desempenho a cada
+     * transferência seria perder justamente o que o DHO veio ler.
+     */
+    prisma.videoComprehension.findMany({
+      where: { userId, gradedAt: { not: null }, grade: { not: null } },
+      select: { grade: true },
+    }),
   ]);
 
   const doneVideos = new Set<string>();
@@ -180,6 +194,11 @@ export async function getEmployeeHistory(userId: string): Promise<EmployeeHistor
 
   const pendingItems = pendingVideos.length + pendingDocs.length;
 
+  // --- Média consolidada ---
+  // O filtro da consulta garante `grade` não nulo; o `?? 0` existe só porque o
+  // tipo gerado pelo Prisma não sabe disso.
+  const { approved, rejections } = splitGrades(grades.map((g) => ({ grade: g.grade ?? 0 })));
+
   return {
     id: user.id,
     name: user.fullName,
@@ -193,7 +212,8 @@ export async function getEmployeeHistory(userId: string): Promise<EmployeeHistor
     documentsRead,
     pendingItems,
     pendingGroups,
-    // Feedbacks: estrutura pronta; zerado até a funcionalidade futura.
-    feedbacksReceived: 0,
+    average: approvedAverage(approved),
+    approvedCount: approved.length,
+    rejections,
   };
 }
