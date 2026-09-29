@@ -15,7 +15,8 @@
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset",
-    "setup:cronograma": "tsx scripts/setup-cronograma.ts"
+    "setup:cronograma": "tsx scripts/setup-cronograma.ts",
+    "setup:funil": "tsx scripts/setup-funil-vendas.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

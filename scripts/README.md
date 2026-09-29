@@ -64,3 +64,26 @@ critérios) e a agenda de ciclos dos colaboradores.
 
 `Holiday` **não** é apagado (é configuração). Para zerar também, descomente a
 última linha do `.sql`.
+
+---
+
+# `setup-funil-vendas.ts` — habilitar o Funil de Vendas
+
+Liga a ferramenta no subsetor **Vendas**, que é o dono da base. Marketing e
+Criação herdam por `appsSourceId` e **não** precisam de execução própria —
+rodar o script para eles não teria efeito, porque quem herda não configura.
+
+```bash
+npm run setup:funil
+```
+
+Idempotente: pode rodar quantas vezes quiser. Ao final imprime o estado dos
+três subsetores, que é exatamente o que a aplicação lê para decidir se mostra
+a aba.
+
+Se o erro citar coluna inexistente (`funnelEnabled`), a migration ainda não
+foi aplicada:
+
+```bash
+npx prisma migrate deploy && npx prisma generate
+```
