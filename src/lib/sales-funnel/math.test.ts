@@ -5,6 +5,7 @@ import {
   calcularAscendente,
   calcularDescendente,
   conversoesNecessarias,
+  distribuirCanais,
   parseMoedaParaCentavos,
 } from "./math";
 import type { FunnelInput } from "./types";
@@ -153,4 +154,76 @@ test("ida e volta: o topo do ascendente reconstrói as conversões no descendent
   // O arredondamento é pessimista nos dois sentidos, então a volta nunca
   // promete MENOS do que a meta pedia — pode prometer exatamente.
   assert.ok(descida.requiredConversions >= subida.requiredConversions);
+});
+
+test("a fatia de cada canal vira número absoluto de prospecções", () => {
+  const base = calcularAscendente(planoDoCanvas()); // topo 1000
+  const r = distribuirCanais(base, [
+    { id: "c1", label: "Base de clientes", share: 40 },
+    { id: "c2", label: "Indicações", share: 20 },
+    { id: "c3", label: "Google", share: 20 },
+    { id: "c4", label: "Feiras", share: 10 },
+    { id: "c5", label: "Redes sociais", share: 10 },
+  ]);
+  assert.deepEqual(
+    r.channels.map((c) => c.volume),
+    [400, 200, 200, 100, 100],
+  );
+  assert.equal(r.channelCoverage, 100);
+  assert.deepEqual(r.diagnostics, []);
+});
+
+test("cobertura abaixo e acima de 100% dão avisos distintos, sem travar o cálculo", () => {
+  const base = calcularAscendente(planoDoCanvas());
+  const falta = distribuirCanais(base, [
+    { id: "c1", label: "A", share: 40 },
+    { id: "c2", label: "B", share: 20 },
+    { id: "c3", label: "C", share: 10 },
+    { id: "c4", label: "D", share: 10 },
+    { id: "c5", label: "E", share: 5 },
+  ]);
+  assert.ok(falta.diagnostics.some((d) => d.code === "COBERTURA_INCOMPLETA"));
+  assert.equal(falta.topVolume, 1000); // o cálculo continua de pé
+
+  const sobra = distribuirCanais(base, [
+    { id: "c1", label: "A", share: 60 },
+    { id: "c2", label: "B", share: 30 },
+    { id: "c3", label: "C", share: 15 },
+    { id: "c4", label: "D", share: 5 },
+    { id: "c5", label: "E", share: 5 },
+  ]);
+  assert.ok(sobra.diagnostics.some((d) => d.code === "COBERTURA_EXCEDIDA"));
+});
+
+test("menos de 5 canais avisa, mas não impede nada — o canvas pede no mínimo 5", () => {
+  const base = calcularAscendente(planoDoCanvas());
+  const r = distribuirCanais(base, [{ id: "c1", label: "Só um", share: 100 }]);
+  const aviso = r.diagnostics.find((d) => d.code === "CANAIS_INSUFICIENTES");
+  assert.equal(aviso?.severity, "aviso");
+  assert.equal(r.channels[0]?.volume, 1000);
+});
+
+test("fatia negativa ou acima de 100 é erro do canal, e não entra na cobertura", () => {
+  const base = calcularAscendente(planoDoCanvas());
+  const r = distribuirCanais(base, [
+    { id: "c1", label: "Bom", share: 50 },
+    { id: "c2", label: "Ruim", share: -20 },
+    { id: "c3", label: "Pior", share: 140 },
+  ]);
+  const invalidos = r.diagnostics.filter((d) => d.code === "FATIA_INVALIDA");
+  assert.deepEqual(
+    invalidos.map((d) => d.targetId),
+    ["c2", "c3"],
+  );
+  // A cobertura conta só a fatia válida: um share negativo não "conserta"
+  // um estouro por acidente.
+  assert.equal(r.channelCoverage, 50);
+});
+
+test("funil sem canal nenhum não vira erro nem cobertura fantasma", () => {
+  const base = calcularAscendente(planoDoCanvas());
+  const r = distribuirCanais(base, []);
+  assert.deepEqual(r.channels, []);
+  assert.equal(r.channelCoverage, 0);
+  assert.ok(r.diagnostics.every((d) => d.severity === "aviso"));
 });

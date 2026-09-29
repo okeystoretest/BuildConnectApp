@@ -1,4 +1,6 @@
 import type {
+  ChannelInput,
+  ChannelVolume,
   Diagnostic,
   FunnelInput,
   FunnelResult,
@@ -190,4 +192,78 @@ export function calcularDescendente(input: FunnelInput, topVolume: number): Funn
     channelCoverage: 0,
     diagnostics: [],
   };
+}
+
+/** Quantos canais o canvas manda ter, no mínimo. Abaixo disso é aviso. */
+export const MINIMO_CANAIS = 5;
+
+/** Duas casas decimais: somar 33,33 três vezes não dá 100 exato. */
+function duasCasas(valor: number): number {
+  return Math.round(valor * 100) / 100;
+}
+
+/**
+ * Traduz a fatia de cada canal em prospecções e confere a cobertura.
+ *
+ * Roda DEPOIS do funil porque depende do topo. Fatia inválida não entra na
+ * soma: um share negativo abateria um estouro e faria a cobertura parecer
+ * correta justamente quando não está.
+ */
+export function distribuirCanais(
+  resultado: FunnelResult,
+  canais: readonly ChannelInput[],
+): FunnelResult {
+  const diagnostics: Diagnostic[] = [...resultado.diagnostics];
+  const channels: ChannelVolume[] = [];
+  let cobertura = 0;
+
+  for (const canal of canais) {
+    const valida = canal.share >= 0 && canal.share <= 100;
+    if (!valida) {
+      diagnostics.push({
+        code: "FATIA_INVALIDA",
+        severity: "erro",
+        targetId: canal.id,
+        message: `A fatia de "${canal.label}" precisa ficar entre 0 e 100%.`,
+      });
+    } else {
+      cobertura += canal.share;
+    }
+    channels.push({
+      id: canal.id,
+      label: canal.label,
+      share: canal.share,
+      volume: valida ? Math.ceil((resultado.topVolume * canal.share) / 100) : 0,
+    });
+  }
+
+  if (canais.length > 0 && canais.length < MINIMO_CANAIS) {
+    diagnostics.push({
+      code: "CANAIS_INSUFICIENTES",
+      severity: "aviso",
+      message: `O canvas recomenda ao menos ${MINIMO_CANAIS} canais de vendas.`,
+    });
+  }
+
+  const arredondada = duasCasas(cobertura);
+  if (canais.length > 0 && arredondada < 100) {
+    diagnostics.push({
+      code: "COBERTURA_INCOMPLETA",
+      severity: "aviso",
+      message: `Os canais cobrem ${arredondada}% da boca do funil. Faltam ${duasCasas(
+        100 - arredondada,
+      )}%.`,
+    });
+  }
+  if (arredondada > 100) {
+    diagnostics.push({
+      code: "COBERTURA_EXCEDIDA",
+      severity: "aviso",
+      message: `Os canais somam ${arredondada}% — ${duasCasas(
+        arredondada - 100,
+      )}% acima da boca do funil.`,
+    });
+  }
+
+  return { ...resultado, channels, channelCoverage: arredondada, diagnostics };
 }
