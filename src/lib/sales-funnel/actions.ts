@@ -9,7 +9,7 @@ import {
   requireFunnelScope,
   revalidateFunnelScope,
 } from "./guards";
-import { substituirEtapas } from "./core";
+import { substituirCanais, substituirEtapas } from "./core";
 
 export interface FunnelActionResult {
   ok: boolean;
@@ -60,6 +60,23 @@ const etapasSchema = z.object({
     .array(etapaSchema)
     .min(3, "O funil precisa de ao menos 3 etapas.")
     .max(6, "O funil aceita no máximo 6 etapas."),
+});
+
+const canalSchema = z.object({
+  label: z.string().trim().min(1, "Todo canal precisa de nome.").max(40, "Nome muito longo."),
+  strategy: z.string().trim().max(300, "Estratégia muito longa.").optional(),
+  share: z
+    .number()
+    .min(0, "A fatia não pode ser negativa.")
+    .max(100, "A fatia não passa de 100%."),
+});
+
+const canaisSchema = z.object({
+  slug: z.string().min(1),
+  funnelId: z.string().min(1),
+  // Sem mínimo: o canvas RECOMENDA 5, e recomendação vira AVISO no motor, não
+  // trava na escrita. Quem está montando o funil salva com dois e volta depois.
+  channels: z.array(canalSchema).max(12, "Máximo de 12 canais."),
 });
 
 /** Sessão + permissão + escopo: o preâmbulo de toda escrita. */
@@ -197,6 +214,27 @@ export async function salvarEtapas(input: unknown): Promise<FunnelActionResult> 
   if (!funil) return { ok: false, error: "Funil não encontrado." };
 
   await substituirEtapas(funil.id, parsed.data.stages);
+
+  await revalidateFunnelScope(scope.id, parsed.data.slug);
+  return { ok: true, id: funil.id };
+}
+
+/** Substitui a lista de canais inteira. */
+export async function salvarCanais(input: unknown): Promise<FunnelActionResult> {
+  const parsed = canaisSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  }
+  const { scope, error } = await abrirEscopo(parsed.data.slug);
+  if (!scope) return { ok: false, error: error ?? undefined };
+
+  const funil = await prisma.salesFunnel.findFirst({
+    where: { id: parsed.data.funnelId, subsectorId: scope.id },
+    select: { id: true },
+  });
+  if (!funil) return { ok: false, error: "Funil não encontrado." };
+
+  await substituirCanais(funil.id, parsed.data.channels);
 
   await revalidateFunnelScope(scope.id, parsed.data.slug);
   return { ok: true, id: funil.id };

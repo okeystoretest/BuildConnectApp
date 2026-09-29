@@ -55,3 +55,29 @@ export async function substituirEtapas(
     }),
   ]);
 }
+
+/**
+ * Substitui a lista de canais inteira. Mesma receita das etapas, pelo mesmo
+ * motivo: `@@unique([funnelId, order])` não pode ver estado intermediário, e
+ * a `order` vem da POSIÇÃO no array, nunca do cliente.
+ *
+ * Canal não tem dependente — nenhum cenário aponta para canal —, então aqui
+ * não há cascata a considerar.
+ */
+export async function substituirCanais(
+  funnelId: string,
+  channels: readonly CanalParaGravar[],
+): Promise<void> {
+  await prisma.$transaction([
+    prisma.salesFunnelChannel.deleteMany({ where: { funnelId } }),
+    prisma.salesFunnelChannel.createMany({
+      data: channels.map((canal, order) => ({
+        funnelId,
+        order,
+        label: canal.label,
+        strategy: canal.strategy || null,
+        share: canal.share,
+      })),
+    }),
+  ]);
+}

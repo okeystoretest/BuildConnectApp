@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { prisma } from "@/lib/db/prisma";
 import { requireFunnelManager, requireFunnelScope } from "./guards";
-import { substituirEtapas } from "./core";
+import { substituirCanais, substituirEtapas } from "./core";
 import { getSalesFunnelData, getSalesFunnelDetail, centavosParaDecimal } from "./data";
 
 /**
@@ -241,4 +241,47 @@ test("trocar as etapas apaga as taxas de cenário que apontavam para elas", asyn
   // O cenário sobrevive; a taxa órfã, não.
   assert.equal(await prisma.salesFunnelScenario.count({ where: { id: cenario.id } }), 1);
   assert.equal(await prisma.salesFunnelScenarioRate.count({ where: { scenarioId: cenario.id } }), 0);
+});
+
+test("substituir canais troca a lista inteira e reatribui a ordem", async () => {
+  await substituirCanais(funnelId, [
+    { label: "Base de clientes", share: 40, strategy: "Ligação mensal" },
+    { label: "Indicações", share: 60 },
+  ]);
+  const canais = await prisma.salesFunnelChannel.findMany({
+    where: { funnelId },
+    orderBy: { order: "asc" },
+    select: { order: true, label: true, strategy: true, share: true },
+  });
+  assert.deepEqual(
+    canais.map((c) => c.order),
+    [0, 1],
+  );
+  assert.equal(canais[0]?.label, "Base de clientes");
+  assert.equal(canais[0]?.strategy, "Ligação mensal");
+  assert.equal(canais[1]?.strategy, null);
+
+  // Substituir de novo não acumula nem deixa buraco na ordem.
+  await substituirCanais(funnelId, [{ label: "Só um", share: 100 }]);
+  const depois = await prisma.salesFunnelChannel.findMany({ where: { funnelId } });
+  assert.equal(depois.length, 1);
+  assert.equal(depois[0]?.order, 0);
+});
+
+test("o detalhe devolve os canais já traduzidos em prospecções", async () => {
+  await substituirEtapas(funnelId, [
+    { label: "Oportunidades", rate: 50 },
+    { label: "Visita", rate: 50 },
+    { label: "Proposta", rate: 20 },
+  ]);
+  await substituirCanais(funnelId, [
+    { label: "A", share: 40 },
+    { label: "B", share: 60 },
+  ]);
+  const detalhe = await getSalesFunnelDetail(vendasSlug, funnelId);
+  assert.equal(detalhe?.topVolume, 1000);
+  assert.deepEqual(
+    detalhe?.channels.map((c) => c.share),
+    [40, 60],
+  );
 });

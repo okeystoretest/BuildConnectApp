@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
-import { atualizarFunil, salvarEtapas } from "@/lib/sales-funnel/actions";
-import { calcularAscendente, calcularDescendente } from "@/lib/sales-funnel/math";
+import { atualizarFunil, salvarCanais, salvarEtapas } from "@/lib/sales-funnel/actions";
+import { calcularAscendente, calcularDescendente, distribuirCanais } from "@/lib/sales-funnel/math";
 import { formatarPercentual, formatarReais, formatarVolume } from "@/lib/sales-funnel/format";
 import type { FunnelInput } from "@/lib/sales-funnel/types";
 import type { SalesFunnelDetail } from "@/types/sales-funnel";
@@ -14,6 +14,7 @@ import { MoneyInput } from "./money-input";
 import { StageRow, type EtapaEditavel } from "./stage-row";
 import { FunnelShape } from "./funnel-shape";
 import { DiagnosticsList } from "./diagnostics-list";
+import { ChannelsSection, type CanalEditavel } from "./channels-section";
 import { Glossary } from "./glossary";
 
 type Modo = "meta" | "capacidade";
@@ -34,6 +35,15 @@ function paraEditavel(detail: SalesFunnelDetail): EtapaEditavel[] {
 /** yyyy-mm-dd para o <input type="date">, a partir do ISO do servidor. */
 function paraInputDate(iso: string): string {
   return iso.slice(0, 10);
+}
+
+function paraCanalEditavel(detail: SalesFunnelDetail): CanalEditavel[] {
+  return detail.channels.map((c) => ({
+    key: novaChave(),
+    label: c.label,
+    strategy: c.strategy ?? "",
+    share: String(c.share),
+  }));
 }
 
 /**
@@ -65,6 +75,7 @@ export function FunnelEditor({
   const [goalCents, setGoalCents] = useState<number | null>(detail.goalCents);
   const [ticketCents, setTicketCents] = useState<number | null>(detail.ticketCents);
   const [etapas, setEtapas] = useState<EtapaEditavel[]>(() => paraEditavel(detail));
+  const [canais, setCanais] = useState<CanalEditavel[]>(() => paraCanalEditavel(detail));
   const [modo, setModo] = useState<Modo>("meta");
   const [capacidade, setCapacidade] = useState("");
   const [erro, setErro] = useState<string | null>(null);
@@ -80,18 +91,24 @@ export function FunnelEditor({
         // Vírgula é o separador que a pessoa digita; Number() só entende ponto.
         rate: Number(e.rate.replace(",", ".")),
       })),
-      channels: detail.channels.map((c) => ({ id: c.id, label: c.label, share: c.share })),
+      channels: canais.map((c) => ({
+        id: c.key,
+        label: c.label,
+        share: Number(c.share.replace(",", ".")),
+      })),
     }),
-    [goalCents, ticketCents, etapas, detail.channels],
+    [goalCents, ticketCents, etapas, canais],
   );
 
-  const resultado = useMemo(
-    () =>
+  const resultado = useMemo(() => {
+    const base =
       modo === "meta"
         ? calcularAscendente(input)
-        : calcularDescendente(input, Number(capacidade.replace(/\D/g, "")) || 0),
-    [input, modo, capacidade],
-  );
+        : calcularDescendente(input, Number(capacidade.replace(/\D/g, "")) || 0);
+    // Os canais dependem do topo, então entram DEPOIS do funil — e entram nos
+    // dois sentidos de cálculo.
+    return distribuirCanais(base, input.channels);
+  }, [input, modo, capacidade]);
 
   const volumePorChave = useMemo(() => {
     const mapa = new Map<string, number>();
@@ -151,9 +168,24 @@ export function FunnelEditor({
         transitionRule: e.transitionRule.trim() || undefined,
       })),
     });
-    setSalvando(false);
     if (!stages.ok) {
+      setSalvando(false);
       setErro(stages.error ?? "Não foi possível salvar as etapas.");
+      return;
+    }
+
+    const channels = await salvarCanais({
+      slug,
+      funnelId: detail.id,
+      channels: canais.map((c) => ({
+        label: c.label.trim(),
+        strategy: c.strategy.trim() || undefined,
+        share: Number(c.share.replace(",", ".")),
+      })),
+    });
+    setSalvando(false);
+    if (!channels.ok) {
+      setErro(channels.error ?? "Não foi possível salvar os canais.");
       return;
     }
     router.refresh();
@@ -315,6 +347,20 @@ export function FunnelEditor({
           </div>
         </div>
       </section>
+
+      <ChannelsSection
+        canais={canais}
+        volumes={resultado.channels}
+        cobertura={resultado.channelCoverage}
+        disabled={!canManage}
+        onChange={(key, patch) =>
+          setCanais((atual) => atual.map((c) => (c.key === key ? { ...c, ...patch } : c)))
+        }
+        onAdd={() =>
+          setCanais((a) => [...a, { key: novaChave(), label: "", strategy: "", share: "" }])
+        }
+        onRemove={(key) => setCanais((a) => a.filter((c) => c.key !== key))}
+      />
 
       <Glossary />
     </div>
