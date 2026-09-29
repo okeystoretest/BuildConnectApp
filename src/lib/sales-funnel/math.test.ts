@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   LIMITE_VOLUME,
   calcularAscendente,
+  calcularDescendente,
   conversoesNecessarias,
   parseMoedaParaCentavos,
 } from "./math";
@@ -122,4 +123,34 @@ test("texto que não é número devolve null, e não NaN disfarçado de zero", (
   assert.equal(parseMoedaParaCentavos(""), null);
   assert.equal(parseMoedaParaCentavos("abc"), null);
   assert.equal(parseMoedaParaCentavos("-50"), null);
+});
+
+test("descendente arredonda para BAIXO: 599 prospecções não viram 30 vendas", () => {
+  // 599 -> 50% -> 299 -> 50% -> 149 -> 20% -> 29.
+  const r = calcularDescendente(planoDoCanvas(), 599);
+  assert.deepEqual(
+    r.stages.map((s) => s.volume),
+    [599, 299, 149],
+  );
+  assert.equal(r.requiredConversions, 29);
+});
+
+test("descendente projeta o faturamento pelo ticket do plano", () => {
+  const r = calcularDescendente(planoDoCanvas(), 1000);
+  assert.equal(r.requiredConversions, 50);
+  assert.equal(r.projectedRevenueCents, 5_000_000);
+});
+
+test("descendente com topo zerado ou negativo é erro", () => {
+  const r = calcularDescendente(planoDoCanvas(), 0);
+  assert.ok(r.diagnostics.some((d) => d.code === "VOLUME_IRREAL"));
+});
+
+test("ida e volta: o topo do ascendente reconstrói as conversões no descendente", () => {
+  const plano = planoDoCanvas();
+  const subida = calcularAscendente(plano);
+  const descida = calcularDescendente(plano, subida.topVolume);
+  // O arredondamento é pessimista nos dois sentidos, então a volta nunca
+  // promete MENOS do que a meta pedia — pode prometer exatamente.
+  assert.ok(descida.requiredConversions >= subida.requiredConversions);
 });

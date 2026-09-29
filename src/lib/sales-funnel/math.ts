@@ -147,3 +147,47 @@ export function calcularAscendente(input: FunnelInput): FunnelResult {
     diagnostics: [],
   };
 }
+
+/**
+ * Capacidade → Faturamento. O outro lado da dica do canvas: de cima para
+ * baixo, MULTIPLICANDO. A pessoa fixa quantas prospecções consegue fazer e
+ * vê no que isso dá.
+ *
+ * Arredonda para BAIXO: 599 prospecções que rendem 29,8 vendas rendem 29.
+ * Prometer a fração é prometer uma venda que não existe.
+ */
+export function calcularDescendente(input: FunnelInput, topVolume: number): FunnelResult {
+  const problemas = erros(input);
+  if (problemas.length > 0) return vazio(problemas);
+  if (!(topVolume > 0) || topVolume >= LIMITE_VOLUME) {
+    return vazio([
+      {
+        code: "VOLUME_IRREAL",
+        severity: "erro",
+        message: "Informe quantas prospecções cabem no período.",
+      },
+    ]);
+  }
+
+  const stages: StageVolume[] = [];
+  let volume = Math.floor(topVolume);
+  for (const stage of input.stages) {
+    stages.push({ id: stage.id, label: stage.label, rate: stage.rate, volume });
+    volume = Math.floor((volume * stage.rate) / 100);
+  }
+  // Saindo do laço, `volume` já passou pela taxa da última etapa: são as
+  // conversões.
+  const conversoes = volume;
+  const topo = stages[0]?.volume ?? 0;
+
+  return {
+    requiredConversions: conversoes,
+    stages,
+    topVolume: topo,
+    externalRate: topo > 0 ? (conversoes / topo) * 100 : 0,
+    projectedRevenueCents: conversoes * input.ticketCents,
+    channels: [],
+    channelCoverage: 0,
+    diagnostics: [],
+  };
+}
