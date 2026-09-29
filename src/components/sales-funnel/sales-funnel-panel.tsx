@@ -7,6 +7,7 @@ import { Segmented } from "@/components/ui/segmented";
 import type { SalesFunnelData, SalesFunnelDetail } from "@/types/sales-funnel";
 import { FunnelCard } from "./funnel-card";
 import { NewFunnelModal } from "./new-funnel-modal";
+import { FunnelEditor } from "./funnel-editor";
 
 type Filtro = "ativos" | "todos";
 
@@ -47,19 +48,13 @@ export function SalesFunnelPanel({
   const arquivados = data.funnels.length - data.funnels.filter((f) => f.status !== "ARQUIVADO").length;
 
   if (detail) {
-    // Placeholder da fatia 2: o editor entra na próxima. Já prova o caminho
-    // inteiro — URL, carga do detalhe no servidor e volta para a lista.
     return (
-      <div className="space-y-3">
-        <Button variant="ghost" onClick={() => onSelect(null)}>
-          ← Voltar para a lista
-        </Button>
-        <h2 className="text-lg font-semibold">{detail.name}</h2>
-        <p className="text-sm text-muted">
-          {detail.stages.length} etapas · {detail.requiredConversions} conversões ·{" "}
-          {detail.topVolume} prospecções
-        </p>
-      </div>
+      <FunnelEditor
+        slug={slug}
+        detail={detail}
+        canManage={data.canManage}
+        onBack={() => onSelect(null)}
+      />
     );
   }
 

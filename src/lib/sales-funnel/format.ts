@@ -47,3 +47,16 @@ export function formatarData(iso: string): string {
   const mes = MESES[data.getUTCMonth()];
   return mes ? `${mes}/${data.getUTCFullYear()}` : "—";
 }
+
+/**
+ * Percentual em pt-BR: 5 → "5,00%".
+ *
+ * `toFixed(2)` devolveria "5.00", com ponto — o único número da tela que
+ * sairia no formato errado, ao lado de valores em reais já localizados.
+ */
+export function formatarPercentual(valor: number): string {
+  return `${valor.toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}%`;
+}

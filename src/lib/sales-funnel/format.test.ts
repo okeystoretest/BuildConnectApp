@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatarData, formatarReais, formatarVolume } from "./format";
+import {
+  formatarData,
+  formatarPercentual,
+  formatarReais,
+  formatarVolume,
+} from "./format";
 
 /** A tela nunca formata moeda à mão: tudo passa por aqui. */
 
@@ -22,4 +27,9 @@ test("a data de referência sai como mês e ano, que é o recorte do funil", () 
 
 test("data inválida não quebra a tela: devolve traço", () => {
   assert.equal(formatarData("não é data"), "—");
+});
+
+test("percentual sai com vírgula, como o resto dos números da tela", () => {
+  assert.equal(formatarPercentual(5), "5,00%");
+  assert.equal(formatarPercentual(33.333), "33,33%");
 });
