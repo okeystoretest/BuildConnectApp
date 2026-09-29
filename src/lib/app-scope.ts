@@ -13,6 +13,7 @@ export interface AppScope {
   slug: string;
   label: string;
   scheduleEnabled: boolean;
+  funnelEnabled: boolean;
   /** true quando o subsetor consultado herda de outro. */
   inherited: boolean;
 }
@@ -25,8 +26,15 @@ export async function resolveAppScope(slug: string): Promise<AppScope | null> {
       slug: true,
       label: true,
       scheduleEnabled: true,
+      funnelEnabled: true,
       appsSource: {
-        select: { id: true, slug: true, label: true, scheduleEnabled: true },
+        select: {
+          id: true,
+          slug: true,
+          label: true,
+          scheduleEnabled: true,
+          funnelEnabled: true,
+        },
       },
     },
   });
@@ -38,6 +46,7 @@ export async function resolveAppScope(slug: string): Promise<AppScope | null> {
       slug: sub.appsSource.slug,
       label: sub.appsSource.label,
       scheduleEnabled: sub.appsSource.scheduleEnabled,
+      funnelEnabled: sub.appsSource.funnelEnabled,
       inherited: true,
     };
   }
@@ -47,6 +56,7 @@ export async function resolveAppScope(slug: string): Promise<AppScope | null> {
     slug: sub.slug,
     label: sub.label,
     scheduleEnabled: sub.scheduleEnabled,
+    funnelEnabled: sub.funnelEnabled,
     inherited: false,
   };
 }

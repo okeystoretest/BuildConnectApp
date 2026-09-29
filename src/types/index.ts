@@ -20,6 +20,11 @@ export type Permission =
   // Gestor (só o setor dele) e do Admin (qualquer um). Permissão própria, e
   // não `evaluations.view`, porque aqui se enxerga o DESEMPENHO de terceiros.
   | "sector.overview"
+  // Criar, editar, arquivar e excluir um Funil de Vendas, e salvar cenários.
+  // Ver o funil NÃO exige permissão: basta acesso ao setor. O que é de gestão
+  // é definir a META e as TAXAS — o número que a equipe inteira passa a
+  // perseguir.
+  | "funnel.manage"
   | "users.manage"
   | "tickets.create"
   | "tickets.viewOwn"

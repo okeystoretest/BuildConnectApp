@@ -50,9 +50,9 @@ model User {
   unit     Unit?   @relation(fields: [unitId], references: [id], onDelete: SetNull)
 
   // Subsetores do colaborador (many-to-many via tabela de junção).
-  subsectors UserSubsector[]
+  subsectors     UserSubsector[]
   // Vídeos de boas-vindas de setor já assistidos por este usuário.
-  welcomeViews SubsectorWelcomeView[]
+  welcomeViews   SubsectorWelcomeView[]
   // Registro de login/logout desta pessoa (ver ActivityEvent).
   activityEvents ActivityEvent[]
 
@@ -70,7 +70,7 @@ model User {
   // arquivo (ver lib/welcome-video-core).
   platformWelcomeWatchedAt DateTime?
 
-  active    Boolean  @default(true)
+  active Boolean @default(true)
 
   // Versão da sessão. Vai assinada dentro do cookie e é conferida a cada
   // requisição: incrementar este número invalida NA HORA todas as sessões
@@ -82,44 +82,46 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relações de atividade.
-  contentProgress    ContentProgress[]
+  contentProgress          ContentProgress[]
   // Respostas de compreensão das Instruções em Vídeo: as que este usuário
   // escreveu e as que ele avaliou como Gestor.
-  videoComprehensions      VideoComprehension[] @relation("VideoComprehensionAuthor")
-  videoComprehensionGrades VideoComprehension[] @relation("VideoComprehensionGrader")
+  videoComprehensions      VideoComprehension[]   @relation("VideoComprehensionAuthor")
+  videoComprehensionGrades VideoComprehension[]   @relation("VideoComprehensionGrader")
   // Patamar de fila já avisado a este Gestor (aviso de 5 em 5).
-  graderAlertState         GraderAlertState?    @relation("GraderAlertState")
+  graderAlertState         GraderAlertState?      @relation("GraderAlertState")
   // Avaliações de qualidade que este usuário deu a vídeos.
-  videoRatings             VideoRating[]        @relation("VideoRatingAuthor")
-  contentPosts       ContentPost[]      @relation("ContentPostOwner")
-  authoredPosts      ContentPost[]      @relation("ContentPostAuthor")
+  videoRatings             VideoRating[]          @relation("VideoRatingAuthor")
+  contentPosts             ContentPost[]          @relation("ContentPostOwner")
+  authoredPosts            ContentPost[]          @relation("ContentPostAuthor")
+  salesFunnels             SalesFunnel[]          @relation("SalesFunnelAuthor")
+  funnelScenarios          SalesFunnelScenario[]  @relation("FunnelScenarioAuthor")
   // Roteiros de card que este usuário gerou ou editou por último.
-  contentScripts     ContentPost[]      @relation("ContentPostScript")
+  contentScripts           ContentPost[]          @relation("ContentPostScript")
   // Configuração da IA (Retaguarda) — quem salvou por último.
-  aiSettingsEdits    AiSettings[]       @relation("AiSettingsEditor")
-  aiInstructionEdits AiInstruction[]    @relation("AiInstructionEditor")
-  requestedTickets   Ticket[]           @relation("TicketRequester")
-  assignedTickets    Ticket[]           @relation("TicketAssignee")
+  aiSettingsEdits          AiSettings[]           @relation("AiSettingsEditor")
+  aiInstructionEdits       AiInstruction[]        @relation("AiInstructionEditor")
+  requestedTickets         Ticket[]               @relation("TicketRequester")
+  assignedTickets          Ticket[]               @relation("TicketAssignee")
   // Notificações de WhatsApp endereçadas a este usuário (fila + auditoria).
-  whatsappMessages WhatsappMessage[] @relation("WhatsappRecipient")
+  whatsappMessages         WhatsappMessage[]      @relation("WhatsappRecipient")
   // Formulários do DHO: criados, atribuídos a responder, e respondidos.
-  authoredForms   Form[]           @relation("FormAuthor")
-  formAssignments FormAssignment[] @relation("FormAssignee")
-  formResponses   FormResponse[]   @relation("FormRespondent")
+  authoredForms            Form[]                 @relation("FormAuthor")
+  formAssignments          FormAssignment[]       @relation("FormAssignee")
+  formResponses            FormResponse[]         @relation("FormRespondent")
   // Chamados que este usuário atribuiu (a si mesmo ou a outra pessoa).
-  ticketsAssignedOut Ticket[]           @relation("TicketAssigner")
-  evaluationsReceived Evaluation[]      @relation("EvaluationSubject")
-  evaluationsGiven    Evaluation[]      @relation("EvaluationEvaluator")
-  evaluationCycles    EvaluationCycle[] @relation("EvaluationCycleSubject")
+  ticketsAssignedOut       Ticket[]               @relation("TicketAssigner")
+  evaluationsReceived      Evaluation[]           @relation("EvaluationSubject")
+  evaluationsGiven         Evaluation[]           @relation("EvaluationEvaluator")
+  evaluationCycles         EvaluationCycle[]      @relation("EvaluationCycleSubject")
   // Rodadas multidirecionais (Eficácia): como avaliado e como avaliador designado.
-  evaluationRounds       EvaluationRound[]      @relation("EvaluationRoundSubject")
-  evaluationAssignments  EvaluationAssignment[] @relation("EvaluationAssignmentRater")
-  integrationMaps    IntegrationMap[]
+  evaluationRounds         EvaluationRound[]      @relation("EvaluationRoundSubject")
+  evaluationAssignments    EvaluationAssignment[] @relation("EvaluationAssignmentRater")
+  integrationMaps          IntegrationMap[]
   // Denúncias recebidas (o denunciante é sempre anônimo — não há relação).
-  reportsReceived    Report[]           @relation("ReportTarget")
-  notifications      NotificationRead[]
+  reportsReceived          Report[]               @relation("ReportTarget")
+  notifications            NotificationRead[]
   // Notificações direcionadas a este usuário (alvo individual).
-  directNotifications Notification[]    @relation("NotificationTarget")
+  directNotifications      Notification[]         @relation("NotificationTarget")
 
   @@index([role])
   @@index([sectorId])
@@ -147,12 +149,12 @@ enum SectorKind {
 }
 
 model Subsector {
-  id       String     @id @default(cuid())
-  slug     String     @unique
-  label    String
-  icon     String
-  kind     SectorKind @default(PADRAO)
-  order    Int        @default(0)
+  id    String     @id @default(cuid())
+  slug  String     @unique
+  label String
+  icon  String
+  kind  SectorKind @default(PADRAO)
+  order Int        @default(0)
 
   sectorId String
   sector   Sector @relation(fields: [sectorId], references: [id], onDelete: Cascade)
@@ -167,6 +169,10 @@ model Subsector {
   // Habilita a ferramenta Cronograma no escopo deste subsetor.
   scheduleEnabled Boolean @default(false)
 
+  // Habilita a ferramenta Funil de Vendas no escopo deste subsetor. Segue a
+  // mesma herança de `appsSourceId`: quem herda não configura, recebe.
+  funnelEnabled Boolean @default(false)
+
   // Vídeo de boas-vindas do setor, exibido na PRIMEIRA visita de cada usuário.
   // Como todo arquivo do sistema, o banco guarda só o caminho público
   // (/uploads/conteudo/ano/mes/arquivo.mp4) — nunca o binário.
@@ -177,12 +183,13 @@ model Subsector {
   welcomeVideoAt    DateTime?
 
   // Conteúdo do subsetor.
-  photos    Photo[]
-  videos    Video[]
-  documents Document[]
-  links     ExternalLink[]
-  posts     ContentPost[]
+  photos       Photo[]
+  videos       Video[]
+  documents    Document[]
+  links        ExternalLink[]
+  posts        ContentPost[]
   sharedVideos VideoShare[]
+  salesFunnels SalesFunnel[]
 
   members      UserSubsector[]
   welcomeViews SubsectorWelcomeView[]
@@ -213,17 +220,14 @@ model SubsectorWelcomeView {
 
 /**
  * Vídeo de boas-vindas da PLATAFORMA — o obrigatório da primeira entrada.
- *
  * Linha única: `id` tem default fixo "singleton", então todo upsert escreve na
  * mesma linha e não há como existirem dois vídeos concorrendo pelo mesmo papel.
- *
  * Como todo arquivo do sistema, guarda só o caminho público
  * (/uploads/conteudo/ano/mes/arquivo.mp4) — nunca o binário.
- *
  * Quem já assistiu está em User.platformWelcomeWatchedAt, não aqui.
  */
 model PlatformWelcomeVideo {
-  id    String @id @default("singleton")
+  id    String  @id @default("singleton")
   path  String
   title String?
 
@@ -236,7 +240,6 @@ model PlatformWelcomeVideo {
 /**
  * Integração com o Gemini — credencial e modelo. Linha única, como
  * PlatformWelcomeVideo.
- *
  * A chave fica CIFRADA (AES-256-GCM, chave derivada do SESSION_SECRET — ver
  * lib/ai/secret.ts): um dump do banco não entrega a chave da API. `apiKeyHint`
  * guarda só os 4 últimos caracteres, em claro, para a tela dizer QUAL chave
@@ -256,7 +259,6 @@ model AiSettings {
  * Instruções do sistema (system instructions) da IA, por escopo.
  * id: "DEFAULT" | "OKEY" | "LOV_CLUB". A Padrão vale para todo roteiro; a da
  * marca é acrescentada depois dela quando o card tem marca.
- *
  * Chave de texto, e não colunas fixas em AiSettings, porque marca nova vira
  * INSERT — não vira migration.
  */
@@ -270,11 +272,9 @@ model AiInstruction {
 
 /**
  * Contador de tentativas por janela de tempo (login, buscas e envios públicos).
- *
  * Em banco, não em memória: o contador precisa sobreviver a restart/deploy —
  * senão um ataque de senha só espera o próximo deploy para zerar o bloqueio —
  * e valer para todas as réplicas, se um dia houver mais de uma.
- *
  * A chave já vem qualificada por quem a emite ("login:user:joao#BC",
  * "report-submit:203.0.113.5"). Linhas vencidas são varridas de tempos em
  * tempos pelo próprio helper.
@@ -298,8 +298,8 @@ model UserSubsector {
 }
 
 model Unit {
-  id      String  @id @default(cuid())
-  label   String  @unique
+  id         String  @id @default(cuid())
+  label      String  @unique
   // Endereço; nulo cai em preenchimento manual nos chamados de motorista.
   street     String?
   number     String?
@@ -354,7 +354,7 @@ model Video {
   ratings        VideoRating[]
   // Subsetores que também enxergam este vídeo. Mesma linha, mesmo arquivo:
   // compartilhar não duplica nada em disco. Só ADMIN cria e remove.
-  shares VideoShare[]
+  shares         VideoShare[]
 
   createdAt DateTime @default(now())
 
@@ -405,14 +405,14 @@ enum FileKind {
 
 // "Documentos" — arquivos para baixar/visualizar.
 model Document {
-  id       String   @id @default(cuid())
-  name     String
-  kind     FileKind
+  id        String   @id @default(cuid())
+  name      String
+  kind      FileKind
   // Tamanho em bytes; a UI formata (ex.: 2.4 MB).
   sizeBytes Int      @default(0)
-  filePath String
-  tags     String[] @default([])
-  order    Int      @default(0)
+  filePath  String
+  tags      String[] @default([])
+  order     Int      @default(0)
 
   subsectorId String
   subsector   Subsector @relation(fields: [subsectorId], references: [id], onDelete: Cascade)
@@ -425,12 +425,12 @@ model Document {
 }
 
 model ExternalLink {
-  id    String @id @default(cuid())
-  label String
-  url   String
+  id       String  @id @default(cuid())
+  label    String
+  url      String
   // Ícone da plataforma já tratado (.webp). Nunca binário.
   iconPath String?
-  order Int    @default(0)
+  order    Int     @default(0)
 
   subsectorId String
   subsector   Subsector @relation(fields: [subsectorId], references: [id], onDelete: Cascade)
@@ -498,15 +498,15 @@ enum ContentVisibility {
 // (o de origem, quando há herança) — é o que faz Marketing e Vendas
 // enxergarem exatamente a mesma agenda.
 model ContentPost {
-  id          String        @id @default(cuid())
+  id          String            @id @default(cuid())
   title       String
   scheduledAt DateTime
   funnel      FunnelStage
   // Formatos da peça (seleção múltipla). Era uma coluna única: o mesmo
   // conteúdo costuma sair em mais de um formato, e duplicar o post só para
   // registrar isso quebrava a contagem do funil.
-  formats     ContentFormat[] @default([])
-  status      ContentStatus @default(IDEIA)
+  formats     ContentFormat[]   @default([])
+  status      ContentStatus     @default(IDEIA)
   brand       ContentBrand?
   // Redes sociais do post (seleção múltipla). Lista vazia = atividade sem
   // plataforma definida.
@@ -548,6 +548,148 @@ model ContentPost {
   @@index([ownerId])
   @@index([createdById])
   @@index([scriptById])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Funil de Vendas (planejamento comercial)
+// ─────────────────────────────────────────────────────────────
+
+/// Estado do canvas. RASCUNHO nasce, ATIVO é o plano em vigor, ARQUIVADO sai
+/// da lista por padrão sem perder o histórico do período.
+enum SalesFunnelStatus {
+  RASCUNHO
+  ATIVO
+  ARQUIVADO
+}
+
+/// Um canvas "Funil de Vendas": a meta de um período e o caminho até ela.
+///
+/// Dinheiro em Decimal(14,2) — NUNCA Float. Uma meta de R$ 50.000,00 em Float
+/// vira 49999.99999999999 e o erro entra direto na divisão que define quantas
+/// conversões o período exige. A aplicação converte para centavos inteiros na
+/// fronteira (ver src/lib/sales-funnel/data.ts).
+///
+/// O resultado do cálculo NÃO é guardado: é derivado a cada leitura pelo
+/// mesmo motor que a tela usa. Persistir o número criaria uma segunda verdade
+/// que envelhece na primeira vez que alguém corrigir uma taxa.
+model SalesFunnel {
+  id            String            @id @default(cuid())
+  name          String
+  /// O campo DATA do canvas impresso: o período a que este funil se refere.
+  referenceDate DateTime
+  goalAmount    Decimal           @db.Decimal(14, 2)
+  averageTicket Decimal           @db.Decimal(14, 2)
+  status        SalesFunnelStatus @default(RASCUNHO)
+  notes         String?           @db.Text
+
+  /// Subsetor de ESCOPO — o de origem quando há herança. Vendas e Marketing
+  /// escrevem na mesma base, como já acontece no Cronograma.
+  subsectorId String
+  subsector   Subsector @relation(fields: [subsectorId], references: [id], onDelete: Cascade)
+
+  createdById String?
+  createdBy   User?   @relation("SalesFunnelAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  stages    SalesFunnelStage[]
+  channels  SalesFunnelChannel[]
+  scenarios SalesFunnelScenario[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([subsectorId, referenceDate])
+  @@index([subsectorId, status])
+  @@index([createdById])
+}
+
+/// Uma etapa do funil (bloco 2 do canvas).
+model SalesFunnelStage {
+  id       String      @id @default(cuid())
+  funnelId String
+  funnel   SalesFunnel @relation(fields: [funnelId], references: [id], onDelete: Cascade)
+
+  order Int
+  label String
+
+  /// Taxa de conversão DESTA etapa para a seguinte, em %. A última etapa
+  /// converte em negócio ganho — por isso são N etapas e N taxas, sem uma
+  /// tabela de transições separada.
+  conversionRate Float
+
+  /// "Atividades que condicionam a mudança de etapa" (bloco 3 do canvas).
+  transitionRule String? @db.Text
+
+  scenarioRates SalesFunnelScenarioRate[]
+
+  @@unique([funnelId, order])
+  @@index([funnelId])
+}
+
+/// Um canal de venda (bloco 4 do canvas). O canvas pede no mínimo 5 — a
+/// recomendação vira AVISO no motor, não trava na escrita.
+model SalesFunnelChannel {
+  id       String      @id @default(cuid())
+  funnelId String
+  funnel   SalesFunnel @relation(fields: [funnelId], references: [id], onDelete: Cascade)
+
+  order Int
+  label String
+
+  /// "Qual a estratégia e frequência" — as caixas tracejadas do topo.
+  strategy String? @db.Text
+
+  /// Fatia do topo do funil que este canal responde, em %.
+  share Float
+
+  @@unique([funnelId, order])
+  @@index([funnelId])
+}
+
+/// Uma simulação (bloco 5 do canvas), guardada ao lado do plano.
+model SalesFunnelScenario {
+  id       String      @id @default(cuid())
+  funnelId String
+  funnel   SalesFunnel @relation(fields: [funnelId], references: [id], onDelete: Cascade)
+
+  name  String
+  notes String? @db.Text
+
+  /// Alavanca 3 do canvas: "melhore o ticket médio". +10 = ticket 10% maior.
+  ticketPercent Float @default(0)
+
+  /// Alavanca 1: "aumente a boca do funil". Só vale no modo descendente.
+  topPercent Float @default(0)
+
+  /// Alavanca 2: "melhore as taxas internas".
+  rates SalesFunnelScenarioRate[]
+
+  createdById String?
+  createdBy   User?    @relation("FunnelScenarioAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@index([funnelId])
+  @@index([createdById])
+}
+
+/// A taxa que UM cenário dá a UMA etapa.
+///
+/// Só existe linha para o que o cenário MUDA; onde não há linha, a etapa
+/// herda a taxa do plano. Evita duplicar o funil inteiro a cada cenário — e
+/// um cenário não congela por acidente uma etapa que o plano corrigiu depois.
+///
+/// A cascata a partir de SalesFunnelStage é deliberada: salvar as etapas recria as
+/// linhas com ids novos, e uma taxa de cenário apontando para etapa que
+/// deixou de existir é pior que uma taxa perdida.
+model SalesFunnelScenarioRate {
+  scenarioId String
+  scenario   SalesFunnelScenario @relation(fields: [scenarioId], references: [id], onDelete: Cascade)
+  stageId    String
+  stage      SalesFunnelStage    @relation(fields: [stageId], references: [id], onDelete: Cascade)
+
+  conversionRate Float
+
+  @@id([scenarioId, stageId])
+  @@index([stageId])
 }
 
 // Progresso por usuário e por item de conteúdo. Uma linha marca "assistido"/
@@ -700,23 +842,23 @@ model Ticket {
   category String?
 
   // ——— Campos de Motoristas ———
-  serviceType     String?
+  serviceType       String?
   // Origem: ou referência de unidade (acima) ou endereço manual.
   departureStreet   String?
   departureNumber   String?
   departureDistrict String?
   // Destino.
-  destStreet   String?
-  destNumber   String?
-  destDistrict String?
-  contact      String?
+  destStreet        String?
+  destNumber        String?
+  destDistrict      String?
+  contact           String?
 
   // ——— Cronometragem / conclusão ———
-  startedAt  DateTime?
-  finishedAt DateTime?
-  distanceKm Float?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  distanceKm     Float?
   // Comprovante de entrega (.webp). Só o caminho.
-  proofPath  String?
+  proofPath      String?
   // Descrição técnica da solução aplicada (obrigatória ao concluir chamado de TI).
   resolutionNote String?
 
@@ -733,8 +875,8 @@ model Ticket {
   // Nome do motorista, vindo do Flow. O motorista não é usuário do Connect.
   externalAssigneeName String?
 
-  images  TicketImage[]
-  trip    Trip?
+  images TicketImage[]
+  trip   Trip?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -771,10 +913,10 @@ enum TripStatus {
 }
 
 model Trip {
-  id        String     @id @default(cuid())
-  ticketId  String     @unique
-  ticket    Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  status    TripStatus @default(AGUARDANDO)
+  id       String     @id @default(cuid())
+  ticketId String     @unique
+  ticket   Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  status   TripStatus @default(AGUARDANDO)
 
   // Coordenadas opcionais: quando a geocodificação (Nominatim) falha, o Trip
   // nasce sem pino e o mapa mostra só o GPS ao vivo. O label guarda o
@@ -849,11 +991,11 @@ model EvaluationType {
 
 // Seções paginadas do formulário. A UI renderiza uma seção por página.
 model EvaluationSection {
-  id     String @id @default(cuid())
+  id     String         @id @default(cuid())
   typeId String
   type   EvaluationType @relation(fields: [typeId], references: [id], onDelete: Cascade)
   title  String
-  order  Int    @default(0)
+  order  Int            @default(0)
 
   questions EvaluationQuestion[]
 
@@ -863,12 +1005,12 @@ model EvaluationSection {
 // Uma pergunta/critério. Para o Pré-Efetivo, `label` é o critério e
 // `helpText` a descrição (ex.: "Disciplina" / "Obediência às normas...").
 model EvaluationQuestion {
-  id        String @id @default(cuid())
+  id        String            @id @default(cuid())
   sectionId String
   section   EvaluationSection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   label     String
   helpText  String?
-  order     Int    @default(0)
+  order     Int               @default(0)
 
   answers EvaluationAnswer[]
 
@@ -882,7 +1024,7 @@ enum EvaluationStatus {
 
 // Uma submissão preenchida do formulário (um ciclo, no caso do Pré-Efetivo).
 model Evaluation {
-  id     String @id @default(cuid())
+  id     String         @id @default(cuid())
   typeId String
   type   EvaluationType @relation(fields: [typeId], references: [id], onDelete: Cascade)
 
@@ -900,10 +1042,10 @@ model Evaluation {
 
   // Rodada multidirecional (Eficácia): agrupa as N submissões de avaliadores +
   // a autoavaliação de um mesmo colaborador. Nulo para as demais avaliações.
-  roundId String?
-  round   EvaluationRound? @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  roundId          String?
+  round            EvaluationRound? @relation(fields: [roundId], references: [id], onDelete: Cascade)
   // Marca a submissão de autoavaliação (o próprio sujeito respondendo).
-  isSelfAssessment Boolean @default(false)
+  isSelfAssessment Boolean          @default(false)
 
   // Soma dos pontos das respostas, calculada no envio.
   total        Int?
@@ -920,9 +1062,9 @@ model Evaluation {
 }
 
 model EvaluationAnswer {
-  id           String @id @default(cuid())
+  id           String             @id @default(cuid())
   evaluationId String
-  evaluation   Evaluation @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  evaluation   Evaluation         @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
   questionId   String
   question     EvaluationQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
   // Valor marcado na escala (ex.: 1..5).
@@ -942,9 +1084,9 @@ enum EvaluationCycleStatus {
 // (1,2,3). `availableAt` é calculado em dias úteis; a varredura de liberação
 // promove AGENDADO→DISPONIVEL e notifica o Gestor do setor.
 model EvaluationCycle {
-  id      String @id @default(cuid())
-  typeId  String
-  type    EvaluationType @relation(fields: [typeId], references: [id], onDelete: Cascade)
+  id     String         @id @default(cuid())
+  typeId String
+  type   EvaluationType @relation(fields: [typeId], references: [id], onDelete: Cascade)
 
   subjectId String
   subject   User   @relation("EvaluationCycleSubject", fields: [subjectId], references: [id], onDelete: Cascade)
@@ -993,7 +1135,7 @@ enum EvaluationRoundStatus {
 }
 
 model EvaluationRound {
-  id     String @id @default(cuid())
+  id     String         @id @default(cuid())
   typeId String
   type   EvaluationType @relation(fields: [typeId], references: [id], onDelete: Cascade)
 
@@ -1028,7 +1170,7 @@ enum EvaluationAssignmentStatus {
 // Designação de um avaliador para uma rodada. É também o alvo da notificação
 // individual ("você foi designado para avaliar X"). Uma linha por avaliador.
 model EvaluationAssignment {
-  id      String @id @default(cuid())
+  id      String          @id @default(cuid())
   roundId String
   round   EvaluationRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
 
@@ -1194,14 +1336,14 @@ enum NotificationKind {
 }
 
 model Notification {
-  id    String           @id @default(cuid())
-  kind  NotificationKind
-  title String
-  body  String
-  href  String?
+  id       String           @id @default(cuid())
+  kind     NotificationKind
+  title    String
+  body     String
+  href     String?
   // SLUGS de subsetor destinatários ("*" = todos). Slug, e não rótulo: o
   // rótulo muda de nome (TI virou Retaguarda) e o slug é a chave do RBAC.
-  audience String[]       @default([])
+  audience String[]         @default([])
 
   // Alvo individual opcional. Quando preenchido, a notificação é para um único
   // usuário (ex.: "faça sua autoavaliação"), independente da audiência de setor.
@@ -1303,16 +1445,16 @@ model Form {
 }
 
 model FormQuestion {
-  id        String           @id @default(cuid())
+  id       String           @id @default(cuid())
   // Liga direto ao formulário. Seções saíram em 18/09/2026: o construtor do
   // DHO é uma lista única de perguntas, e a resposta é uma página só.
-  formId    String
-  form      Form             @relation(fields: [formId], references: [id], onDelete: Cascade)
-  kind      FormQuestionKind
-  label     String
-  helpText  String?
-  required  Boolean          @default(false)
-  order     Int              @default(0)
+  formId   String
+  form     Form             @relation(fields: [formId], references: [id], onDelete: Cascade)
+  kind     FormQuestionKind
+  label    String
+  helpText String?
+  required Boolean          @default(false)
+  order    Int              @default(0)
 
   // Só para ESCALA_LINEAR.
   scaleMin      Int?
@@ -1385,9 +1527,9 @@ model FormAnswer {
   question   FormQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
   // TEXTO_CURTO, PARAGRAFO
-  text String?
+  text      String?
   // ESCALA_LINEAR
-  number Int?
+  number    Int?
   // MULTIPLA_ESCOLHA e LISTA_SUSPENSA guardam 1; CAIXAS_SELECAO guarda N.
   // Array e não FK: mantém "uma linha por pergunta" cravado no banco pela
   // unique abaixo. O preço, sem integridade referencial, é coberto por travar
@@ -1450,7 +1592,9 @@ model WhatsappMessage {
   kind     WhatsappKind
   status   WhatsappStatus @default(PENDENTE)
   attempts Int            @default(0)
-  /** Motivo da falha, em português. Nunca contém o número nem credencial. */
+  /**
+   * Motivo da falha, em português. Nunca contém o número nem credencial.
+   */
   error    String?
   // Texto próprio desta mensagem (ex.: código do chamado). Nulo = o texto
   // padrão do tipo em MESSAGE_TEXT.
