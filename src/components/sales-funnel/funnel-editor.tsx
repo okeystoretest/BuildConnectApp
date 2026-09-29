@@ -15,6 +15,7 @@ import { StageRow, type EtapaEditavel } from "./stage-row";
 import { FunnelShape } from "./funnel-shape";
 import { DiagnosticsList } from "./diagnostics-list";
 import { ChannelsSection, type CanalEditavel } from "./channels-section";
+import { ScenariosSection } from "./scenarios-section";
 import { Glossary } from "./glossary";
 
 type Modo = "meta" | "capacidade";
@@ -360,6 +361,15 @@ export function FunnelEditor({
           setCanais((a) => [...a, { key: novaChave(), label: "", strategy: "", share: "" }])
         }
         onRemove={(key) => setCanais((a) => a.filter((c) => c.key !== key))}
+      />
+
+      <ScenariosSection
+        slug={slug}
+        funnelId={detail.id}
+        plano={input}
+        etapasSalvas={detail.stages.map((s) => ({ id: s.id, label: s.label, rate: s.rate }))}
+        cenarios={detail.scenarios}
+        canManage={canManage}
       />
 
       <Glossary />

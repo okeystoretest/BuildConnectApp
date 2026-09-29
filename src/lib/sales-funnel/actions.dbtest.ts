@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { prisma } from "@/lib/db/prisma";
 import { requireFunnelManager, requireFunnelScope } from "./guards";
-import { substituirCanais, substituirEtapas } from "./core";
+import { gravarCenario, substituirCanais, substituirEtapas } from "./core";
 import { getSalesFunnelData, getSalesFunnelDetail, centavosParaDecimal } from "./data";
 
 /**
@@ -284,4 +284,77 @@ test("o detalhe devolve os canais já traduzidos em prospecções", async () => 
     detalhe?.channels.map((c) => c.share),
     [40, 60],
   );
+});
+
+test("o cenário guarda só as taxas que muda, e ignora etapa de outro funil", async () => {
+  const etapas = await prisma.salesFunnelStage.findMany({
+    where: { funnelId },
+    orderBy: { order: "asc" },
+    select: { id: true },
+  });
+  const ultima = etapas[etapas.length - 1];
+  assert.ok(ultima);
+
+  const id = await gravarCenario({
+    funnelId,
+    name: `+10% no ticket ${MARK}`,
+    ticketPercent: 10,
+    topPercent: 0,
+    rates: [
+      { stageId: ultima.id, rate: 25 },
+      // Etapa que não é deste funil: tem de ser descartada, não gravada.
+      { stageId: "etapa-de-outro-funil", rate: 99 },
+    ],
+    createdById: gestor.id,
+  });
+  assert.ok(id);
+
+  const taxas = await prisma.salesFunnelScenarioRate.findMany({ where: { scenarioId: id } });
+  assert.equal(taxas.length, 1);
+  assert.equal(taxas[0]?.stageId, ultima.id);
+  assert.equal(taxas[0]?.conversionRate, 25);
+});
+
+test("gravar o mesmo cenário de novo substitui as taxas em vez de acumular", async () => {
+  const etapas = await prisma.salesFunnelStage.findMany({
+    where: { funnelId },
+    orderBy: { order: "asc" },
+    select: { id: true },
+  });
+  const primeira = etapas[0];
+  assert.ok(primeira);
+
+  const id = await gravarCenario({
+    funnelId,
+    name: `Reescrito ${MARK}`,
+    ticketPercent: 0,
+    topPercent: 0,
+    rates: [{ stageId: primeira.id, rate: 70 }],
+    createdById: gestor.id,
+  });
+  assert.ok(id);
+
+  await gravarCenario({
+    scenarioId: id,
+    funnelId,
+    name: `Reescrito ${MARK}`,
+    ticketPercent: 5,
+    topPercent: 0,
+    rates: [{ stageId: primeira.id, rate: 80 }],
+    createdById: gestor.id,
+  });
+
+  const taxas = await prisma.salesFunnelScenarioRate.findMany({ where: { scenarioId: id } });
+  assert.equal(taxas.length, 1);
+  assert.equal(taxas[0]?.conversionRate, 80);
+  const cenario = await prisma.salesFunnelScenario.findUniqueOrThrow({ where: { id } });
+  assert.equal(cenario.ticketPercent, 5);
+});
+
+test("o detalhe devolve o cenário com as taxas indexadas por etapa", async () => {
+  const detalhe = await getSalesFunnelDetail(vendasSlug, funnelId);
+  const cenario = detalhe?.scenarios.find((c) => c.name.includes("+10% no ticket"));
+  assert.ok(cenario);
+  assert.equal(cenario.ticketPercent, 10);
+  assert.equal(Object.keys(cenario.rates).length, 1);
 });

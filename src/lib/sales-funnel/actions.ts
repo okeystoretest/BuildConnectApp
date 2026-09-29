@@ -9,7 +9,7 @@ import {
   requireFunnelScope,
   revalidateFunnelScope,
 } from "./guards";
-import { substituirCanais, substituirEtapas } from "./core";
+import { gravarCenario, substituirCanais, substituirEtapas } from "./core";
 
 export interface FunnelActionResult {
   ok: boolean;
@@ -77,6 +77,20 @@ const canaisSchema = z.object({
   // Sem mínimo: o canvas RECOMENDA 5, e recomendação vira AVISO no motor, não
   // trava na escrita. Quem está montando o funil salva com dois e volta depois.
   channels: z.array(canalSchema).max(12, "Máximo de 12 canais."),
+});
+
+const cenarioSchema = z.object({
+  slug: z.string().min(1),
+  funnelId: z.string().min(1),
+  scenarioId: z.string().optional(),
+  name: z.string().trim().min(1, "Dê um nome ao cenário.").max(60, "Nome muito longo."),
+  notes: z.string().trim().max(500, "Observação muito longa.").optional(),
+  // -100 zera o ticket de propósito: o motor devolve TICKET_INVALIDO e a tela
+  // mostra o erro na coluna do cenário. Barrar aqui esconderia a alavanca em
+  // vez de explicá-la.
+  ticketPercent: z.number().min(-100).max(500),
+  topPercent: z.number().min(-100).max(500),
+  rates: z.array(z.object({ stageId: z.string().min(1), rate: z.number().gt(0).max(100) })),
 });
 
 /** Sessão + permissão + escopo: o preâmbulo de toda escrita. */
@@ -238,4 +252,52 @@ export async function salvarCanais(input: unknown): Promise<FunnelActionResult> 
 
   await revalidateFunnelScope(scope.id, parsed.data.slug);
   return { ok: true, id: funil.id };
+}
+
+/** Cria ou substitui um cenário. Devolve o id do CENÁRIO. */
+export async function salvarCenario(input: unknown): Promise<FunnelActionResult> {
+  const parsed = cenarioSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  }
+  const { user, scope, error } = await abrirEscopo(parsed.data.slug);
+  if (!scope || !user) return { ok: false, error: error ?? undefined };
+
+  const funil = await prisma.salesFunnel.findFirst({
+    where: { id: parsed.data.funnelId, subsectorId: scope.id },
+    select: { id: true },
+  });
+  if (!funil) return { ok: false, error: "Funil não encontrado." };
+
+  const scenarioId = await gravarCenario({
+    scenarioId: parsed.data.scenarioId,
+    funnelId: funil.id,
+    name: parsed.data.name,
+    notes: parsed.data.notes,
+    ticketPercent: parsed.data.ticketPercent,
+    topPercent: parsed.data.topPercent,
+    rates: parsed.data.rates,
+    createdById: user.id,
+  });
+  if (!scenarioId) return { ok: false, error: "Cenário não encontrado." };
+
+  await revalidateFunnelScope(scope.id, parsed.data.slug);
+  return { ok: true, id: scenarioId };
+}
+
+export async function excluirCenario(
+  slug: string,
+  scenarioId: string,
+): Promise<FunnelActionResult> {
+  const { scope, error } = await abrirEscopo(slug);
+  if (!scope) return { ok: false, error: error ?? undefined };
+
+  // A checagem de escopo sobe pelo funil: o cenário não guarda subsetor.
+  const apagados = await prisma.salesFunnelScenario.deleteMany({
+    where: { id: scenarioId, funnel: { subsectorId: scope.id } },
+  });
+  if (apagados.count === 0) return { ok: false, error: "Cenário não encontrado." };
+
+  await revalidateFunnelScope(scope.id, slug);
+  return { ok: true };
 }
