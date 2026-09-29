@@ -67,7 +67,9 @@ export function SalesFunnelPanel({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">Funil de Vendas</h2>
+          <h2 className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+            Funil de Vendas
+          </h2>
           <p className="text-sm text-muted">
             Quantas prospecções o período exige para a meta ser batida.
             {data.inherited && ` Base compartilhada com ${data.scopeLabel}.`}
@@ -103,7 +105,7 @@ export function SalesFunnelPanel({
           }
         />
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
           {visiveis.map((funnel) => (
             <FunnelCard key={funnel.id} funnel={funnel} onOpen={onSelect} />
           ))}

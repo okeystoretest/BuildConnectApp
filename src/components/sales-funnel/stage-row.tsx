@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
+import { Collapse } from "@/components/ui/collapse";
 import { formatarVolume } from "@/lib/sales-funnel/format";
+import { cn } from "@/lib/utils";
 
 export interface EtapaEditavel {
   /** Chave local da linha. Não é o id do banco: as etapas são recriadas. */
@@ -15,11 +17,17 @@ export interface EtapaEditavel {
 }
 
 /**
- * Uma etapa no editor.
+ * Uma etapa no editor, em uma linha.
  *
  * A taxa é guardada como TEXTO. Converter a cada tecla apagaria o estado
  * intermediário: apagar "50" para escrever "30" passa por "" e por "5", e um
  * número não representa "".
+ *
+ * A regra de transição fica RECOLHIDA. Com 3 a 6 etapas na tela, outros
+ * tantos textareas abertos somavam centenas de pixels quase sempre vazios e
+ * empurravam o funil — o assunto da ferramenta — para fora da primeira
+ * dobra. Um ponto ao lado do botão indica quando há texto escrito, para que
+ * recolhido não vire esquecido.
  */
 export function StageRow({
   etapa,
@@ -40,95 +48,106 @@ export function StageRow({
   onMove: (delta: -1 | 1) => void;
   onRemove: () => void;
 }) {
+  const [aberto, setAberto] = useState(false);
+  const temRegra = etapa.transitionRule.trim().length > 0;
+
   return (
-    <div className="rounded-lg border border-border bg-surface-2 p-3">
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="min-w-[10rem] flex-1 space-y-1">
-          <label className="text-xs font-medium text-muted" htmlFor={`etapa-${etapa.key}`}>
-            Etapa {posicao + 1}
-          </label>
+    <div className="rounded-md border border-border bg-surface-2 px-2 py-1.5">
+      <div className="flex items-center gap-1.5">
+        <span className="w-4 shrink-0 text-center text-[10px] font-semibold text-muted">
+          {posicao + 1}
+        </span>
+
+        <Input
+          aria-label={`Nome da etapa ${posicao + 1}`}
+          value={etapa.label}
+          maxLength={40}
+          disabled={disabled}
+          placeholder="Oportunidades"
+          className="h-7 min-w-0 flex-1 text-sm"
+          onChange={(e) => onChange({ label: e.target.value })}
+        />
+
+        <div className="flex shrink-0 items-center gap-0.5">
           <Input
-            id={`etapa-${etapa.key}`}
-            value={etapa.label}
-            maxLength={40}
+            aria-label={`Taxa de conversão da etapa ${posicao + 1}, em porcento`}
+            inputMode="decimal"
+            value={etapa.rate}
             disabled={disabled}
-            placeholder="Oportunidades"
-            onChange={(e) => onChange({ label: e.target.value })}
+            className="h-7 w-12 px-1 text-center text-sm tabular-nums"
+            onChange={(e) => onChange({ rate: e.target.value })}
           />
+          <span className="text-[10px] text-muted">%</span>
         </div>
 
-        <div className="w-28 space-y-1">
-          <label className="text-xs font-medium text-muted" htmlFor={`taxa-${etapa.key}`}>
-            Converte
-          </label>
-          <div className="flex items-center gap-1">
-            <Input
-              id={`taxa-${etapa.key}`}
-              inputMode="decimal"
-              value={etapa.rate}
-              disabled={disabled}
-              onChange={(e) => onChange({ rate: e.target.value })}
-            />
-            <span className="text-sm text-muted">%</span>
-          </div>
-        </div>
+        <span className="w-14 shrink-0 text-right text-sm font-semibold tabular-nums">
+          {volume === null ? "—" : formatarVolume(volume)}
+        </span>
 
-        <div className="w-24 space-y-1">
-          <span className="block text-xs font-medium text-muted">Precisa de</span>
-          <p className="truncate text-lg font-semibold tabular-nums">
-            {volume === null ? "—" : formatarVolume(volume)}
-          </p>
-        </div>
+        <button
+          type="button"
+          onClick={() => setAberto((v) => !v)}
+          aria-expanded={aberto}
+          aria-label={`Regra de transição da etapa ${posicao + 1}`}
+          className={cn(
+            "relative flex h-6 w-6 shrink-0 items-center justify-center rounded text-xs",
+            "text-muted hover:bg-surface-3 hover:text-foreground",
+            aberto && "bg-surface-3 text-foreground",
+          )}
+        >
+          ≡
+          {temRegra && !aberto && (
+            <span className="absolute right-0.5 top-0.5 h-1.5 w-1.5 rounded-full bg-primary" />
+          )}
+        </button>
 
         {!disabled && (
-          <div className="flex gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
+          <div className="flex shrink-0">
+            <button
+              type="button"
               aria-label={`Mover ${etapa.label || "etapa"} para cima`}
               disabled={posicao === 0}
               onClick={() => onMove(-1)}
+              className="flex h-6 w-5 items-center justify-center rounded text-xs text-muted hover:bg-surface-3 disabled:opacity-30"
             >
               ↑
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
+            </button>
+            <button
+              type="button"
               aria-label={`Mover ${etapa.label || "etapa"} para baixo`}
               disabled={posicao === total - 1}
               onClick={() => onMove(1)}
+              className="flex h-6 w-5 items-center justify-center rounded text-xs text-muted hover:bg-surface-3 disabled:opacity-30"
             >
               ↓
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
+            </button>
+            <button
+              type="button"
               aria-label={`Remover ${etapa.label || "etapa"}`}
               // Três é o mínimo do funil: abaixo disso a action recusa, e
               // desabilitar aqui evita a pessoa descobrir isso só ao salvar.
               disabled={total <= 3}
               onClick={onRemove}
+              className="flex h-6 w-5 items-center justify-center rounded text-xs text-muted hover:bg-danger/15 hover:text-danger disabled:opacity-30"
             >
               ✕
-            </Button>
+            </button>
           </div>
         )}
       </div>
 
-      <div className="mt-2 space-y-1">
-        <label className="text-xs font-medium text-muted" htmlFor={`regra-${etapa.key}`}>
-          O que faz avançar para a próxima etapa
-        </label>
+      <Collapse open={aberto}>
         <Textarea
-          id={`regra-${etapa.key}`}
+          aria-label={`O que faz avançar da etapa ${posicao + 1}`}
           rows={2}
           maxLength={500}
           value={etapa.transitionRule}
           disabled={disabled}
-          placeholder="Ex.: proposta enviada e reunião de follow-up agendada"
+          placeholder="O que faz avançar para a próxima etapa"
+          className="mt-1.5 text-sm"
           onChange={(e) => onChange({ transitionRule: e.target.value })}
         />
-      </div>
+      </Collapse>
     </div>
   );
 }

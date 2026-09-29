@@ -2,14 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import { excluirCenario } from "@/lib/sales-funnel/actions";
 import { compararCenario } from "@/lib/sales-funnel/scenario";
-import { formatarReais, formatarVolume } from "@/lib/sales-funnel/format";
+import { formatarVolume } from "@/lib/sales-funnel/format";
 import type { FunnelInput, ScenarioInput } from "@/lib/sales-funnel/types";
 import type { FunnelScenarioItem } from "@/types/sales-funnel";
 import { cn } from "@/lib/utils";
 import { ScenarioModal } from "./scenario-modal";
+import { CanvasBlock } from "./canvas-block";
 
 /**
  * Bloco 5 do canvas: as simulações.
@@ -76,115 +76,101 @@ export function ScenariosSection({
   }
 
   return (
-    <section className="space-y-3 rounded-lg border border-border bg-surface-1 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h3 className="font-semibold">5 · Simulações</h3>
-          <p className="text-sm text-muted">
-            Aumente a boca do funil, melhore as taxas internas ou o ticket médio — e veja no que dá.
-          </p>
-        </div>
-        <Button
-          variant="secondary"
-          size="sm"
+    <CanvasBlock
+      numero={5}
+      titulo="Simulações"
+      acao={
+        <button
+          type="button"
           onClick={() => {
             setEditando(null);
             setAberto(true);
           }}
+          className="rounded px-1.5 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/10"
         >
-          {canManage ? "Novo cenário" : "Simular"}
-        </Button>
-      </div>
-
+          {canManage ? "+ cenário" : "simular"}
+        </button>
+      }
+    >
       {cenarios.length === 0 ? (
-        <p className="text-sm text-muted">Nenhum cenário salvo ainda.</p>
+        <p className="text-xs text-muted">
+          Nenhum cenário. Mexa no ticket ou nas taxas e veja o efeito sobre a meta.
+        </p>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {/* Coluna do plano, sempre primeira: é a régua das outras. */}
-          <div className="rounded-lg border border-primary/30 bg-primary/5 p-3">
-            <h4 className="font-semibold">Plano</h4>
-            <dl className="mt-2 space-y-1 text-sm">
-              <div className="flex justify-between gap-2">
-                <dt className="text-muted">Conversões</dt>
-                <dd className="font-semibold tabular-nums">
-                  {formatarVolume(base?.requiredConversions ?? 0)}
-                </dd>
-              </div>
-              <div className="flex justify-between gap-2">
-                <dt className="text-muted">Prospecções</dt>
-                <dd className="font-semibold tabular-nums">
-                  {formatarVolume(base?.topVolume ?? 0)}
-                </dd>
-              </div>
-              <div className="flex justify-between gap-2">
-                <dt className="text-muted">Faturamento</dt>
-                <dd className="font-semibold tabular-nums">
-                  {formatarReais(base?.projectedRevenueCents ?? 0)}
-                </dd>
-              </div>
-            </dl>
+        <div className="space-y-1">
+          {/* O plano é a régua: primeira linha, sempre. */}
+          <div className="flex items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-2 py-1.5">
+            <span className="min-w-0 flex-1 truncate text-sm font-semibold">Plano</span>
+            <span className="w-12 text-right text-sm font-semibold tabular-nums">
+              {formatarVolume(base?.requiredConversions ?? 0)}
+            </span>
+            <span className="w-14 text-right text-sm tabular-nums text-muted">
+              {formatarVolume(base?.topVolume ?? 0)}
+            </span>
+            <span className="w-5" />
+          </div>
+
+          <div className="flex items-center gap-2 px-2 text-[10px] uppercase tracking-wider text-muted">
+            <span className="min-w-0 flex-1" />
+            <span className="w-12 text-right">Conv.</span>
+            <span className="w-14 text-right">Prosp.</span>
+            <span className="w-5" />
           </div>
 
           {comparacoes.map(({ cenario, resultado }) => {
             const erro = resultado.cenario.diagnostics.find((d) => d.severity === "erro");
+            const deltaTopo = resultado.cenario.topVolume - (base?.topVolume ?? 0);
             return (
-              <div key={cenario.id} className="rounded-lg border border-border bg-surface-2 p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <h4 className="min-w-0 truncate font-semibold">{cenario.name}</h4>
+              <div
+                key={cenario.id}
+                className="rounded-md border border-border bg-surface-2 px-2 py-1.5"
+              >
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditando(cenario);
+                      setAberto(true);
+                    }}
+                    className="min-w-0 flex-1 truncate text-left text-sm hover:text-primary"
+                  >
+                    {cenario.name}
+                  </button>
+
+                  {erro ? (
+                    <span className="flex-1 truncate text-right text-xs text-danger">
+                      {erro.message}
+                    </span>
+                  ) : (
+                    <>
+                      <Valor
+                        valor={formatarVolume(resultado.cenario.requiredConversions)}
+                        delta={resultado.deltaConversions}
+                        className="w-12"
+                      />
+                      <Valor
+                        valor={formatarVolume(resultado.cenario.topVolume)}
+                        delta={deltaTopo}
+                        className="w-14"
+                      />
+                    </>
+                  )}
+
                   {canManage && (
-                    <div className="flex shrink-0 gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        aria-label={`Editar ${cenario.name}`}
-                        onClick={() => {
-                          setEditando(cenario);
-                          setAberto(true);
-                        }}
-                      >
-                        ✎
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        aria-label={`Excluir ${cenario.name}`}
-                        disabled={removendo === cenario.id}
-                        onClick={() => remover(cenario.id)}
-                      >
-                        ✕
-                      </Button>
-                    </div>
+                    <button
+                      type="button"
+                      aria-label={`Excluir ${cenario.name}`}
+                      disabled={removendo === cenario.id}
+                      onClick={() => remover(cenario.id)}
+                      className="flex h-6 w-5 shrink-0 items-center justify-center rounded text-xs text-muted hover:bg-danger/15 hover:text-danger disabled:opacity-40"
+                    >
+                      ✕
+                    </button>
                   )}
                 </div>
-
-                {erro ? (
-                  <p className="mt-2 text-sm text-danger">{erro.message}</p>
-                ) : (
-                  <dl className="mt-2 space-y-1 text-sm">
-                    <Linha
-                      rotulo="Conversões"
-                      valor={formatarVolume(resultado.cenario.requiredConversions)}
-                      delta={resultado.deltaConversions}
-                      // Menos conversões para a mesma meta é melhor.
-                      menorEMelhor
-                    />
-                    <Linha
-                      rotulo="Prospecções"
-                      valor={formatarVolume(resultado.cenario.topVolume)}
-                      delta={resultado.cenario.topVolume - (base?.topVolume ?? 0)}
-                      menorEMelhor
-                    />
-                    {/* Sem linha de faturamento aqui, de propósito.
-                        No sentido ascendente a meta é FIXA: o faturamento
-                        projetado é a meta mais a sobra do arredondamento para
-                        cima. Exibir a diferença pintava "+R$ 600,00" de verde
-                        num cenário que não traz um centavo a mais — só precisa
-                        de menos vendas para o mesmo dinheiro. O que muda de
-                        verdade são as duas linhas acima. */}
-                  </dl>
+                {cenario.notes && (
+                  <p className="mt-0.5 truncate text-[11px] text-muted">{cenario.notes}</p>
                 )}
-
-                {cenario.notes && <p className="mt-2 text-xs text-muted">{cenario.notes}</p>}
               </div>
             );
           })}
@@ -201,39 +187,39 @@ export function ScenariosSection({
         plano={planoSalvo}
         onClose={() => setAberto(false)}
       />
-    </section>
+    </CanvasBlock>
   );
 }
 
-/** Uma linha do comparativo, com o delta em relação ao plano. */
-function Linha({
-  rotulo,
+/**
+ * Um número do comparativo com seu delta.
+ *
+ * Menos conversões e menos prospecções para a mesma meta é MELHOR — por isso
+ * o verde é o negativo aqui, ao contrário do que a intuição diria.
+ */
+function Valor({
   valor,
   delta,
-  moeda,
-  menorEMelhor,
+  className,
 }: {
-  rotulo: string;
   valor: string;
   delta: number;
-  moeda?: boolean;
-  menorEMelhor?: boolean;
+  className?: string;
 }) {
-  const bom = menorEMelhor ? delta < 0 : delta > 0;
-  const texto = moeda ? formatarReais(Math.abs(delta)) : formatarVolume(Math.abs(delta));
-
   return (
-    <div className="flex items-baseline justify-between gap-2">
-      <dt className="text-muted">{rotulo}</dt>
-      <dd className="flex items-baseline gap-2">
-        <span className="font-semibold tabular-nums">{valor}</span>
-        {delta !== 0 && (
-          <span className={cn("text-xs tabular-nums", bom ? "text-primary" : "text-warning")}>
-            {delta > 0 ? "+" : "−"}
-            {texto}
-          </span>
-        )}
-      </dd>
-    </div>
+    <span className={cn("shrink-0 text-right", className)}>
+      <span className="block text-sm font-semibold tabular-nums">{valor}</span>
+      {delta !== 0 && (
+        <span
+          className={cn(
+            "block text-[10px] tabular-nums",
+            delta < 0 ? "text-primary" : "text-warning",
+          )}
+        >
+          {delta > 0 ? "+" : "−"}
+          {formatarVolume(Math.abs(delta))}
+        </span>
+      )}
+    </span>
   );
 }

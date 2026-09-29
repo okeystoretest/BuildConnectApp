@@ -42,7 +42,7 @@ export function FunnelCard({
       type="button"
       onClick={() => onOpen(funnel.id)}
       className={cn(
-        "flex w-full flex-col gap-2 rounded-lg border border-border bg-surface-2 p-4 text-left",
+        "flex w-full flex-col gap-1.5 rounded-lg border border-border bg-surface-2 p-3 text-left",
         "transition-colors hover:border-primary/40 hover:bg-surface-3",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
         funnel.status === "ARQUIVADO" && "opacity-60",
@@ -50,23 +50,42 @@ export function FunnelCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="truncate font-semibold">{funnel.name}</h3>
-          <p className="text-xs text-muted">{formatarData(funnel.referenceDate)}</p>
+          <h3 className="truncate text-sm font-semibold">{funnel.name}</h3>
+          <p className="text-[11px] uppercase tracking-wider text-muted">
+            {formatarData(funnel.referenceDate)}
+          </p>
         </div>
         <Badge tone={STATUS_TONE[funnel.status]}>{STATUS_LABEL[funnel.status]}</Badge>
       </div>
 
       {calculado ? (
-        <p className="text-sm text-muted">
-          {formatarReais(funnel.goalCents)} ·{" "}
-          <span className="text-fg">{formatarVolume(funnel.requiredConversions)} conversões</span> ·{" "}
-          {formatarVolume(funnel.topVolume)} prospecções
-        </p>
+        /* Três números na régua do canvas: quanto se quer, quantas vendas
+           isso exige, quantas prospecções o funil pede no topo. */
+        <dl className="grid grid-cols-3 gap-1 border-t border-border pt-1.5">
+          <div>
+            <dt className="text-[9px] uppercase tracking-wider text-muted">Meta</dt>
+            <dd className="truncate text-xs font-semibold tabular-nums">
+              {formatarReais(funnel.goalCents)}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-[9px] uppercase tracking-wider text-muted">Conversões</dt>
+            <dd className="text-xs font-semibold tabular-nums">
+              {formatarVolume(funnel.requiredConversions)}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-[9px] uppercase tracking-wider text-muted">Prospecções</dt>
+            <dd className="text-xs font-semibold tabular-nums">
+              {formatarVolume(funnel.topVolume)}
+            </dd>
+          </div>
+        </dl>
       ) : (
-        <p className="text-sm text-warning">Faltam dados para calcular</p>
+        <p className="border-t border-border pt-1.5 text-xs text-warning">
+          Faltam dados para calcular
+        </p>
       )}
-
-      {funnel.authorName && <p className="text-xs text-muted">Criado por {funnel.authorName}</p>}
     </button>
   );
 }

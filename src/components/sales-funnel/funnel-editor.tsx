@@ -20,6 +20,8 @@ import { MoneyInput } from "./money-input";
 import { StageRow, type EtapaEditavel } from "./stage-row";
 import { FunnelShape } from "./funnel-shape";
 import { DiagnosticsList } from "./diagnostics-list";
+import { CanvasBlock, FieldLabel } from "./canvas-block";
+import { PhaseRail } from "./phase-rail";
 import { ChannelsSection, type CanalEditavel } from "./channels-section";
 import { ScenariosSection } from "./scenarios-section";
 import { Glossary } from "./glossary";
@@ -54,7 +56,13 @@ function paraCanalEditavel(detail: SalesFunnelDetail): CanalEditavel[] {
 }
 
 /**
- * O editor de um funil.
+ * O editor de um funil, na disposição do canvas impresso.
+ *
+ * Três zonas, como a folha deitada: canais e simulações à esquerda, o funil
+ * no centro, os blocos numerados de etapas e meta à direita, e o trilho de
+ * fases na borda. A versão anterior empilhava cinco seções de largura total,
+ * o que gastava os 1800px da aba com um formulário de uma coluna e empurrava
+ * o funil — o assunto da ferramenta — para fora da primeira dobra.
  *
  * O cálculo roda AQUI, no cliente, a cada tecla — é o que faz a ferramenta
  * ser uma calculadora e não um formulário. O mesmo motor roda no servidor
@@ -229,223 +237,248 @@ export function FunnelEditor({
 
   const destaque =
     modo === "meta"
-      ? `Precisaria de ${formatarVolume(resultado.requiredConversions)} conversões`
-      : `Renderia ${formatarReais(resultado.projectedRevenueCents)}`;
+      ? `${formatarVolume(resultado.requiredConversions)} conversões`
+      : formatarReais(resultado.projectedRevenueCents);
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Button variant="ghost" onClick={onBack}>
-          ← Voltar para a lista
+    <div className="space-y-3">
+      {/* Faixa de identificação: quem é este funil e o que fazer com ele.
+          Nome e período saíram do bloco Meta — são identificação, não meta. */}
+      <header className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface-1 px-3 py-2">
+        <Button variant="ghost" size="sm" onClick={onBack} aria-label="Voltar para a lista">
+          ←
         </Button>
 
-        {canManage && (
-          <div className="flex flex-wrap items-center gap-2">
-            <Segmented
-              options={[
-                { value: "RASCUNHO", label: "Rascunho" },
-                { value: "ATIVO", label: "Ativo" },
-                { value: "ARQUIVADO", label: "Arquivado" },
-              ]}
-              value={detail.status}
-              onChange={trocarSituacao}
-              ariaLabel="Situação do funil"
-            />
-            {confirmandoExclusao ? (
-              <>
-                <span className="text-sm text-danger">Excluir para sempre?</span>
-                <Button variant="danger" size="sm" disabled={salvando} onClick={excluir}>
-                  Confirmar
-                </Button>
+        <Input
+          aria-label="Nome do funil"
+          value={name}
+          maxLength={80}
+          disabled={!canManage}
+          className="h-8 w-44 font-semibold"
+          onChange={(e) => setName(e.target.value)}
+        />
+        <Input
+          aria-label="Período do funil"
+          type="date"
+          value={referenceDate}
+          disabled={!canManage}
+          className="h-8 w-36 text-sm"
+          onChange={(e) => setReferenceDate(e.target.value)}
+        />
+
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {canManage && (
+            <>
+              <Segmented
+                options={[
+                  { value: "RASCUNHO", label: "Rascunho" },
+                  { value: "ATIVO", label: "Ativo" },
+                  { value: "ARQUIVADO", label: "Arquivado" },
+                ]}
+                value={detail.status}
+                onChange={trocarSituacao}
+                ariaLabel="Situação do funil"
+              />
+              {confirmandoExclusao ? (
+                <>
+                  <span className="text-xs text-danger">Excluir para sempre?</span>
+                  <Button variant="danger" size="sm" disabled={salvando} onClick={excluir}>
+                    Confirmar
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={salvando}
+                    onClick={() => setConfirmandoExclusao(false)}
+                  >
+                    Cancelar
+                  </Button>
+                </>
+              ) : (
                 <Button
                   variant="ghost"
                   size="sm"
                   disabled={salvando}
-                  onClick={() => setConfirmandoExclusao(false)}
+                  onClick={() => setConfirmandoExclusao(true)}
                 >
-                  Cancelar
+                  Excluir
                 </Button>
-              </>
-            ) : (
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={salvando}
-                onClick={() => setConfirmandoExclusao(true)}
-              >
-                Excluir
+              )}
+              <Button size="sm" onClick={salvar} disabled={salvando}>
+                {salvando ? "Salvando…" : "Salvar"}
               </Button>
-            )}
-            <Button onClick={salvar} disabled={salvando}>
-              {salvando ? "Salvando…" : "Salvar"}
-            </Button>
-          </div>
-        )}
-      </div>
+            </>
+          )}
+        </div>
+      </header>
 
       {!canManage && (
-        <p className="rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-muted">
+        <p className="rounded-md border border-border bg-surface-2 px-3 py-1.5 text-xs text-muted">
           Você pode mexer nos números para simular. Só Gestor ou Admin salva alterações no funil.
         </p>
       )}
 
       {erro && <p className="text-sm text-danger">{erro}</p>}
 
-      {/* 1 · Definição da meta */}
-      <section className="space-y-3 rounded-lg border border-border bg-surface-1 p-4">
-        <h3 className="font-semibold">1 · Meta</h3>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="space-y-1">
-            <label htmlFor="ed-nome" className="text-sm font-medium">
-              Funil
-            </label>
-            <Input
-              id="ed-nome"
-              value={name}
-              maxLength={80}
-              disabled={!canManage}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </div>
-          <div className="space-y-1">
-            <label htmlFor="ed-data" className="text-sm font-medium">
-              Período
-            </label>
-            <Input
-              id="ed-data"
-              type="date"
-              value={referenceDate}
-              disabled={!canManage}
-              onChange={(e) => setReferenceDate(e.target.value)}
-            />
-          </div>
-          <MoneyInput
-            id="ed-meta"
-            label="Meta global"
-            cents={goalCents}
+      {/*
+        As três zonas da folha. Abaixo de 1280px viram uma coluna, na ordem
+        Etapas/Meta → Funil → Canais → Simulações: num monitor estreito o
+        número da meta é o que se procura primeiro, e o funil só faz sentido
+        depois dele.
+      */}
+      <div className="grid gap-3 xl:grid-cols-[19rem_minmax(0,1fr)_20rem_auto]">
+        {/* Coluna esquerda: de onde vêm as oportunidades, e os "e se". */}
+        <div className="order-3 space-y-3 xl:order-1">
+          <ChannelsSection
+            canais={canais}
+            volumes={resultado.channels}
+            cobertura={resultado.channelCoverage}
             disabled={!canManage}
-            onChange={setGoalCents}
+            onChange={(key, patch) =>
+              setCanais((atual) => atual.map((c) => (c.key === key ? { ...c, ...patch } : c)))
+            }
+            onAdd={() =>
+              setCanais((a) => [...a, { key: novaChave(), label: "", strategy: "", share: "" }])
+            }
+            onRemove={(key) => setCanais((a) => a.filter((c) => c.key !== key))}
           />
-          <MoneyInput
-            id="ed-ticket"
-            label="Ticket médio"
-            cents={ticketCents}
-            disabled={!canManage}
-            onChange={setTicketCents}
+
+          <ScenariosSection
+            slug={slug}
+            funnelId={detail.id}
+            plano={input}
+            etapasSalvas={detail.stages.map((s) => ({ id: s.id, label: s.label, rate: s.rate }))}
+            cenarios={detail.scenarios}
+            canManage={canManage}
           />
+
+          <Glossary />
         </div>
 
-        <Segmented
-          options={[
-            { value: "meta", label: "Meta → Prospecções" },
-            { value: "capacidade", label: "Capacidade → Faturamento" },
-          ]}
-          value={modo}
-          onChange={setModo}
-          ariaLabel="Sentido do cálculo"
-        />
-
-        {modo === "capacidade" && (
-          <div className="w-56 space-y-1">
-            <label htmlFor="ed-capacidade" className="text-sm font-medium">
-              Prospecções no período
-            </label>
-            <Input
-              id="ed-capacidade"
-              inputMode="numeric"
-              value={capacidade}
-              placeholder="600"
-              onChange={(e) => setCapacidade(e.target.value)}
+        {/* Centro: o funil, que é o assunto. */}
+        <div className="order-2 flex flex-col items-center rounded-lg border border-border bg-surface-1 p-3">
+          {resultado.stages.length > 0 ? (
+            <FunnelShape
+              stages={resultado.stages}
+              channels={resultado.channels}
+              conversoes={resultado.requiredConversions}
             />
-          </div>
-        )}
-
-        <p className="text-3xl font-bold">{destaque}</p>
-        <DiagnosticsList diagnostics={resultado.diagnostics} />
-      </section>
-
-      {/* 2 e 3 · Etapas, taxas e regras de transição */}
-      <section className="space-y-3 rounded-lg border border-border bg-surface-1 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h3 className="font-semibold">2 · Etapas e taxas</h3>
-          {canManage && (
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={etapas.length >= 6}
-              onClick={() =>
-                setEtapas((a) => [
-                  ...a,
-                  { key: novaChave(), label: "", rate: "50", transitionRule: "" },
-                ])
-              }
-            >
-              Acrescentar etapa
-            </Button>
+          ) : (
+            <p className="py-16 text-center text-sm text-muted">
+              Preencha a meta, o ticket e as taxas para o funil aparecer.
+            </p>
           )}
+
+          {resultado.topVolume > 0 && (
+            <p className="mt-1 text-center text-[11px] uppercase tracking-[0.12em] text-muted">
+              Taxa externa {formatarPercentual(resultado.externalRate)}
+            </p>
+          )}
+
+          <DiagnosticsList diagnostics={resultado.diagnostics} className="mt-3 w-full" />
         </div>
 
-        {temCenarioComTaxa && canManage && (
-          <p className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
-            Este funil tem cenário com taxa própria. Salvar uma mudança nas etapas recria a lista, e
-            as taxas de cenário que apontavam para elas são perdidas.
-          </p>
-        )}
-
-        <div className="grid gap-4 lg:grid-cols-[1fr_auto]">
-          <div className="space-y-2">
-            {etapas.map((etapa, i) => (
-              <StageRow
-                key={etapa.key}
-                etapa={etapa}
-                volume={volumePorChave.get(etapa.key) ?? null}
-                posicao={i}
-                total={etapas.length}
-                disabled={!canManage}
-                onChange={(patch) => mexerNaEtapa(etapa.key, patch)}
-                onMove={(delta) => moverEtapa(etapa.key, delta)}
-                onRemove={() => setEtapas((a) => a.filter((e) => e.key !== etapa.key))}
-              />
-            ))}
-          </div>
-
-          <div className="flex flex-col items-center gap-2 lg:w-[340px]">
-            <FunnelShape stages={resultado.stages} />
-            {resultado.topVolume > 0 && (
-              <p className="text-center text-sm text-muted">
-                Taxa externa: {formatarPercentual(resultado.externalRate)} —{" "}
-                {formatarVolume(resultado.requiredConversions)} de{" "}
-                {formatarVolume(resultado.topVolume)}
+        {/* Coluna direita: etapas em cima, meta embaixo — a ordem da folha,
+            que é de baixo para cima porque o cálculo é de baixo para cima. */}
+        <div className="order-1 space-y-3 xl:order-3">
+          <CanvasBlock
+            numero={2}
+            titulo="Etapas e taxas"
+            acao={
+              canManage && (
+                <button
+                  type="button"
+                  disabled={etapas.length >= 6}
+                  onClick={() =>
+                    setEtapas((a) => [
+                      ...a,
+                      { key: novaChave(), label: "", rate: "50", transitionRule: "" },
+                    ])
+                  }
+                  className="rounded px-1.5 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/10 disabled:opacity-40"
+                >
+                  + etapa
+                </button>
+              )
+            }
+          >
+            {temCenarioComTaxa && canManage && (
+              <p className="mb-2 rounded border border-warning/30 bg-warning/10 px-2 py-1.5 text-[11px] text-warning">
+                Há cenário com taxa própria. Salvar mudança nas etapas recria a lista, e essas taxas
+                se perdem.
               </p>
             )}
-          </div>
+            <div className="space-y-1">
+              {etapas.map((etapa, i) => (
+                <StageRow
+                  key={etapa.key}
+                  etapa={etapa}
+                  volume={volumePorChave.get(etapa.key) ?? null}
+                  posicao={i}
+                  total={etapas.length}
+                  disabled={!canManage}
+                  onChange={(patch) => mexerNaEtapa(etapa.key, patch)}
+                  onMove={(delta) => moverEtapa(etapa.key, delta)}
+                  onRemove={() => setEtapas((a) => a.filter((e) => e.key !== etapa.key))}
+                />
+              ))}
+            </div>
+          </CanvasBlock>
+
+          <CanvasBlock numero={1} titulo="Definição da meta">
+            <div className="space-y-2">
+              <MoneyInput
+                id="ed-meta"
+                label="Meta global"
+                cents={goalCents}
+                disabled={!canManage}
+                onChange={setGoalCents}
+              />
+              <MoneyInput
+                id="ed-ticket"
+                label="Ticket médio"
+                cents={ticketCents}
+                disabled={!canManage}
+                onChange={setTicketCents}
+              />
+
+              <Segmented
+                options={[
+                  { value: "meta", label: "Meta → Prosp." },
+                  { value: "capacidade", label: "Capac. → R$" },
+                ]}
+                value={modo}
+                onChange={setModo}
+                ariaLabel="Sentido do cálculo"
+              />
+
+              {modo === "capacidade" && (
+                <div className="space-y-1">
+                  <FieldLabel htmlFor="ed-capacidade">Prospecções no período</FieldLabel>
+                  <Input
+                    id="ed-capacidade"
+                    inputMode="numeric"
+                    value={capacidade}
+                    placeholder="600"
+                    className="h-8 text-sm tabular-nums"
+                    onChange={(e) => setCapacidade(e.target.value)}
+                  />
+                </div>
+              )}
+
+              <div className="rounded-md border border-primary/25 bg-primary/5 px-2.5 py-2">
+                <FieldLabel>{modo === "meta" ? "Precisaria de" : "Renderia"}</FieldLabel>
+                <p className="mt-0.5 text-2xl font-bold leading-tight tabular-nums">{destaque}</p>
+              </div>
+            </div>
+          </CanvasBlock>
         </div>
-      </section>
 
-      <ChannelsSection
-        canais={canais}
-        volumes={resultado.channels}
-        cobertura={resultado.channelCoverage}
-        disabled={!canManage}
-        onChange={(key, patch) =>
-          setCanais((atual) => atual.map((c) => (c.key === key ? { ...c, ...patch } : c)))
-        }
-        onAdd={() =>
-          setCanais((a) => [...a, { key: novaChave(), label: "", strategy: "", share: "" }])
-        }
-        onRemove={(key) => setCanais((a) => a.filter((c) => c.key !== key))}
-      />
-
-      <ScenariosSection
-        slug={slug}
-        funnelId={detail.id}
-        plano={input}
-        etapasSalvas={detail.stages.map((s) => ({ id: s.id, label: s.label, rate: s.rate }))}
-        cenarios={detail.scenarios}
-        canManage={canManage}
-      />
-
-      <Glossary />
+        <div className="order-4">
+          <PhaseRail />
+        </div>
+      </div>
     </div>
   );
 }
+
