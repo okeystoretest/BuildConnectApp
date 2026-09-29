@@ -1,0 +1,124 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Segmented } from "@/components/ui/segmented";
+import type { SalesFunnelData, SalesFunnelDetail } from "@/types/sales-funnel";
+import { FunnelCard } from "./funnel-card";
+import { NewFunnelModal } from "./new-funnel-modal";
+
+type Filtro = "ativos" | "todos";
+
+/**
+ * A ferramenta Funil de Vendas dentro da aba do setor.
+ *
+ * Duas telas: a lista de funis e o editor de um deles. Qual está aberta vem
+ * da URL (`?funil=`), e não de estado local, porque o DETALHE é carregado no
+ * servidor — recarregar a página no meio de uma edição tem de voltar para o
+ * mesmo funil.
+ */
+export function SalesFunnelPanel({
+  slug,
+  data,
+  detail,
+  onSelect,
+}: {
+  slug: string;
+  data: SalesFunnelData;
+  /** Funil aberto, resolvido no servidor a partir de `?funil=`. */
+  detail?: SalesFunnelDetail | null;
+  /** Escreve `?funil=` na URL. Null volta para a lista. */
+  onSelect: (id: string | null) => void;
+}) {
+  const [novoAberto, setNovoAberto] = useState(false);
+  const [filtro, setFiltro] = useState<Filtro>("ativos");
+
+  // Arquivados escondidos por padrão: eles são histórico, e um setor que
+  // planeja todo mês acumularia doze cards de ruído por ano.
+  const visiveis = useMemo(
+    () =>
+      filtro === "todos"
+        ? data.funnels
+        : data.funnels.filter((f) => f.status !== "ARQUIVADO"),
+    [data.funnels, filtro],
+  );
+
+  const arquivados = data.funnels.length - data.funnels.filter((f) => f.status !== "ARQUIVADO").length;
+
+  if (detail) {
+    // Placeholder da fatia 2: o editor entra na próxima. Já prova o caminho
+    // inteiro — URL, carga do detalhe no servidor e volta para a lista.
+    return (
+      <div className="space-y-3">
+        <Button variant="ghost" onClick={() => onSelect(null)}>
+          ← Voltar para a lista
+        </Button>
+        <h2 className="text-lg font-semibold">{detail.name}</h2>
+        <p className="text-sm text-muted">
+          {detail.stages.length} etapas · {detail.requiredConversions} conversões ·{" "}
+          {detail.topVolume} prospecções
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">Funil de Vendas</h2>
+          <p className="text-sm text-muted">
+            Quantas prospecções o período exige para a meta ser batida.
+            {data.inherited && ` Base compartilhada com ${data.scopeLabel}.`}
+          </p>
+        </div>
+        {data.canManage && <Button onClick={() => setNovoAberto(true)}>Novo funil</Button>}
+      </div>
+
+      {arquivados > 0 && (
+        <Segmented
+          options={[
+            { value: "ativos", label: "Em uso" },
+            { value: "todos", label: `Todos (${data.funnels.length})` },
+          ]}
+          value={filtro}
+          onChange={setFiltro}
+          ariaLabel="Filtrar funis por situação"
+        />
+      )}
+
+      {visiveis.length === 0 ? (
+        <EmptyState
+          title="Nenhum funil por aqui"
+          description={
+            data.canManage
+              ? "Crie um funil para calcular quantas oportunidades o período exige."
+              : "Quando a gestão criar um funil, ele aparece aqui."
+          }
+          action={
+            data.canManage ? (
+              <Button onClick={() => setNovoAberto(true)}>Criar o primeiro</Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {visiveis.map((funnel) => (
+            <FunnelCard key={funnel.id} funnel={funnel} onOpen={onSelect} />
+          ))}
+        </div>
+      )}
+
+      <NewFunnelModal
+        slug={slug}
+        open={novoAberto}
+        onClose={() => setNovoAberto(false)}
+        onCreated={(id) => {
+          setNovoAberto(false);
+          onSelect(id);
+        }}
+      />
+    </div>
+  );
+}

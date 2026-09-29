@@ -5,6 +5,7 @@ import { SectorPage } from "@/components/sector/sector-page";
 import { getSectorContent } from "@/lib/sector-data";
 import { getSectorEvaluations } from "@/lib/sector-evaluations-data";
 import { getCronogramaData } from "@/lib/cronograma-data";
+import { getSalesFunnelData, getSalesFunnelDetail } from "@/lib/sales-funnel/data";
 import { getSectorWelcomeVideo } from "@/lib/welcome-video-data";
 import { getVerifiedSession } from "@/lib/auth/require-user";
 import { resolveAccessibleSlugs, canAccessSlug } from "@/lib/auth/access";
@@ -13,7 +14,8 @@ import { prisma } from "@/lib/db/prisma";
 import type { Role } from "@/types";
 
 /** Query da URL depois de resolvida (Next 15 entrega como Promise). */
-type SectorSearchParams = { aba?: string; ano?: string; mes?: string };
+/** `funil` guarda qual funil está aberto no editor. */
+type SectorSearchParams = { aba?: string; ano?: string; mes?: string; funil?: string };
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -82,12 +84,23 @@ export default async function Page({ params, searchParams }: PageProps) {
 
   const welcome = await getSectorWelcomeVideo(slug, session.userId);
 
+  // Funil de Vendas: null quando o subsetor (ou sua origem) não habilita a
+  // ferramenta — mesma regra do Cronograma.
+  const salesFunnel = await getSalesFunnelData(slug, role);
+  // O detalhe só é consultado quando a URL pede um funil. O id passa pelo
+  // servidor, que o confere contra o escopo: id de outro setor devolve null e
+  // a tela cai na lista, em vez de abrir o que não devia.
+  const salesFunnelDetail =
+    salesFunnel && query?.funil ? await getSalesFunnelDetail(slug, query.funil) : null;
+
   return (
     <SectorPage
       sector={sector}
       welcome={welcome}
       evaluations={evaluations}
       cronograma={cronograma}
+      salesFunnel={salesFunnel}
+      salesFunnelDetail={salesFunnelDetail}
       initialTab={query?.aba}
     />
   );

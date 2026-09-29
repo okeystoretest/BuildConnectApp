@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { Tabs, TabPanel, type TabItem } from "@/components/ui/tabs";
@@ -26,8 +27,10 @@ import { SectorWelcomeVideo } from "./welcome-video";
 import type { SectorWelcomeVideo as SectorWelcomeVideoData } from "@/lib/welcome-video-data";
 import { EvaluationsPanel } from "@/components/hr/evaluations-panel";
 import { CronogramaPanel } from "@/components/cronograma/cronograma-panel";
+import { SalesFunnelPanel } from "@/components/sales-funnel/sales-funnel-panel";
 import type { SectorEvaluations } from "@/types/evaluation";
 import type { CronogramaData } from "@/types/cronograma";
+import type { SalesFunnelData, SalesFunnelDetail } from "@/types/sales-funnel";
 
 interface TabDef extends TabItem {
   id: TabId;
@@ -64,6 +67,8 @@ const AVALIACOES_TAB: TabDef = {
 };
 /** Aba da ferramenta Cronograma — só entra quando o subsetor a habilita. */
 const CRONOGRAMA_TAB: TabDef = { id: "cronograma", label: "Cronograma" };
+/** Aba da ferramenta Funil de Vendas — só entra quando o subsetor a habilita. */
+const FUNIL_TAB: TabDef = { id: "funil-vendas", label: "Funil de Vendas" };
 
 /*
  * Aplicativos não é mais aba. Os atalhos vivem abaixo da barra de abas, à
@@ -92,17 +97,43 @@ export function SectorPage({
   sector,
   evaluations,
   cronograma,
+  salesFunnel,
+  salesFunnelDetail,
   initialTab,
   welcome,
 }: {
   sector: SectorContent;
   evaluations?: SectorEvaluations | null;
   cronograma?: CronogramaData | null;
+  /** Funil de Vendas: null quando o subsetor (ou sua origem) não habilita. */
+  salesFunnel?: SalesFunnelData | null;
+  /** Funil aberto, resolvido no servidor a partir de `?funil=`. */
+  salesFunnelDetail?: SalesFunnelDetail | null;
   initialTab?: string;
   /** Vídeo de boas-vindas do setor (modal + card de gestão). */
   welcome?: SectorWelcomeVideoData | null;
 }) {
   const { can } = useRole();
+  const router = useRouter();
+
+  /**
+   * Abre (ou fecha) um funil escrevendo `?funil=` na URL.
+   *
+   * Diferente da troca de aba, que é `replaceState` puro, aqui é preciso
+   * navegar de verdade: o DETALHE do funil é carregado no servidor, e sem a
+   * ida não há o que renderizar. `scroll: false` evita o pulo para o topo ao
+   * voltar para a lista.
+   */
+  const selecionarFunil = useCallback(
+    (id: string | null) => {
+      const url = new URL(window.location.href);
+      if (id) url.searchParams.set("funil", id);
+      else url.searchParams.delete("funil");
+      url.searchParams.set("aba", "funil-vendas");
+      router.push(`${url.pathname}${url.search}`, { scroll: false });
+    },
+    [router],
+  );
 
   const tabs = useMemo(() => {
     const source =
@@ -115,8 +146,18 @@ export function SectorPage({
         : cronograma
           ? CRONOGRAMA_LAYOUT_TABS
           : PADRAO_TABS;
-    return source.filter((tab) => !tab.permission || can(tab.permission));
-  }, [sector.kind, can, cronograma]);
+    // O Funil entra logo depois do Cronograma: as duas são ferramentas de
+    // planejamento do mesmo setor, e separá-las por abas de conteúdo faria
+    // procurar uma no lugar da outra.
+    const comFunil = salesFunnel
+      ? [
+          ...source.slice(0, source.indexOf(CRONOGRAMA_TAB) + 1 || source.length),
+          FUNIL_TAB,
+          ...source.slice(source.indexOf(CRONOGRAMA_TAB) + 1 || source.length),
+        ]
+      : source;
+    return comFunil.filter((tab) => !tab.permission || can(tab.permission));
+  }, [sector.kind, can, cronograma, salesFunnel]);
 
   const [active, setActive] = useState<TabId>(() => {
     const requested = tabs.find((tab) => tab.id === initialTab)?.id;
@@ -227,7 +268,7 @@ export function SectorPage({
       title={sector.name}
       // Só o Cronograma ocupa a tela toda; as demais abas mantêm a largura
       // de leitura confortável.
-      wide={activeId === "cronograma"}
+      wide={activeId === "cronograma" || activeId === "funil-vendas"}
     >
       <PageHeader
         title={sector.name}
@@ -356,6 +397,15 @@ export function SectorPage({
 
         {activeId === "cronograma" && cronograma && (
           <CronogramaPanel slug={sector.slug} sectorLabel={sector.name} data={cronograma} />
+        )}
+
+        {activeId === "funil-vendas" && salesFunnel && (
+          <SalesFunnelPanel
+            slug={sector.slug}
+            data={salesFunnel}
+            detail={salesFunnelDetail}
+            onSelect={selecionarFunil}
+          />
         )}
 
       </TabPanel>
