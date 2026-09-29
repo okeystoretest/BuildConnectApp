@@ -50,7 +50,7 @@ export function ChannelsSection({
 
   return (
     <CanvasBlock
-      numero={4}
+      numero={3}
       titulo="Canais de venda"
       acao={
         !disabled && (
@@ -122,6 +122,9 @@ export function ChannelsSection({
                     />
                     <Input
                       aria-label={`Nome do canal ${i + 1}`}
+                      // O nome inteiro no tooltip: a coluna é estreita e um
+                      // "Base de clientes inativos" não cabe no campo.
+                      title={canal.label || undefined}
                       value={canal.label}
                       maxLength={40}
                       disabled={disabled}

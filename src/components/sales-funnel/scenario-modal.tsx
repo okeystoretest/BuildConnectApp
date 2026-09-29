@@ -159,9 +159,16 @@ export function ScenarioModal({
 
         <div className="space-y-2">
           <span className="text-sm font-medium">Taxas internas</span>
+          <p className="text-xs text-muted">
+            Quanto de cada etapa avança para a seguinte. Em branco, herda a taxa do plano.
+          </p>
           {etapas.map((etapa) => (
             <div key={etapa.id} className="flex items-center gap-2">
-              <label htmlFor={`cen-taxa-${etapa.id}`} className="min-w-0 flex-1 truncate text-sm">
+              <label
+                htmlFor={`cen-taxa-${etapa.id}`}
+                title={etapa.label}
+                className="min-w-0 flex-1 text-sm"
+              >
                 {etapa.label}
               </label>
               <Input

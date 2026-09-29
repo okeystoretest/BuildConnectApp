@@ -77,7 +77,7 @@ export function ScenariosSection({
 
   return (
     <CanvasBlock
-      numero={5}
+      numero={4}
       titulo="Simulações"
       acao={
         <button

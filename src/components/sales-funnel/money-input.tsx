@@ -2,24 +2,26 @@
 
 import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
-import { formatarReais, } from "@/lib/sales-funnel/format";
-import { parseMoedaParaCentavos } from "@/lib/sales-funnel/math";
+import { formatarReais } from "@/lib/sales-funnel/format";
+import { FieldLabel } from "./canvas-block";
 
 /**
- * Campo de dinheiro.
+ * Campo de dinheiro com máscara BRL.
  *
- * Guarda o TEXTO enquanto a pessoa digita e só converte para centavos quando
- * o valor é legível. Converter a cada tecla apagaria o que ela está no meio
- * de escrever — "50.0" viraria "R$ 50,00" e o resto das teclas cairia em
- * cima de um valor que ela não pediu.
+ * A máscara é de CENTAVOS: cada dígito digitado entra pela direita e empurra
+ * os anteriores, então "36500000" vira "R$ 365.000,00" enquanto se digita.
+ * É o comportamento padrão de campo monetário no Brasil, e o que dispensa o
+ * rótulo de conferência que existia embaixo do campo — o valor formatado É o
+ * que está escrito.
  *
- * Valor ilegível vira `null` para o pai, que então sabe distinguir "não
- * preencheu" de "preencheu zero". É por isso que o parser devolve null em vez
- * de NaN convertido em 0.
+ * Colar também funciona: qualquer texto colado é reduzido aos seus dígitos.
+ * Campo vazio devolve `null` ao pai, que então distingue "não preencheu" de
+ * "preencheu zero".
  */
-/** Centavos -> o texto do campo, no formato que a pessoa digitaria. */
-function paraTexto(cents: number | null): string {
-  return cents === null ? "" : (cents / 100).toFixed(2).replace(".", ",");
+
+/** Só os dígitos do que a pessoa digitou ou colou. */
+function apenasDigitos(texto: string): string {
+  return texto.replace(/\D/g, "");
 }
 
 export function MoneyInput({
@@ -35,59 +37,45 @@ export function MoneyInput({
   disabled?: boolean;
   id: string;
 }) {
-  const [texto, setTexto] = useState(() => paraTexto(cents));
+  const [texto, setTexto] = useState(() => (cents === null ? "" : formatarReais(cents)));
   const [focado, setFocado] = useState(false);
 
-  const invalido = texto.trim().length > 0 && parseMoedaParaCentavos(texto) === null;
-
   /*
-   * Sincroniza com o valor de fora — mas nunca por cima do que a pessoa está
-   * escrevendo, e nunca por cima de um valor INVÁLIDO.
-   *
-   * A versão anterior zerava `tocado` no blur, o efeito reagia e, como um
-   * texto ilegível já havia empurrado `null` para o pai, o campo ficava em
-   * branco: um typo em "50.000,00" apagava da tela o valor salvo, junto com
-   * a mensagem que explicava o erro. Quem errou precisa continuar vendo o
-   * que errou para poder corrigir.
+   * Sincroniza com o valor de fora — nunca por cima do que está sendo
+   * digitado. Com a máscara não existe mais estado inválido: o que não é
+   * dígito não entra, então o campo não tem como ficar ilegível.
    */
   useEffect(() => {
-    if (focado || invalido) return;
-    setTexto(paraTexto(cents));
-  }, [cents, focado, invalido]);
+    if (focado) return;
+    setTexto(cents === null ? "" : formatarReais(cents));
+  }, [cents, focado]);
 
   return (
     <div className="space-y-1">
-      <label htmlFor={id} className="text-sm font-medium">
-        {label}
-      </label>
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <Input
         id={id}
-        inputMode="decimal"
+        inputMode="numeric"
         value={texto}
         disabled={disabled}
-        placeholder="0,00"
-        aria-invalid={invalido || undefined}
-        aria-describedby={invalido ? `${id}-erro` : undefined}
+        placeholder="R$ 0,00"
+        className="h-8 text-sm tabular-nums"
         onFocus={() => setFocado(true)}
+        onBlur={() => setFocado(false)}
         onChange={(e) => {
-          const valor = e.target.value;
-          setTexto(valor);
-          onChange(valor.trim().length === 0 ? null : parseMoedaParaCentavos(valor));
-        }}
-        onBlur={() => {
-          setFocado(false);
-          // Normaliza a grafia só quando o valor é válido.
-          const parsed = parseMoedaParaCentavos(texto);
-          if (parsed !== null) setTexto(paraTexto(parsed));
+          const digitos = apenasDigitos(e.target.value);
+          if (digitos.length === 0) {
+            setTexto("");
+            onChange(null);
+            return;
+          }
+          // O limite acompanha o Decimal(14,2) do banco: acima disso a action
+          // recusaria, e recusar na digitação evita a surpresa no Salvar.
+          const valor = Math.min(Number(digitos), 999_999_999_99);
+          setTexto(formatarReais(valor));
+          onChange(valor);
         }}
       />
-      {invalido ? (
-        <p id={`${id}-erro`} className="text-xs text-danger">
-          Valor inválido. Use o formato 50.000,00.
-        </p>
-      ) : (
-        cents !== null && cents > 0 && <p className="text-xs text-muted">{formatarReais(cents)}</p>
-      )}
     </div>
   );
 }

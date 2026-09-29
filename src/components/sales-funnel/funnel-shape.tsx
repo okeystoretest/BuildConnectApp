@@ -1,4 +1,9 @@
-import { formatarVolume } from "@/lib/sales-funnel/format";
+import { formatarPercentual, formatarVolume } from "@/lib/sales-funnel/format";
+
+/** Corta o nome do canal no desenho; o nome inteiro fica no tooltip. */
+function recortar(texto: string): string {
+  return texto.length > 12 ? `${texto.slice(0, 11)}…` : texto;
+}
 import type { ChannelVolume, StageVolume } from "@/lib/sales-funnel/types";
 
 /**
@@ -12,9 +17,9 @@ const TONS = ["#3b82f6", "#6366f1", "#8b5cf6", "#d946ef", "#f43f5e", "#ef4444"];
 const LARGURA = 560;
 const ALTURA_FAIXA = 66;
 /** Espaço do topo para a linha de canais, como na folha. */
-const TOPO_CANAIS = 64;
+const TOPO_CANAIS = 74;
 /** Espaço do rodapé para o círculo de negócios convertidos. */
-const RODAPE = 92;
+const RODAPE = 100;
 /** Piso da largura: nenhuma faixa some, mesmo com taxa muito baixa. */
 const MINIMO = 0.14;
 
@@ -77,6 +82,10 @@ export function FunnelShape({
             const cx = passo * (i + 1);
             return (
               <g key={canal.id}>
+                {/* Tooltip nativo: o nome inteiro, que o recorte pode cortar. */}
+                <title>{`${canal.label || "Canal sem nome"} — ${formatarPercentual(
+                  canal.share,
+                )} · ${formatarVolume(canal.volume)} prospecções`}</title>
                 <line
                   x1={cx}
                   y1={TOPO_CANAIS - 20}
@@ -100,19 +109,28 @@ export function FunnelShape({
                   x={cx}
                   y={TOPO_CANAIS - 16}
                   textAnchor="middle"
-                  fill="currentColor"
-                  className="fill-muted text-[10px] font-semibold"
+                  className="fill-foreground text-[11px] font-bold"
                 >
                   {formatarVolume(canal.volume)}
                 </text>
+                {/* O rótulo sempre acompanha o número. Um nó marcando "0" sem
+                    nome não diz nada — e zero é exatamente o caso em que se
+                    precisa saber QUAL canal está sem fatia. */}
                 <text
                   x={cx}
-                  y={TOPO_CANAIS - 34}
+                  y={TOPO_CANAIS - 42}
                   textAnchor="middle"
-                  fill="currentColor"
-                  className="fill-muted text-[9px] uppercase tracking-wider"
+                  className="fill-muted text-[9px] font-medium uppercase tracking-wider"
                 >
-                  {canal.label.slice(0, 11)}
+                  {canal.label.trim().length > 0 ? recortar(canal.label) : "sem nome"}
+                </text>
+                <text
+                  x={cx}
+                  y={TOPO_CANAIS - 32}
+                  textAnchor="middle"
+                  className="fill-muted text-[9px] tabular-nums"
+                >
+                  {formatarPercentual(canal.share)}
                 </text>
               </g>
             );
@@ -171,27 +189,29 @@ export function FunnelShape({
           className="text-border"
           strokeWidth={2}
         />
+        {/* O nó final é sólido e traz o número DENTRO, em branco, como as
+            faixas acima: é o resultado do funil e precisa da mesma presença
+            que as etapas que levam até ele. */}
         <circle
           cx={LARGURA / 2}
           cy={TOPO_CANAIS + alturaFunil + 46}
-          r={30}
-          fill="currentColor"
-          className="text-surface-1"
-          stroke="currentColor"
-          strokeWidth={2.5}
+          r={34}
+          fill="#1e1b3a"
+          stroke="#0f0d22"
+          strokeWidth={2}
         />
         <text
           x={LARGURA / 2}
-          y={TOPO_CANAIS + alturaFunil + 52}
+          y={TOPO_CANAIS + alturaFunil + 53}
           textAnchor="middle"
-          fill="currentColor"
-          className="fill-foreground text-[18px] font-bold"
+          fill="#ffffff"
+          className="text-[19px] font-bold"
         >
           {formatarVolume(conversoes)}
         </text>
         <text
           x={LARGURA / 2}
-          y={TOPO_CANAIS + alturaFunil + 88}
+          y={TOPO_CANAIS + alturaFunil + 94}
           textAnchor="middle"
           fill="currentColor"
           className="fill-muted text-[10px] font-semibold uppercase tracking-[0.15em]"

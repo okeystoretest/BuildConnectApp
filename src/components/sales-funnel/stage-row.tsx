@@ -60,6 +60,9 @@ export function StageRow({
 
         <Input
           aria-label={`Nome da etapa ${posicao + 1}`}
+          // O nome inteiro no tooltip: a coluna é estreita e o campo corta
+          // "Oportunidades" ou "Negociação" antes do fim.
+          title={etapa.label || undefined}
           value={etapa.label}
           maxLength={40}
           disabled={disabled}
@@ -71,6 +74,11 @@ export function StageRow({
         <div className="flex shrink-0 items-center gap-0.5">
           <Input
             aria-label={`Taxa de conversão da etapa ${posicao + 1}, em porcento`}
+            title={
+              etapa.label
+                ? `Quanto de "${etapa.label}" avança para a etapa seguinte`
+                : "Quanto desta etapa avança para a seguinte"
+            }
             inputMode="decimal"
             value={etapa.rate}
             disabled={disabled}
