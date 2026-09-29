@@ -227,3 +227,68 @@ test("funil sem canal nenhum não vira erro nem cobertura fantasma", () => {
   assert.equal(r.channelCoverage, 0);
   assert.ok(r.diagnostics.every((d) => d.severity === "aviso"));
 });
+
+/*
+ * Achados I1 e I2 da revisão final: a divisão em ponto flutuante erra por um
+ * para taxas comuns. Fixados aqui com os casos exatos que a revisão mediu.
+ */
+
+test("taxa de 29% não inventa uma prospecção a mais (I1)", () => {
+  // 290 conversões a 29% dão 1.000 exatos. `ceil(290 / 0.29)` dava 1001.
+  const r = calcularAscendente({
+    goalCents: 29_000_000,
+    ticketCents: 100_000,
+    stages: [{ id: "s1", label: "Proposta", rate: 29 }],
+    channels: [],
+  });
+  assert.equal(r.requiredConversions, 290);
+  assert.equal(r.stages[0]?.volume, 1000);
+});
+
+test("taxa fracionária de 0,7% também fecha exato (I1)", () => {
+  const r = calcularAscendente({
+    goalCents: 700_000,
+    ticketCents: 100_000,
+    stages: [{ id: "s1", label: "Proposta", rate: 0.7 }],
+    channels: [],
+  });
+  assert.equal(r.requiredConversions, 7);
+  assert.equal(r.stages[0]?.volume, 1000);
+});
+
+test("descendente a 2,3% não perde uma conversão (I2)", () => {
+  // 3.000 a 2,3% dão 69 exatos. `floor(3000 * 2.3 / 100)` dava 68.
+  const r = calcularDescendente(
+    {
+      goalCents: 5_000_000,
+      ticketCents: 100_000,
+      stages: [{ id: "s1", label: "Proposta", rate: 2.3 }],
+      channels: [],
+    },
+    3000,
+  );
+  assert.equal(r.requiredConversions, 69);
+});
+
+test("nenhuma taxa de um décimo erra por um, em nenhum volume comum", () => {
+  // A varredura que a revisão usou para achar o defeito vira teste: se a
+  // aritmética voltar a ser em ponto flutuante, isto falha em massa.
+  for (let bp = 1; bp <= 1000; bp += 1) {
+    const rate = bp / 10;
+    for (const conversoes of [7, 29, 69, 137, 290, 1000]) {
+      const r = calcularAscendente({
+        goalCents: conversoes * 100_000,
+        ticketCents: 100_000,
+        stages: [{ id: "s1", label: "P", rate }],
+        channels: [],
+      });
+      if (r.diagnostics.length > 0) continue;
+      const exato = (conversoes * 1000) / bp;
+      assert.equal(
+        r.stages[0]?.volume,
+        Math.ceil(exato - 1e-9),
+        `taxa ${rate}% com ${conversoes} conversões`,
+      );
+    }
+  }
+});

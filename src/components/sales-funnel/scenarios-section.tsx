@@ -174,12 +174,13 @@ export function ScenariosSection({
                       delta={resultado.cenario.topVolume - (base?.topVolume ?? 0)}
                       menorEMelhor
                     />
-                    <Linha
-                      rotulo="Faturamento"
-                      valor={formatarReais(resultado.cenario.projectedRevenueCents)}
-                      delta={resultado.deltaRevenueCents}
-                      moeda
-                    />
+                    {/* Sem linha de faturamento aqui, de propósito.
+                        No sentido ascendente a meta é FIXA: o faturamento
+                        projetado é a meta mais a sobra do arredondamento para
+                        cima. Exibir a diferença pintava "+R$ 600,00" de verde
+                        num cenário que não traz um centavo a mais — só precisa
+                        de menos vendas para o mesmo dinheiro. O que muda de
+                        verdade são as duas linhas acima. */}
                   </dl>
                 )}
 

@@ -10,6 +10,7 @@ import {
   revalidateFunnelScope,
 } from "./guards";
 import { gravarCenario, substituirCanais, substituirEtapas } from "./core";
+import { lerIdentificador, lerStatus } from "./identificadores";
 
 export interface FunnelActionResult {
   ok: boolean;
@@ -145,9 +146,12 @@ export async function criarFunil(input: unknown): Promise<FunnelActionResult> {
 }
 
 export async function atualizarFunil(
-  funnelId: string,
+  funnelId: unknown,
   input: unknown,
 ): Promise<FunnelActionResult> {
+  const id = lerIdentificador(funnelId);
+  if (!id) return { ok: false, error: "Funil não encontrado." };
+
   const parsed = funilSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
@@ -156,7 +160,7 @@ export async function atualizarFunil(
   if (!scope) return { ok: false, error: error ?? undefined };
 
   const alterados = await prisma.salesFunnel.updateMany({
-    where: { id: funnelId, subsectorId: scope.id },
+    where: { id, subsectorId: scope.id },
     data: {
       name: parsed.data.name,
       referenceDate: new Date(`${parsed.data.referenceDate}T12:00:00`),
@@ -168,33 +172,41 @@ export async function atualizarFunil(
   if (alterados.count === 0) return { ok: false, error: "Funil não encontrado." };
 
   await revalidateFunnelScope(scope.id, parsed.data.slug);
-  return { ok: true, id: funnelId };
+  return { ok: true, id };
 }
 
 export async function arquivarFunil(
   slug: string,
-  funnelId: string,
-  status: "RASCUNHO" | "ATIVO" | "ARQUIVADO",
+  funnelId: unknown,
+  status: unknown,
 ): Promise<FunnelActionResult> {
+  const id = lerIdentificador(funnelId);
+  if (!id) return { ok: false, error: "Funil não encontrado." };
+  const situacao = lerStatus(status);
+  if (!situacao) return { ok: false, error: "Situação inválida." };
+
   const { scope, error } = await abrirEscopo(slug);
   if (!scope) return { ok: false, error: error ?? undefined };
 
   const alterados = await prisma.salesFunnel.updateMany({
-    where: { id: funnelId, subsectorId: scope.id },
-    data: { status },
+    where: { id, subsectorId: scope.id },
+    data: { status: situacao },
   });
   if (alterados.count === 0) return { ok: false, error: "Funil não encontrado." };
 
   await revalidateFunnelScope(scope.id, slug);
-  return { ok: true, id: funnelId };
+  return { ok: true, id };
 }
 
-export async function excluirFunil(slug: string, funnelId: string): Promise<FunnelActionResult> {
+export async function excluirFunil(slug: string, funnelId: unknown): Promise<FunnelActionResult> {
+  const id = lerIdentificador(funnelId);
+  if (!id) return { ok: false, error: "Funil não encontrado." };
+
   const { scope, error } = await abrirEscopo(slug);
   if (!scope) return { ok: false, error: error ?? undefined };
 
   const apagados = await prisma.salesFunnel.deleteMany({
-    where: { id: funnelId, subsectorId: scope.id },
+    where: { id, subsectorId: scope.id },
   });
   if (apagados.count === 0) return { ok: false, error: "Funil não encontrado." };
 
@@ -287,14 +299,17 @@ export async function salvarCenario(input: unknown): Promise<FunnelActionResult>
 
 export async function excluirCenario(
   slug: string,
-  scenarioId: string,
+  scenarioId: unknown,
 ): Promise<FunnelActionResult> {
+  const id = lerIdentificador(scenarioId);
+  if (!id) return { ok: false, error: "Cenário não encontrado." };
+
   const { scope, error } = await abrirEscopo(slug);
   if (!scope) return { ok: false, error: error ?? undefined };
 
   // A checagem de escopo sobe pelo funil: o cenário não guarda subsetor.
   const apagados = await prisma.salesFunnelScenario.deleteMany({
-    where: { id: scenarioId, funnel: { subsectorId: scope.id } },
+    where: { id, funnel: { subsectorId: scope.id } },
   });
   if (apagados.count === 0) return { ok: false, error: "Cenário não encontrado." };
 

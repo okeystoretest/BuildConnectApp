@@ -17,6 +17,34 @@ import type {
  */
 export const LIMITE_VOLUME = 1_000_000_000;
 
+/**
+ * Taxa em PONTOS-BASE: 29% -> 2900, 2,3% -> 230.
+ *
+ * Toda a aritmética do funil corre sobre inteiros, e é por isso.
+ * `abaixo / (taxa / 100)` erra por um sempre que `taxa/100` arredonda para
+ * cima em binário: 290 conversões a 29% davam 1001 prospecções onde a conta
+ * exata dá 1000. O erro era sempre pessimista, então nenhum plano ficava
+ * curto — mas o número na tela contradizia a fórmula, e o número na tela É o
+ * produto.
+ *
+ * Duas casas decimais é o que a taxa admite; mais que isso não sobrevive a
+ * um campo de porcentagem nem informa um plano comercial.
+ */
+function pontosBase(taxa: number): number {
+  return Math.round(taxa * 100);
+}
+
+/**
+ * Divisão inteira arredondando para CIMA, sem ponto flutuante.
+ *
+ * Os dois operandos cabem com folga no inteiro seguro: o volume não passa de
+ * LIMITE_VOLUME (1e9) e a escala é 1e4, então o numerador fica em 1e13 contra
+ * os 9e15 de `Number.MAX_SAFE_INTEGER`.
+ */
+function dividirParaCima(numerador: number, denominador: number): number {
+  return Math.floor((numerador + denominador - 1) / denominador);
+}
+
 /** Resultado vazio: o que a tela mostra quando falta dado obrigatório. */
 function vazio(diagnostics: Diagnostic[]): FunnelResult {
   return {
@@ -112,7 +140,7 @@ export function calcularAscendente(input: FunnelInput): FunnelResult {
   const volumes: number[] = [];
   let abaixo = conversoes;
   for (const stage of [...input.stages].reverse()) {
-    const volume = Math.ceil(abaixo / (stage.rate / 100));
+    const volume = dividirParaCima(abaixo * 10_000, pontosBase(stage.rate));
     if (volume >= LIMITE_VOLUME) {
       return vazio([
         {
@@ -175,7 +203,9 @@ export function calcularDescendente(input: FunnelInput, topVolume: number): Funn
   let volume = Math.floor(topVolume);
   for (const stage of input.stages) {
     stages.push({ id: stage.id, label: stage.label, rate: stage.rate, volume });
-    volume = Math.floor((volume * stage.rate) / 100);
+    // Para BAIXO, e também em inteiros: `volume * taxa / 100` perdia uma
+    // conversão a 2,3% (3.000 rendiam 68 onde a conta exata dá 69).
+    volume = Math.floor((volume * pontosBase(stage.rate)) / 10_000);
   }
   // Saindo do laço, `volume` já passou pela taxa da última etapa: são as
   // conversões.

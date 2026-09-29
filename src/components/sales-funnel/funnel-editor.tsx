@@ -5,11 +5,17 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
-import { atualizarFunil, salvarCanais, salvarEtapas } from "@/lib/sales-funnel/actions";
+import {
+  arquivarFunil,
+  atualizarFunil,
+  excluirFunil,
+  salvarCanais,
+  salvarEtapas,
+} from "@/lib/sales-funnel/actions";
 import { calcularAscendente, calcularDescendente, distribuirCanais } from "@/lib/sales-funnel/math";
 import { formatarPercentual, formatarReais, formatarVolume } from "@/lib/sales-funnel/format";
 import type { FunnelInput } from "@/lib/sales-funnel/types";
-import type { SalesFunnelDetail } from "@/types/sales-funnel";
+import type { SalesFunnelDetail, SalesFunnelStatus } from "@/types/sales-funnel";
 import { MoneyInput } from "./money-input";
 import { StageRow, type EtapaEditavel } from "./stage-row";
 import { FunnelShape } from "./funnel-shape";
@@ -81,6 +87,7 @@ export function FunnelEditor({
   const [capacidade, setCapacidade] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
 
   const input: FunnelInput = useMemo(
     () => ({
@@ -192,6 +199,34 @@ export function FunnelEditor({
     router.refresh();
   }
 
+  async function trocarSituacao(status: SalesFunnelStatus) {
+    if (!canManage || salvando) return;
+    setSalvando(true);
+    setErro(null);
+    const r = await arquivarFunil(slug, detail.id, status);
+    setSalvando(false);
+    if (!r.ok) {
+      setErro(r.error ?? "Não foi possível mudar a situação.");
+      return;
+    }
+    router.refresh();
+  }
+
+  async function excluir() {
+    if (!canManage || salvando) return;
+    setSalvando(true);
+    const r = await excluirFunil(slug, detail.id);
+    setSalvando(false);
+    if (!r.ok) {
+      setErro(r.error ?? "Não foi possível excluir.");
+      setConfirmandoExclusao(false);
+      return;
+    }
+    // Volta para a lista: o funil que estava aberto não existe mais.
+    onBack();
+    router.refresh();
+  }
+
   const destaque =
     modo === "meta"
       ? `Precisaria de ${formatarVolume(resultado.requiredConversions)} conversões`
@@ -203,10 +238,48 @@ export function FunnelEditor({
         <Button variant="ghost" onClick={onBack}>
           ← Voltar para a lista
         </Button>
+
         {canManage && (
-          <Button onClick={salvar} disabled={salvando}>
-            {salvando ? "Salvando…" : "Salvar"}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Segmented
+              options={[
+                { value: "RASCUNHO", label: "Rascunho" },
+                { value: "ATIVO", label: "Ativo" },
+                { value: "ARQUIVADO", label: "Arquivado" },
+              ]}
+              value={detail.status}
+              onChange={trocarSituacao}
+              ariaLabel="Situação do funil"
+            />
+            {confirmandoExclusao ? (
+              <>
+                <span className="text-sm text-danger">Excluir para sempre?</span>
+                <Button variant="danger" size="sm" disabled={salvando} onClick={excluir}>
+                  Confirmar
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={salvando}
+                  onClick={() => setConfirmandoExclusao(false)}
+                >
+                  Cancelar
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={salvando}
+                onClick={() => setConfirmandoExclusao(true)}
+              >
+                Excluir
+              </Button>
+            )}
+            <Button onClick={salvar} disabled={salvando}>
+              {salvando ? "Salvando…" : "Salvar"}
+            </Button>
+          </div>
         )}
       </div>
 

@@ -50,6 +50,11 @@ export function SalesFunnelPanel({
   if (detail) {
     return (
       <FunnelEditor
+        /* A chave é o que garante remontagem ao trocar de funil: todo o
+           estado do editor vive em inicializadores de useState, e sem ela
+           editar `?funil=` na barra de endereços manteria o formulário do
+           funil anterior sobre o id do novo. */
+        key={detail.id}
         slug={slug}
         detail={detail}
         canManage={data.canManage}

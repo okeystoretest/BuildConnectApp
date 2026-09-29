@@ -17,6 +17,11 @@ import { parseMoedaParaCentavos } from "@/lib/sales-funnel/math";
  * preencheu" de "preencheu zero". É por isso que o parser devolve null em vez
  * de NaN convertido em 0.
  */
+/** Centavos -> o texto do campo, no formato que a pessoa digitaria. */
+function paraTexto(cents: number | null): string {
+  return cents === null ? "" : (cents / 100).toFixed(2).replace(".", ",");
+}
+
 export function MoneyInput({
   label,
   cents,
@@ -30,17 +35,25 @@ export function MoneyInput({
   disabled?: boolean;
   id: string;
 }) {
-  const [texto, setTexto] = useState(() => (cents === null ? "" : (cents / 100).toFixed(2).replace(".", ",")));
-  const [tocado, setTocado] = useState(false);
-
-  // Quando o valor muda por fora (trocar de funil, recarregar), o texto
-  // acompanha — mas nunca enquanto a pessoa está digitando neste campo.
-  useEffect(() => {
-    if (tocado) return;
-    setTexto(cents === null ? "" : (cents / 100).toFixed(2).replace(".", ","));
-  }, [cents, tocado]);
+  const [texto, setTexto] = useState(() => paraTexto(cents));
+  const [focado, setFocado] = useState(false);
 
   const invalido = texto.trim().length > 0 && parseMoedaParaCentavos(texto) === null;
+
+  /*
+   * Sincroniza com o valor de fora — mas nunca por cima do que a pessoa está
+   * escrevendo, e nunca por cima de um valor INVÁLIDO.
+   *
+   * A versão anterior zerava `tocado` no blur, o efeito reagia e, como um
+   * texto ilegível já havia empurrado `null` para o pai, o campo ficava em
+   * branco: um typo em "50.000,00" apagava da tela o valor salvo, junto com
+   * a mensagem que explicava o erro. Quem errou precisa continuar vendo o
+   * que errou para poder corrigir.
+   */
+  useEffect(() => {
+    if (focado || invalido) return;
+    setTexto(paraTexto(cents));
+  }, [cents, focado, invalido]);
 
   return (
     <div className="space-y-1">
@@ -55,18 +68,17 @@ export function MoneyInput({
         placeholder="0,00"
         aria-invalid={invalido || undefined}
         aria-describedby={invalido ? `${id}-erro` : undefined}
+        onFocus={() => setFocado(true)}
         onChange={(e) => {
           const valor = e.target.value;
-          setTocado(true);
           setTexto(valor);
           onChange(valor.trim().length === 0 ? null : parseMoedaParaCentavos(valor));
         }}
         onBlur={() => {
-          setTocado(false);
+          setFocado(false);
+          // Normaliza a grafia só quando o valor é válido.
           const parsed = parseMoedaParaCentavos(texto);
-          // Normaliza a grafia só quando o valor é válido: quem digitou
-          // errado continua vendo o que digitou, para poder corrigir.
-          if (parsed !== null) setTexto((parsed / 100).toFixed(2).replace(".", ","));
+          if (parsed !== null) setTexto(paraTexto(parsed));
         }}
       />
       {invalido ? (
