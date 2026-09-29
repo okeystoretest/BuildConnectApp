@@ -1,0 +1,149 @@
+import type {
+  Diagnostic,
+  FunnelInput,
+  FunnelResult,
+  StageVolume,
+} from "./types";
+
+/**
+ * Teto de sanidade do volume. Acima disto não é plano comercial, é erro de
+ * digitação numa taxa — e um card com doze dígitos não informa nada.
+ *
+ * A comparação é `>=`, não `>`: o limite é inclusivo. Uma meta de R$ 100
+ * milhões com taxa de 0,01% cai EXATAMENTE em 1.000.000.000, e um teto
+ * exclusivo deixaria passar justamente o caso que motivou o teto.
+ */
+export const LIMITE_VOLUME = 1_000_000_000;
+
+/** Resultado vazio: o que a tela mostra quando falta dado obrigatório. */
+function vazio(diagnostics: Diagnostic[]): FunnelResult {
+  return {
+    requiredConversions: 0,
+    stages: [],
+    topVolume: 0,
+    externalRate: 0,
+    projectedRevenueCents: 0,
+    channels: [],
+    channelCoverage: 0,
+    diagnostics,
+  };
+}
+
+/**
+ * Conversões necessárias para bater a meta — o bloco 1 do canvas.
+ *
+ * Arredonda para CIMA: meia venda não existe, e registrar 49 onde são
+ * precisas 49,2 é registrar um plano que não bate a meta. Ticket maior que a
+ * meta continua exigindo UMA conversão, nunca zero.
+ */
+export function conversoesNecessarias(goalCents: number, ticketCents: number): number {
+  if (goalCents <= 0 || ticketCents <= 0) return 0;
+  return Math.ceil(goalCents / ticketCents);
+}
+
+/**
+ * Lê um valor monetário digitado por gente e devolve centavos.
+ *
+ * Aceita o formato brasileiro ("50.000,00"), o americano ("50000.00"), com ou
+ * sem "R$", e o inteiro seco ("999" = R$ 999,00). Devolve null para o que não
+ * é valor — a tela precisa distinguir "não preencheu" de "preencheu zero",
+ * coisa que NaN convertido em 0 apagaria.
+ */
+export function parseMoedaParaCentavos(texto: string): number | null {
+  const limpo = texto.replace(/[R$\s ]/g, "");
+  if (limpo.length === 0) return null;
+  if (!/^\d{1,3}(\.\d{3})*(,\d{1,2})?$|^\d+([.,]\d{1,2})?$/.test(limpo)) return null;
+
+  // Separador decimal é o ÚLTIMO ponto ou vírgula seguido de 1 ou 2 dígitos.
+  // "50.000" não casa (três dígitos), então continua valendo cinquenta mil.
+  const decimal = /[.,]\d{1,2}$/.exec(limpo);
+  const inteiroTexto = (decimal ? limpo.slice(0, decimal.index) : limpo).replace(/[.,]/g, "");
+  const centavosTexto = decimal ? decimal[0].slice(1).padEnd(2, "0") : "00";
+
+  const inteiro = Number(inteiroTexto === "" ? "0" : inteiroTexto);
+  const centavos = Number(centavosTexto);
+  if (!Number.isFinite(inteiro) || !Number.isFinite(centavos)) return null;
+  return inteiro * 100 + centavos;
+}
+
+/** Confere meta, ticket, etapas e taxas. Lista vazia = pode calcular. */
+function erros(input: FunnelInput): Diagnostic[] {
+  const found: Diagnostic[] = [];
+  if (input.goalCents <= 0) {
+    found.push({ code: "META_INVALIDA", severity: "erro", message: "Informe a meta global." });
+  }
+  if (input.ticketCents <= 0) {
+    found.push({ code: "TICKET_INVALIDO", severity: "erro", message: "Informe o ticket médio." });
+  }
+  if (input.stages.length === 0) {
+    found.push({
+      code: "SEM_ETAPAS",
+      severity: "erro",
+      message: "Defina ao menos uma etapa do funil.",
+    });
+  }
+  for (const stage of input.stages) {
+    if (!(stage.rate > 0 && stage.rate <= 100)) {
+      found.push({
+        code: "TAXA_INVALIDA",
+        severity: "erro",
+        targetId: stage.id,
+        message: `A taxa de "${stage.label}" precisa ficar entre 0 e 100%.`,
+      });
+    }
+  }
+  return found;
+}
+
+/**
+ * Meta → Prospecções. É a execução que o canvas manda: de baixo para cima,
+ * DIVIDINDO por cada taxa até chegar à boca do funil.
+ */
+export function calcularAscendente(input: FunnelInput): FunnelResult {
+  const problemas = erros(input);
+  if (problemas.length > 0) return vazio(problemas);
+
+  const conversoes = conversoesNecessarias(input.goalCents, input.ticketCents);
+
+  // Percorre de trás para frente: o volume de uma etapa é o da seguinte
+  // dividido pela taxa que as separa.
+  const volumes: number[] = [];
+  let abaixo = conversoes;
+  for (const stage of [...input.stages].reverse()) {
+    const volume = Math.ceil(abaixo / (stage.rate / 100));
+    if (volume >= LIMITE_VOLUME) {
+      return vazio([
+        {
+          code: "VOLUME_IRREAL",
+          severity: "erro",
+          targetId: stage.id,
+          message:
+            "As taxas informadas exigem um volume impossível. Confira se alguma taxa está muito baixa.",
+        },
+      ]);
+    }
+    volumes.push(volume);
+    abaixo = volume;
+  }
+  volumes.reverse();
+
+  const stages: StageVolume[] = input.stages.map((stage, i) => ({
+    id: stage.id,
+    label: stage.label,
+    rate: stage.rate,
+    volume: volumes[i] ?? 0,
+  }));
+
+  const topVolume = stages[0]?.volume ?? 0;
+
+  return {
+    requiredConversions: conversoes,
+    stages,
+    topVolume,
+    externalRate: topVolume > 0 ? (conversoes / topVolume) * 100 : 0,
+    projectedRevenueCents: conversoes * input.ticketCents,
+    channels: [],
+    channelCoverage: 0,
+    diagnostics: [],
+  };
+}
