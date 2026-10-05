@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { prisma } from "@/lib/db/prisma";
 import { requireFunnelManager, requireFunnelScope } from "./guards";
-import { gravarCenario, substituirCanais, substituirEtapas } from "./core";
+import { gravarCenario, salvarFunilInteiro, substituirCanais, substituirEtapas } from "./core";
 import { getSalesFunnelData, getSalesFunnelDetail, centavosParaDecimal } from "./data";
 
 /**
@@ -121,7 +121,7 @@ before(async () => {
   const funil = await prisma.salesFunnel.create({
     data: {
       name: `Varejo ${MARK}`,
-      referenceDate: new Date("2026-10-01T12:00:00"),
+      referenceDate: new Date("2026-10-01T00:00:00Z"),
       goalAmount: centavosParaDecimal(5_000_000),
       averageTicket: centavosParaDecimal(100_000),
       subsectorId: vendasId,
@@ -299,7 +299,7 @@ test("o cenário guarda só as taxas que muda, e ignora etapa de outro funil", a
     funnelId,
     name: `+10% no ticket ${MARK}`,
     ticketPercent: 10,
-    topPercent: 0,
+    opportunitiesPerSellerDay: 6,
     rates: [
       { stageId: ultima.id, rate: 25 },
       // Etapa que não é deste funil: tem de ser descartada, não gravada.
@@ -328,7 +328,7 @@ test("gravar o mesmo cenário de novo substitui as taxas em vez de acumular", as
     funnelId,
     name: `Reescrito ${MARK}`,
     ticketPercent: 0,
-    topPercent: 0,
+    opportunitiesPerSellerDay: null,
     rates: [{ stageId: primeira.id, rate: 70 }],
     createdById: gestor.id,
   });
@@ -339,7 +339,7 @@ test("gravar o mesmo cenário de novo substitui as taxas em vez de acumular", as
     funnelId,
     name: `Reescrito ${MARK}`,
     ticketPercent: 5,
-    topPercent: 0,
+    opportunitiesPerSellerDay: null,
     rates: [{ stageId: primeira.id, rate: 80 }],
     createdById: gestor.id,
   });
@@ -356,5 +356,163 @@ test("o detalhe devolve o cenário com as taxas indexadas por etapa", async () =
   const cenario = detalhe?.scenarios.find((c) => c.name.includes("+10% no ticket"));
   assert.ok(cenario);
   assert.equal(cenario.ticketPercent, 10);
+  assert.equal(cenario.opportunitiesPerSellerDay, 6);
   assert.equal(Object.keys(cenario.rates).length, 1);
+});
+
+test("salvar o funil inteiro grava dados, etapas e canais de uma vez", async () => {
+  const gravou = await salvarFunilInteiro(
+    funnelId,
+    vendasId,
+    {
+      name: `Inteiro ${MARK}`,
+      referenceDate: new Date("2026-11-01T00:00:00Z"),
+      goalAmount: centavosParaDecimal(7_500_000),
+      averageTicket: centavosParaDecimal(214_065),
+      sellerCount: 4,
+      workingDays: 22,
+      notes: null,
+    },
+    [
+      { label: "Oportunidades", rate: 33 },
+      { label: "Visita", rate: 60 },
+      { label: "Proposta", rate: 40 },
+    ],
+    [
+      { label: "Base", share: 70 },
+      { label: "Indicações", share: 30 },
+    ],
+  );
+  assert.equal(gravou, true);
+
+  const funil = await prisma.salesFunnel.findUniqueOrThrow({
+    where: { id: funnelId },
+    select: { name: true, sellerCount: true, workingDays: true, referenceDate: true },
+  });
+  assert.equal(funil.name, `Inteiro ${MARK}`);
+  assert.equal(funil.sellerCount, 4);
+  assert.equal(funil.workingDays, 22);
+  // Gravada em UTC: o dia digitado é o dia lido, em qualquer fuso de servidor.
+  assert.equal(funil.referenceDate.toISOString().slice(0, 10), "2026-11-01");
+
+  const etapas = await prisma.salesFunnelStage.findMany({
+    where: { funnelId },
+    orderBy: { order: "asc" },
+    select: { label: true, order: true },
+  });
+  assert.deepEqual(
+    etapas.map((e) => e.label),
+    ["Oportunidades", "Visita", "Proposta"],
+  );
+  const canais = await prisma.salesFunnelChannel.findMany({
+    where: { funnelId },
+    orderBy: { order: "asc" },
+    select: { label: true, order: true },
+  });
+  assert.deepEqual(
+    canais.map((c) => c.order),
+    [0, 1],
+  );
+  assert.equal(canais[0]?.label, "Base");
+});
+
+test("salvar o funil inteiro recusa escopo alheio sem escrever nada", async () => {
+  const antes = await prisma.salesFunnel.findUniqueOrThrow({
+    where: { id: funnelId },
+    select: { name: true },
+  });
+
+  const gravou = await salvarFunilInteiro(
+    funnelId,
+    "subsetor-que-nao-existe",
+    {
+      name: `Invasor ${MARK}`,
+      referenceDate: new Date("2026-12-01T00:00:00Z"),
+      goalAmount: centavosParaDecimal(1_000_000),
+      averageTicket: centavosParaDecimal(100_000),
+      sellerCount: null,
+      workingDays: null,
+      notes: null,
+    },
+    [
+      { label: "X", rate: 50 },
+      { label: "Y", rate: 50 },
+      { label: "Z", rate: 50 },
+    ],
+    [{ label: "Único", share: 100 }],
+  );
+  assert.equal(gravou, false);
+
+  // A checagem de escopo é o primeiro comando, antes de qualquer escrita:
+  // um `false` não tem rastro para desfazer.
+  const depois = await prisma.salesFunnel.findUniqueOrThrow({
+    where: { id: funnelId },
+    select: { name: true },
+  });
+  assert.equal(depois.name, antes.name);
+});
+
+test("falha no meio do salvamento não deixa escrita parcial", async () => {
+  const antes = await prisma.salesFunnel.findUniqueOrThrow({
+    where: { id: funnelId },
+    select: { name: true },
+  });
+  const etapasAntes = await prisma.salesFunnelStage.findMany({
+    where: { funnelId },
+    orderBy: { order: "asc" },
+    select: { id: true, label: true },
+  });
+  const canaisAntes = await prisma.salesFunnelChannel.findMany({
+    where: { funnelId },
+    orderBy: { order: "asc" },
+    select: { id: true, label: true },
+  });
+
+  await assert.rejects(
+    salvarFunilInteiro(
+      funnelId,
+      vendasId,
+      {
+        name: `NÃO DEVE GRAVAR ${MARK}`,
+        referenceDate: new Date("2027-01-01T00:00:00Z"),
+        goalAmount: centavosParaDecimal(9_900_000),
+        averageTicket: centavosParaDecimal(300_000),
+        sellerCount: 9,
+        workingDays: 9,
+        notes: null,
+      },
+      [
+        { label: "Nova A", rate: 10 },
+        { label: "Nova B", rate: 20 },
+        { label: "Nova C", rate: 30 },
+      ],
+      // `share` que não é número: o Prisma recusa o INSERT já dentro da
+      // transação, depois de a atualização do funil e a troca das etapas
+      // terem rodado. É o mesmo efeito de a conexão cair entre a segunda e a
+      // terceira escrita — a falha que as três actions antigas não cobriam.
+      [{ label: "Quebrado", share: "nao-e-numero" as unknown as number }],
+    ),
+  );
+
+  const depois = await prisma.salesFunnel.findUniqueOrThrow({
+    where: { id: funnelId },
+    select: { name: true },
+  });
+  assert.equal(depois.name, antes.name);
+
+  // Os IDS das etapas também têm de ser os mesmos: se o apaga-e-recria
+  // tivesse persistido, os labels até poderiam bater, mas os ids não.
+  const etapasDepois = await prisma.salesFunnelStage.findMany({
+    where: { funnelId },
+    orderBy: { order: "asc" },
+    select: { id: true, label: true },
+  });
+  assert.deepEqual(etapasDepois, etapasAntes);
+
+  const canaisDepois = await prisma.salesFunnelChannel.findMany({
+    where: { funnelId },
+    orderBy: { order: "asc" },
+    select: { id: true, label: true },
+  });
+  assert.deepEqual(canaisDepois, canaisAntes);
 });

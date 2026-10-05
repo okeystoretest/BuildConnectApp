@@ -9,7 +9,7 @@ import {
   requireFunnelScope,
   revalidateFunnelScope,
 } from "./guards";
-import { gravarCenario, substituirCanais, substituirEtapas } from "./core";
+import { gravarCenario, salvarFunilInteiro } from "./core";
 import { lerIdentificador, lerStatus } from "./identificadores";
 
 export interface FunnelActionResult {
@@ -42,6 +42,21 @@ const funilSchema = z.object({
   referenceDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida."),
   goalCents: centavos,
   ticketCents: centavos,
+  // Equipe e período são OPCIONAIS: sem eles o funil calcula igual, só não
+  // mostra plano de ação. Obrigar aqui pararia de salvar os funis que já
+  // existem, que nasceram antes destes dois campos.
+  sellerCount: z
+    .number()
+    .int("O número de vendedores precisa ser inteiro.")
+    .min(1, "Informe ao menos um vendedor.")
+    .max(999, "Número de vendedores acima do limite.")
+    .nullish(),
+  workingDays: z
+    .number()
+    .int("Os dias úteis precisam ser um número inteiro.")
+    .min(1, "Informe ao menos um dia útil.")
+    .max(366, "O período não passa de 366 dias.")
+    .nullish(),
   notes: z.string().trim().max(1000, "Observação muito longa.").optional(),
 });
 
@@ -54,15 +69,6 @@ const etapaSchema = z.object({
   transitionRule: z.string().trim().max(500, "Regra muito longa.").optional(),
 });
 
-const etapasSchema = z.object({
-  slug: z.string().min(1),
-  funnelId: z.string().min(1),
-  stages: z
-    .array(etapaSchema)
-    .min(3, "O funil precisa de ao menos 3 etapas.")
-    .max(6, "O funil aceita no máximo 6 etapas."),
-});
-
 const canalSchema = z.object({
   label: z.string().trim().min(1, "Todo canal precisa de nome.").max(40, "Nome muito longo."),
   strategy: z.string().trim().max(300, "Estratégia muito longa.").optional(),
@@ -72,9 +78,19 @@ const canalSchema = z.object({
     .max(100, "A fatia não passa de 100%."),
 });
 
-const canaisSchema = z.object({
-  slug: z.string().min(1),
-  funnelId: z.string().min(1),
+/**
+ * O salvamento do editor: funil, etapas e canais numa submissão só.
+ *
+ * Ser um schema só não é arrumação — é o que permite a transação única. Uma
+ * validação por bloco obrigaria a três chamadas, e a do meio destrói as taxas
+ * de cenário: falhar depois dela deixava trabalho perdido sem nada gravado em
+ * troca.
+ */
+const salvarFunilSchema = funilSchema.extend({
+  stages: z
+    .array(etapaSchema)
+    .min(3, "O funil precisa de ao menos 3 etapas.")
+    .max(6, "O funil aceita no máximo 6 etapas."),
   // Sem mínimo: o canvas RECOMENDA 5, e recomendação vira AVISO no motor, não
   // trava na escrita. Quem está montando o funil salva com dois e volta depois.
   channels: z.array(canalSchema).max(12, "Máximo de 12 canais."),
@@ -90,9 +106,47 @@ const cenarioSchema = z.object({
   // mostra o erro na coluna do cenário. Barrar aqui esconderia a alavanca em
   // vez de explicá-la.
   ticketPercent: z.number().min(-100).max(500),
-  topPercent: z.number().min(-100).max(500),
+  // Ausente = o cenário herda o topo do plano. O teto é generoso de propósito:
+  // é atividade por vendedor por dia, e um número absurdo é problema do motor
+  // (VOLUME_IRREAL), que explica melhor do que uma recusa de formulário.
+  opportunitiesPerSellerDay: z
+    .number()
+    .gt(0, "A atividade diária precisa ser maior que zero.")
+    .max(10_000, "Atividade diária acima do limite.")
+    .nullish(),
   rates: z.array(z.object({ stageId: z.string().min(1), rate: z.number().gt(0).max(100) })),
 });
+
+/**
+ * Último recurso em português para o que as regras não nomeiam.
+ *
+ * Quase todo campo destes schemas já traz a sua frase, e uma mensagem própria
+ * tem precedência sobre este mapa — ele só fala quando ninguém falou. O caso
+ * que acontece de verdade é o `nan`: a tela manda `Number("abc")` quando se
+ * digita letra num campo numérico, e o Zod respondia *"Expected number,
+ * received nan"* direto na tela.
+ */
+const EM_PORTUGUES: z.ZodErrorMap = (issue) => {
+  if (issue.code === z.ZodIssueCode.invalid_type) {
+    if (issue.received === "nan") return { message: "Informe um número válido." };
+    if (issue.received === "undefined" || issue.received === "null") {
+      return { message: "Preencha este campo." };
+    }
+  }
+  return { message: "Dados inválidos." };
+};
+
+/**
+ * "2026-10-01" vira meia-noite em UTC, e não meio-dia no fuso do servidor.
+ *
+ * A data de referência é um MÊS, não um instante: o que importa é que o dia
+ * gravado seja o dia digitado, em qualquer máquina. Sem o `Z`, o JS lê a
+ * string no fuso de quem está rodando — e o dia só se sustentava porque o
+ * meio-dia dava doze horas de folga, que UTC+13 e UTC+14 já consomem.
+ */
+function lerDataDeReferencia(iso: string): Date {
+  return new Date(`${iso}T00:00:00Z`);
+}
 
 /** Sessão + permissão + escopo: o preâmbulo de toda escrita. */
 async function abrirEscopo(slug: string) {
@@ -111,7 +165,7 @@ async function abrirEscopo(slug: string) {
 }
 
 export async function criarFunil(input: unknown): Promise<FunnelActionResult> {
-  const parsed = funilSchema.safeParse(input);
+  const parsed = funilSchema.safeParse(input, { errorMap: EM_PORTUGUES });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
   }
@@ -121,9 +175,11 @@ export async function criarFunil(input: unknown): Promise<FunnelActionResult> {
   const criado = await prisma.salesFunnel.create({
     data: {
       name: parsed.data.name,
-      referenceDate: new Date(`${parsed.data.referenceDate}T12:00:00`),
+      referenceDate: lerDataDeReferencia(parsed.data.referenceDate),
       goalAmount: centavosParaDecimal(parsed.data.goalCents),
       averageTicket: centavosParaDecimal(parsed.data.ticketCents),
+      sellerCount: parsed.data.sellerCount ?? null,
+      workingDays: parsed.data.workingDays ?? null,
       notes: parsed.data.notes || null,
       subsectorId: scope.id,
       createdById: user.id,
@@ -145,31 +201,43 @@ export async function criarFunil(input: unknown): Promise<FunnelActionResult> {
   return { ok: true, id: criado.id };
 }
 
-export async function atualizarFunil(
+/**
+ * Salva o funil inteiro: dados, etapas e canais, tudo ou nada.
+ *
+ * Substituiu `atualizarFunil` + `salvarEtapas` + `salvarCanais`, que a tela
+ * disparava em sequência. Ver `salvarFunilInteiro` em `core.ts` para o porquê
+ * de a atomicidade importar aqui mais do que nas outras escritas.
+ */
+export async function salvarFunil(
   funnelId: unknown,
   input: unknown,
 ): Promise<FunnelActionResult> {
   const id = lerIdentificador(funnelId);
   if (!id) return { ok: false, error: "Funil não encontrado." };
 
-  const parsed = funilSchema.safeParse(input);
+  const parsed = salvarFunilSchema.safeParse(input, { errorMap: EM_PORTUGUES });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
   }
   const { scope, error } = await abrirEscopo(parsed.data.slug);
   if (!scope) return { ok: false, error: error ?? undefined };
 
-  const alterados = await prisma.salesFunnel.updateMany({
-    where: { id, subsectorId: scope.id },
-    data: {
+  const gravou = await salvarFunilInteiro(
+    id,
+    scope.id,
+    {
       name: parsed.data.name,
-      referenceDate: new Date(`${parsed.data.referenceDate}T12:00:00`),
+      referenceDate: lerDataDeReferencia(parsed.data.referenceDate),
       goalAmount: centavosParaDecimal(parsed.data.goalCents),
       averageTicket: centavosParaDecimal(parsed.data.ticketCents),
+      sellerCount: parsed.data.sellerCount ?? null,
+      workingDays: parsed.data.workingDays ?? null,
       notes: parsed.data.notes || null,
     },
-  });
-  if (alterados.count === 0) return { ok: false, error: "Funil não encontrado." };
+    parsed.data.stages,
+    parsed.data.channels,
+  );
+  if (!gravou) return { ok: false, error: "Funil não encontrado." };
 
   await revalidateFunnelScope(scope.id, parsed.data.slug);
   return { ok: true, id };
@@ -214,61 +282,9 @@ export async function excluirFunil(slug: string, funnelId: unknown): Promise<Fun
   return { ok: true };
 }
 
-/**
- * Substitui a lista de etapas inteira, em transação.
- *
- * Apagar e recriar num `$transaction` é o que garante que `@@unique([funnelId,
- * order])` nunca veja um estado intermediário com ordem duplicada — e que um
- * erro no meio não deixe o funil com metade das etapas.
- *
- * Os ids das etapas MUDAM a cada salvamento. Por isso as taxas de cenário que
- * apontavam para elas somem junto, pela cascata do banco: um cenário não pode
- * apontar para uma etapa que deixou de existir. A tela avisa antes.
- */
-export async function salvarEtapas(input: unknown): Promise<FunnelActionResult> {
-  const parsed = etapasSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
-  }
-  const { scope, error } = await abrirEscopo(parsed.data.slug);
-  if (!scope) return { ok: false, error: error ?? undefined };
-
-  const funil = await prisma.salesFunnel.findFirst({
-    where: { id: parsed.data.funnelId, subsectorId: scope.id },
-    select: { id: true },
-  });
-  if (!funil) return { ok: false, error: "Funil não encontrado." };
-
-  await substituirEtapas(funil.id, parsed.data.stages);
-
-  await revalidateFunnelScope(scope.id, parsed.data.slug);
-  return { ok: true, id: funil.id };
-}
-
-/** Substitui a lista de canais inteira. */
-export async function salvarCanais(input: unknown): Promise<FunnelActionResult> {
-  const parsed = canaisSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
-  }
-  const { scope, error } = await abrirEscopo(parsed.data.slug);
-  if (!scope) return { ok: false, error: error ?? undefined };
-
-  const funil = await prisma.salesFunnel.findFirst({
-    where: { id: parsed.data.funnelId, subsectorId: scope.id },
-    select: { id: true },
-  });
-  if (!funil) return { ok: false, error: "Funil não encontrado." };
-
-  await substituirCanais(funil.id, parsed.data.channels);
-
-  await revalidateFunnelScope(scope.id, parsed.data.slug);
-  return { ok: true, id: funil.id };
-}
-
 /** Cria ou substitui um cenário. Devolve o id do CENÁRIO. */
 export async function salvarCenario(input: unknown): Promise<FunnelActionResult> {
-  const parsed = cenarioSchema.safeParse(input);
+  const parsed = cenarioSchema.safeParse(input, { errorMap: EM_PORTUGUES });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
   }
@@ -287,7 +303,7 @@ export async function salvarCenario(input: unknown): Promise<FunnelActionResult>
     name: parsed.data.name,
     notes: parsed.data.notes,
     ticketPercent: parsed.data.ticketPercent,
-    topPercent: parsed.data.topPercent,
+    opportunitiesPerSellerDay: parsed.data.opportunitiesPerSellerDay ?? null,
     rates: parsed.data.rates,
     createdById: user.id,
   });
