@@ -195,9 +195,14 @@ async function seedAppInheritance() {
   });
   if (!vendas) return;
 
+  // `funnelEnabled` entra junto do Cronograma. Faltava aqui: a flag nasceu
+  // com DEFAULT false e só era ligada por `scripts/setup-funil-vendas.ts`, à
+  // mão — então uma base recém-semeada subia com a aba do Funil invisível,
+  // enquanto a do Cronograma aparecia. Os herdeiros seguem sem tocar na
+  // flag: `resolveAppScope` lê a da origem.
   await prisma.subsector.update({
     where: { id: vendas.id },
-    data: { scheduleEnabled: true, appsSourceId: null },
+    data: { scheduleEnabled: true, funnelEnabled: true, appsSourceId: null },
   });
 
   // Quem herda a base de Vendas. Marketing é o caso original; Criação entrou

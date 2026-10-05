@@ -1,0 +1,23 @@
+-- Liga o Funil de Vendas em Vendas, o subsetor dono da base.
+--
+-- A coluna nasceu em `20260929134448_sales_funnel` com DEFAULT false, e
+-- nenhuma migration a ligava: só o `scripts/setup-funil-vendas.ts`, rodado à
+-- mão no console do container. O resultado é que o primeiro deploy da
+-- ferramenta sobe com ela invisível — `getSalesFunnelData` devolve null
+-- quando a flag está falsa, e `sector-page` simplesmente não insere a aba.
+-- Sem aba, sem erro, sem explicação.
+--
+-- Pelo mesmo motivo da `20260909140000_criacao_cronograma`: é dado, e não
+-- esquema, mas o deploy roda `prisma migrate deploy` e nada mais
+-- (docker-entrypoint.sh). O seed não pode ser executado num banco em uso,
+-- então esta é a única via que chega à produção sozinha.
+--
+-- Marketing e Criação NÃO são tocados: eles herdam por `appsSourceId`, e
+-- `resolveAppScope` já devolve o `funnelEnabled` da ORIGEM. Quem herda não
+-- configura, recebe.
+--
+-- Idempotente, e sem DELETE nem DROP. Para desfazer:
+--
+--   UPDATE "Subsector" SET "funnelEnabled" = false WHERE slug = 'vendas';
+
+UPDATE "Subsector" SET "funnelEnabled" = true WHERE slug = 'vendas';
