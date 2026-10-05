@@ -335,8 +335,12 @@ export function VideoBatchUploadModal({ slug, kind, open, onClose }: VideoBatchU
                 </div>
 
                 <div className="flex shrink-0 items-center gap-1">
+                  {/* `primary`, não `success`: o tema não define `success`, e
+                      a classe simplesmente não era gerada — o ícone saía
+                      herdando a cor do pai, ao lado de um `text-danger` que
+                      funciona. O verde do projeto é `primary`. */}
                   {item.status === "done" && (
-                    <CheckCircle2 className="h-4 w-4 text-success" aria-label="Enviado" />
+                    <CheckCircle2 className="h-4 w-4 text-primary" aria-label="Enviado" />
                   )}
                   {item.status === "error" && (
                     <AlertCircle className="h-4 w-4 text-danger" aria-label="Falhou" />
