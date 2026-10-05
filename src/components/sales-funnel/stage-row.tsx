@@ -4,11 +4,17 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Collapse } from "@/components/ui/collapse";
-import { formatarVolume } from "@/lib/sales-funnel/format";
+import { formatarVolume, normalizarPercentualDigitado } from "@/lib/sales-funnel/format";
+import { FASES, faseDaEtapa } from "@/lib/sales-funnel/phases";
 import { cn } from "@/lib/utils";
 
 export interface EtapaEditavel {
-  /** Chave local da linha. Não é o id do banco: as etapas são recriadas. */
+  /**
+   * Identidade da linha enquanto o editor está aberto: o id do banco para as
+   * etapas que vieram dele, `nova-N` para as criadas aqui. Não sobrevive ao
+   * salvamento — as etapas são apagadas e recriadas, com ids novos —, e nem
+   * precisa: ela só serve para casar linha, volume e diagnóstico nesta tela.
+   */
   key: string;
   label: string;
   /** Texto, e não número: a pessoa passa por "" e "1." enquanto digita. */
@@ -50,12 +56,27 @@ export function StageRow({
 }) {
   const [aberto, setAberto] = useState(false);
   const temRegra = etapa.transitionRule.trim().length > 0;
+  // A mesma função que pinta o desenho: a sigla da lista e a cor da faixa
+  // nunca podem discordar sobre em que fase a etapa está.
+  const fase = FASES[faseDaEtapa(posicao, total)];
 
   return (
     <div className="rounded-md border border-border bg-surface-2 px-2 py-1.5">
       <div className="flex items-center gap-1.5">
-        <span className="w-4 shrink-0 text-center text-[10px] font-semibold text-muted">
+        <span className="w-3 shrink-0 text-center text-[10px] font-semibold text-muted">
           {posicao + 1}
+        </span>
+
+        {/* A sigla da fase, no desenho de badge do Cronograma. É o que liga
+            esta linha à faixa colorida do funil ao lado. */}
+        <span
+          title={`${fase.sigla} · ${fase.fase} — ${fase.descricao}`}
+          className={cn(
+            "shrink-0 rounded border px-1 py-px text-[9px] font-semibold leading-none",
+            fase.badge,
+          )}
+        >
+          {fase.sigla}
         </span>
 
         <Input
@@ -82,13 +103,17 @@ export function StageRow({
             inputMode="decimal"
             value={etapa.rate}
             disabled={disabled}
-            className="h-7 w-12 px-1 text-center text-sm tabular-nums"
+            className="h-7 w-16 px-1 text-center text-sm tabular-nums"
             onChange={(e) => onChange({ rate: e.target.value })}
+            // Ao sair do campo, o texto passa a ser o que o motor usa: a
+            // terceira casa decimal não sobrevive aos pontos-base, e sumir
+            // dela em silêncio deixava o campo contradizendo o volume.
+            onBlur={() => onChange({ rate: normalizarPercentualDigitado(etapa.rate) })}
           />
-          <span className="text-[10px] text-muted">%</span>
+          <span className="shrink-0 text-[10px] text-muted">%</span>
         </div>
 
-        <span className="w-14 shrink-0 text-right text-sm font-semibold tabular-nums">
+        <span className="w-20 shrink-0 text-right text-sm font-semibold tabular-nums">
           {volume === null ? "—" : formatarVolume(volume)}
         </span>
 

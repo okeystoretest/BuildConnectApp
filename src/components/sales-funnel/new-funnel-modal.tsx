@@ -31,11 +31,21 @@ export function NewFunnelModal({
   const [referenceDate, setReferenceDate] = useState(mesCorrente);
   const [goalCents, setGoalCents] = useState<number | null>(null);
   const [ticketCents, setTicketCents] = useState<number | null>(null);
+  const [vendedores, setVendedores] = useState("");
+  const [diasUteis, setDiasUteis] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
 
+  // Equipe e período NÃO entram aqui: o funil nasce calculável com meta e
+  // ticket, e exigir os quatro campos poria uma pergunta de execução na frente
+  // de quem só quer ver o número aparecer.
   const pronto =
     name.trim().length > 0 && goalCents !== null && goalCents > 0 && ticketCents !== null && ticketCents > 0;
+
+  function inteiroOuNulo(texto: string): number | null {
+    const n = Number.parseInt(texto, 10);
+    return Number.isInteger(n) && n > 0 ? n : null;
+  }
 
   async function confirmar() {
     if (!pronto || salvando) return;
@@ -47,6 +57,8 @@ export function NewFunnelModal({
       referenceDate,
       goalCents,
       ticketCents,
+      sellerCount: inteiroOuNulo(vendedores),
+      workingDays: inteiroOuNulo(diasUteis),
     });
     setSalvando(false);
     if (!r.ok || !r.id) {
@@ -56,6 +68,8 @@ export function NewFunnelModal({
     setName("");
     setGoalCents(null);
     setTicketCents(null);
+    setVendedores("");
+    setDiasUteis("");
     router.refresh();
     onCreated(r.id);
   }
@@ -77,7 +91,7 @@ export function NewFunnelModal({
         </div>
       }
     >
-      <div className="space-y-4">
+      <div className="space-y-4 p-6">
         <div className="space-y-1">
           <label htmlFor="funil-nome" className="text-sm font-medium">
             Nome do funil
@@ -110,6 +124,39 @@ export function NewFunnelModal({
           cents={ticketCents}
           onChange={setTicketCents}
         />
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label htmlFor="funil-vendedores" className="text-sm font-medium">
+              Vendedores
+            </label>
+            <Input
+              id="funil-vendedores"
+              inputMode="numeric"
+              value={vendedores}
+              placeholder="4"
+              className="tabular-nums"
+              onChange={(e) => setVendedores(e.target.value.replace(/\D/g, ""))}
+            />
+          </div>
+          <div className="space-y-1">
+            <label htmlFor="funil-dias" className="text-sm font-medium">
+              Dias úteis
+            </label>
+            <Input
+              id="funil-dias"
+              inputMode="numeric"
+              value={diasUteis}
+              placeholder="22"
+              className="tabular-nums"
+              onChange={(e) => setDiasUteis(e.target.value.replace(/\D/g, ""))}
+            />
+          </div>
+        </div>
+        <p className="text-xs text-muted">
+          Opcionais. Com os dois, o funil mostra quantas oportunidades cada vendedor precisa abrir
+          por dia.
+        </p>
 
         {erro && <p className="text-sm text-danger">{erro}</p>}
       </div>

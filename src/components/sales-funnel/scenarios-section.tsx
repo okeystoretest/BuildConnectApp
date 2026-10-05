@@ -4,8 +4,8 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { excluirCenario } from "@/lib/sales-funnel/actions";
 import { compararCenario } from "@/lib/sales-funnel/scenario";
-import { formatarVolume } from "@/lib/sales-funnel/format";
-import type { FunnelInput, ScenarioInput } from "@/lib/sales-funnel/types";
+import { formatarReais, formatarVolume } from "@/lib/sales-funnel/format";
+import type { Equipe, FunnelInput, ScenarioInput } from "@/lib/sales-funnel/types";
 import type { FunnelScenarioItem } from "@/types/sales-funnel";
 import { cn } from "@/lib/utils";
 import { ScenarioModal } from "./scenario-modal";
@@ -14,9 +14,14 @@ import { CanvasBlock } from "./canvas-block";
 /**
  * Bloco 5 do canvas: as simulações.
  *
- * Plano e cenários lado a lado, cada um pelo MESMO motor. A diferença é
- * subtração — nenhum cenário tem caminho de cálculo próprio, senão os dois
- * números da tela poderiam divergir por motivo que não é a alavanca.
+ * Plano e cenários lado a lado, cada um pelo MESMO motor — nenhum cenário tem
+ * caminho de cálculo próprio, senão os dois números da tela poderiam divergir
+ * por motivo que não é a alavanca.
+ *
+ * O plano SOBE da meta até a atividade; cada cenário DESCE daquela mesma
+ * atividade até o faturamento. É por isso que a segunda coluna é o ganho em
+ * reais, e não o tamanho da boca do funil: o cenário responde "quanto isto
+ * rende se a alavanca melhorar", e não "de quanto esforço eu escapo".
  *
  * Um cenário guarda a taxa apontando para o ID da etapa. Quando as etapas são
  * regravadas, os ids mudam e as taxas somem pela cascata do banco — por isso
@@ -30,6 +35,7 @@ export function ScenariosSection({
    *  linhas que estão sendo editadas na tela. */
   etapasSalvas,
   cenarios,
+  equipe,
   canManage,
 }: {
   slug: string;
@@ -37,6 +43,8 @@ export function ScenariosSection({
   plano: FunnelInput;
   etapasSalvas: readonly { id: string; label: string; rate: number }[];
   cenarios: readonly FunnelScenarioItem[];
+  /** Só a alavanca de atividade diária depende dela. */
+  equipe: Equipe | null;
   canManage: boolean;
 }) {
   const router = useRouter();
@@ -58,12 +66,12 @@ export function ScenariosSection({
           id: c.id,
           name: c.name,
           ticketPercent: c.ticketPercent,
-          topPercent: c.topPercent,
+          opportunitiesPerSellerDay: c.opportunitiesPerSellerDay,
           rates: new Map(Object.entries(c.rates)),
         };
-        return { cenario: c, resultado: compararCenario(planoSalvo, entrada) };
+        return { cenario: c, resultado: compararCenario(planoSalvo, entrada, equipe) };
       }),
-    [cenarios, planoSalvo],
+    [cenarios, planoSalvo, equipe],
   );
 
   const base = comparacoes[0]?.resultado.plano;
@@ -94,7 +102,8 @@ export function ScenariosSection({
     >
       {cenarios.length === 0 ? (
         <p className="text-xs text-muted">
-          Nenhum cenário. Mexa no ticket ou nas taxas e veja o efeito sobre a meta.
+          Nenhum cenário. Mexa no ticket, nas taxas ou na boca do funil e veja quanto a
+          mesma atividade passa a faturar.
         </p>
       ) : (
         <div className="space-y-1">
@@ -107,19 +116,21 @@ export function ScenariosSection({
             <span className="w-14 text-right text-sm tabular-nums text-muted">
               {formatarVolume(base?.topVolume ?? 0)}
             </span>
+            {/* O plano é o zero da régua: o ganho dele é a própria meta. */}
+            <span className="w-24 text-right text-sm tabular-nums text-muted">—</span>
             <span className="w-5" />
           </div>
 
           <div className="flex items-center gap-2 px-2 text-[10px] uppercase tracking-wider text-muted">
             <span className="min-w-0 flex-1" />
-            <span className="w-12 text-right">Conv.</span>
+            <span className="w-12 text-right">Negóc.</span>
             <span className="w-14 text-right">Prosp.</span>
+            <span className="w-24 text-right">Ganho</span>
             <span className="w-5" />
           </div>
 
           {comparacoes.map(({ cenario, resultado }) => {
             const erro = resultado.cenario.diagnostics.find((d) => d.severity === "erro");
-            const deltaTopo = resultado.cenario.topVolume - (base?.topVolume ?? 0);
             return (
               <div
                 key={cenario.id}
@@ -150,9 +161,10 @@ export function ScenariosSection({
                       />
                       <Valor
                         valor={formatarVolume(resultado.cenario.topVolume)}
-                        delta={deltaTopo}
+                        delta={resultado.cenario.topVolume - (base?.topVolume ?? 0)}
                         className="w-14"
                       />
+                      <Ganho cents={resultado.ganhoCents} />
                     </>
                   )}
 
@@ -185,6 +197,7 @@ export function ScenariosSection({
         etapas={etapasSalvas}
         canManage={canManage}
         plano={planoSalvo}
+        equipe={equipe}
         onClose={() => setAberto(false)}
       />
     </CanvasBlock>
@@ -210,16 +223,35 @@ function Valor({
     <span className={cn("shrink-0 text-right", className)}>
       <span className="block text-sm font-semibold tabular-nums">{valor}</span>
       {delta !== 0 && (
-        <span
-          className={cn(
-            "block text-[10px] tabular-nums",
-            delta < 0 ? "text-primary" : "text-warning",
-          )}
-        >
+        <span className="block text-[10px] tabular-nums text-muted">
           {delta > 0 ? "+" : "−"}
           {formatarVolume(Math.abs(delta))}
         </span>
       )}
+    </span>
+  );
+}
+
+/**
+ * O ganho do cenário sobre a META, em reais.
+ *
+ * É a única coluna que se pinta, porque é a única cuja direção é inequívoca:
+ * mais faturamento é melhor. Verde é `primary` e não `success` — o tema do
+ * projeto não define `success`, e `text-success` não gera classe nenhuma.
+ */
+function Ganho({ cents }: { cents: number | null }) {
+  if (cents === null) {
+    return <span className="w-24 shrink-0 text-right text-sm tabular-nums text-muted">—</span>;
+  }
+  return (
+    <span
+      className={cn(
+        "w-24 shrink-0 text-right text-sm font-semibold tabular-nums",
+        cents >= 0 ? "text-primary" : "text-danger",
+      )}
+    >
+      {cents >= 0 ? "+" : "−"}
+      {formatarReais(Math.abs(cents))}
     </span>
   );
 }

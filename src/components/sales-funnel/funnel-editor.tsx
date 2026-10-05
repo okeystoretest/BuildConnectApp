@@ -1,41 +1,41 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Segmented } from "@/components/ui/segmented";
 import { Select } from "@/components/ui/select";
-import {
-  arquivarFunil,
-  atualizarFunil,
-  excluirFunil,
-  salvarCanais,
-  salvarEtapas,
-} from "@/lib/sales-funnel/actions";
+import { arquivarFunil, excluirFunil, salvarFunil } from "@/lib/sales-funnel/actions";
 import { calcularAscendente, calcularDescendente, distribuirCanais } from "@/lib/sales-funnel/math";
-import { formatarPercentual, formatarReais, formatarVolume } from "@/lib/sales-funnel/format";
-import type { FunnelInput } from "@/lib/sales-funnel/types";
+import type { Equipe, FunnelInput } from "@/lib/sales-funnel/types";
 import type { SalesFunnelDetail, SalesFunnelStatus } from "@/types/sales-funnel";
 import { MoneyInput } from "./money-input";
 import { StageRow, type EtapaEditavel } from "./stage-row";
-import { FunnelShape } from "./funnel-shape";
-import { DiagnosticsList } from "./diagnostics-list";
+import { FunnelResultPanel } from "./funnel-result";
 import { CanvasBlock, FieldLabel } from "./canvas-block";
-import { PhaseRail } from "./phase-rail";
 import { ChannelsSection, type CanalEditavel } from "./channels-section";
 import { ScenariosSection } from "./scenarios-section";
 import { Glossary } from "./glossary";
 
 type Modo = "meta" | "capacidade";
 
-/** Chave local estável para uma linha de etapa. */
-let seq = 0;
-const novaChave = () => `etapa-${(seq += 1)}`;
-
+/**
+ * Chave de linha: o id do banco para quem já foi salvo.
+ *
+ * Era um contador no escopo do MÓDULO, que incrementava a cada render — no
+ * servidor e de novo no cliente, e compartilhado por qualquer editor montado
+ * na mesma página. Como chave de React aquilo não chegava a quebrar nada,
+ * mas também não identificava linha nenhuma: a mesma etapa trocava de chave
+ * a cada remontagem. O id do banco identifica de verdade, e é o que permite
+ * usar a chave como alvo de diagnóstico e como atributo do DOM.
+ *
+ * Linha nova ainda não tem id, e recebe uma chave do contador POR INSTÂNCIA
+ * do editor — ver `proximaChave`.
+ */
 function paraEditavel(detail: SalesFunnelDetail): EtapaEditavel[] {
   return detail.stages.map((s) => ({
-    key: novaChave(),
+    key: s.id,
     label: s.label,
     rate: String(s.rate),
     transitionRule: s.transitionRule ?? "",
@@ -49,7 +49,7 @@ function paraInputDate(iso: string): string {
 
 function paraCanalEditavel(detail: SalesFunnelDetail): CanalEditavel[] {
   return detail.channels.map((c) => ({
-    key: novaChave(),
+    key: c.id,
     label: c.label,
     strategy: c.strategy ?? "",
     share: String(c.share),
@@ -57,13 +57,17 @@ function paraCanalEditavel(detail: SalesFunnelDetail): CanalEditavel[] {
 }
 
 /**
- * O editor de um funil, na disposição do canvas impresso.
+ * O editor de um funil: o formulário em cima, o resultado embaixo.
  *
- * Três zonas, como a folha deitada: canais e simulações à esquerda, o funil
- * no centro, os blocos numerados de etapas e meta à direita, e o trilho de
- * fases na borda. A versão anterior empilhava cinco seções de largura total,
- * o que gastava os 1800px da aba com um formulário de uma coluna e empurrava
- * o funil — o assunto da ferramenta — para fora da primeira dobra.
+ * Os quatro blocos numerados do canvas ficam numa faixa de duas colunas
+ * (①+② à esquerda, ③+④ à direita), e o funil ocupa a largura inteira
+ * abaixo dela. A versão anterior punha o desenho numa coluna central, entre
+ * dois montes de formulário: o funil ficava estreito e os campos ficavam
+ * espremidos em 320px, cortando "Oportunidades" no meio. Separar as duas
+ * coisas dá largura às duas.
+ *
+ * O funil só aparece depois que os números fecham — quem decide isso é
+ * `FunnelResultPanel`, a partir dos diagnósticos do motor.
  *
  * O cálculo roda AQUI, no cliente, a cada tecla — é o que faz a ferramenta
  * ser uma calculadora e não um formulário. O mesmo motor roda no servidor
@@ -92,6 +96,21 @@ export function FunnelEditor({
   const [ticketCents, setTicketCents] = useState<number | null>(detail.ticketCents);
   const [etapas, setEtapas] = useState<EtapaEditavel[]>(() => paraEditavel(detail));
   const [canais, setCanais] = useState<CanalEditavel[]>(() => paraCanalEditavel(detail));
+  const [vendedores, setVendedores] = useState(
+    detail.sellerCount ? String(detail.sellerCount) : "",
+  );
+  const [diasUteis, setDiasUteis] = useState(
+    detail.workingDays ? String(detail.workingDays) : "",
+  );
+  /**
+   * Chave das linhas criadas nesta sessão de edição, que ainda não têm id de
+   * banco. Em `useRef` e não no módulo: o contador é desta instância do
+   * editor, não do processo, e só avança em evento — nunca durante o render,
+   * que é o que fazia o antigo divergir entre servidor e cliente.
+   */
+  const proximaChave = useRef(0);
+  const novaChave = () => `nova-${(proximaChave.current += 1)}`;
+
   const [modo, setModo] = useState<Modo>("meta");
   const [capacidade, setCapacidade] = useState("");
   const [erro, setErro] = useState<string | null>(null);
@@ -117,6 +136,18 @@ export function FunnelEditor({
     [goalCents, ticketCents, etapas, canais],
   );
 
+  /**
+   * Equipe declarada, ou null. Os dois campos andam juntos: com vendedores mas
+   * sem dias úteis não há atividade diária a cobrar, e meio plano de ação na
+   * tela seria pior que nenhum.
+   */
+  const equipe: Equipe | null = useMemo(() => {
+    const v = Number.parseInt(vendedores, 10);
+    const d = Number.parseInt(diasUteis, 10);
+    if (!Number.isInteger(v) || !Number.isInteger(d) || v <= 0 || d <= 0) return null;
+    return { vendedores: v, diasUteis: d };
+  }, [vendedores, diasUteis]);
+
   const resultado = useMemo(() => {
     const base =
       modo === "meta"
@@ -132,6 +163,20 @@ export function FunnelEditor({
     for (const s of resultado.stages) mapa.set(s.id, s.volume);
     return mapa;
   }, [resultado.stages]);
+
+  /**
+   * Erro de fatia por canal, para o bloco ③ mostrar na própria linha.
+   *
+   * O `targetId` do diagnóstico é a chave da linha: `input.channels` é montado
+   * aqui com `id: c.key`.
+   */
+  const errosDeCanal = useMemo(() => {
+    const mapa = new Map<string, string>();
+    for (const d of resultado.diagnostics) {
+      if (d.code === "FATIA_INVALIDA" && d.targetId) mapa.set(d.targetId, d.message);
+    }
+    return mapa;
+  }, [resultado.diagnostics]);
 
   const temCenarioComTaxa = detail.scenarios.some((s) => Object.keys(s.rates).length > 0);
 
@@ -163,46 +208,35 @@ export function FunnelEditor({
     setSalvando(true);
     setErro(null);
 
-    const dados = await atualizarFunil(detail.id, {
+    // Uma chamada só, de propósito. Eram três em sequência, e a do meio
+    // apaga as etapas — levando junto as taxas de cenário, pela cascata. Uma
+    // falha depois dela destruía trabalho em nome de um salvamento que não
+    // chegava ao fim.
+    const r = await salvarFunil(detail.id, {
       slug,
       name,
       referenceDate,
       goalCents,
       ticketCents,
-    });
-    if (!dados.ok) {
-      setSalvando(false);
-      setErro(dados.error ?? "Não foi possível salvar.");
-      return;
-    }
-
-    const stages = await salvarEtapas({
-      slug,
-      funnelId: detail.id,
+      // null apaga a equipe declarada, que é o que "esvaziei o campo" quer
+      // dizer. Mandar undefined deixaria o valor antigo no banco.
+      sellerCount: equipe?.vendedores ?? null,
+      workingDays: equipe?.diasUteis ?? null,
       stages: etapas.map((e) => ({
         label: e.label.trim(),
         rate: Number(e.rate.replace(",", ".")),
         transitionRule: e.transitionRule.trim() || undefined,
       })),
-    });
-    if (!stages.ok) {
-      setSalvando(false);
-      setErro(stages.error ?? "Não foi possível salvar as etapas.");
-      return;
-    }
-
-    const channels = await salvarCanais({
-      slug,
-      funnelId: detail.id,
       channels: canais.map((c) => ({
         label: c.label.trim(),
         strategy: c.strategy.trim() || undefined,
         share: Number(c.share.replace(",", ".")),
       })),
     });
+
     setSalvando(false);
-    if (!channels.ok) {
-      setErro(channels.error ?? "Não foi possível salvar os canais.");
+    if (!r.ok) {
+      setErro(r.error ?? "Não foi possível salvar.");
       return;
     }
     router.refresh();
@@ -235,11 +269,6 @@ export function FunnelEditor({
     onBack();
     router.refresh();
   }
-
-  const destaque =
-    modo === "meta"
-      ? `${formatarVolume(resultado.requiredConversions)} conversões`
-      : formatarReais(resultado.projectedRevenueCents);
 
   return (
     <div className="space-y-3">
@@ -338,16 +367,13 @@ export function FunnelEditor({
       {erro && <p className="text-sm text-danger">{erro}</p>}
 
       {/*
-        As três zonas da folha. Abaixo de 1280px viram uma coluna, na ordem
-        Etapas/Meta → Funil → Canais → Simulações: num monitor estreito o
-        número da meta é o que se procura primeiro, e o funil só faz sentido
-        depois dele.
+        O formulário, em duas colunas a partir de 1024px. A numeração do
+        impresso sobe da esquerda para a direita: ① e ② definem a meta e o
+        caminho, ③ e ④ distribuem e testam o que sai deles. Abaixo de 1024px
+        vira uma coluna e a ordem passa a ser ①②③④, de cima para baixo.
       */}
-      <div className="grid gap-3 xl:grid-cols-[20rem_minmax(0,1fr)_19rem_auto]">
-        {/* ESQUERDA — ① Meta e ② Etapas: o que se define primeiro, onde a
-            leitura começa. A numeração sobe da esquerda para a direita, e é
-            por isso que esta coluna não é mais a dos canais. */}
-        <div className="order-1 space-y-3">
+      <div className="grid gap-3 lg:grid-cols-2 lg:items-start">
+        <div className="space-y-3">
           <CanvasBlock numero={1} titulo="Definição da meta">
             <div className="space-y-2">
               <MoneyInput
@@ -364,6 +390,36 @@ export function FunnelEditor({
                 disabled={!canManage}
                 onChange={setTicketCents}
               />
+
+              {/* Vendedores e dias úteis: é o que transforma volume do
+                  período em atividade cobrável do vendedor. Opcionais — sem
+                  eles o funil calcula igual, só não tem plano de ação. */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <FieldLabel htmlFor="ed-vendedores">Vendedores</FieldLabel>
+                  <Input
+                    id="ed-vendedores"
+                    inputMode="numeric"
+                    value={vendedores}
+                    placeholder="4"
+                    disabled={!canManage}
+                    className="h-8 text-sm tabular-nums"
+                    onChange={(e) => setVendedores(e.target.value.replace(/\D/g, ""))}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <FieldLabel htmlFor="ed-dias">Dias úteis</FieldLabel>
+                  <Input
+                    id="ed-dias"
+                    inputMode="numeric"
+                    value={diasUteis}
+                    placeholder="22"
+                    disabled={!canManage}
+                    className="h-8 text-sm tabular-nums"
+                    onChange={(e) => setDiasUteis(e.target.value.replace(/\D/g, ""))}
+                  />
+                </div>
+              </div>
 
               <Segmented
                 options={[
@@ -389,10 +445,10 @@ export function FunnelEditor({
                 </div>
               )}
 
-              <div className="rounded-md border border-primary/25 bg-primary/5 px-2.5 py-2">
-                <FieldLabel>{modo === "meta" ? "Precisaria de" : "Renderia"}</FieldLabel>
-                <p className="mt-0.5 text-2xl font-bold leading-tight tabular-nums">{destaque}</p>
-              </div>
+              {/* O número do resultado NÃO mora mais aqui: ele desceu para a
+                  faixa do funil, ao lado do desenho que o explica. Repeti-lo
+                  em dois lugares faria a tela ter duas respostas para a mesma
+                  pergunta, e a de cima estaria longe do que a justifica. */}
             </div>
           </CanvasBlock>
 
@@ -441,36 +497,14 @@ export function FunnelEditor({
           </CanvasBlock>
         </div>
 
-        {/* CENTRO: o funil, que é o assunto. */}
-        <div className="order-2 flex flex-col items-center rounded-lg border border-border bg-surface-1 p-3">
-          {resultado.stages.length > 0 ? (
-            <FunnelShape
-              stages={resultado.stages}
-              channels={resultado.channels}
-              conversoes={resultado.requiredConversions}
-            />
-          ) : (
-            <p className="py-16 text-center text-sm text-muted">
-              Preencha a meta, o ticket e as taxas para o funil aparecer.
-            </p>
-          )}
-
-          {resultado.topVolume > 0 && (
-            <p className="mt-1 text-center text-[11px] uppercase tracking-[0.12em] text-muted">
-              Taxa externa {formatarPercentual(resultado.externalRate)}
-            </p>
-          )}
-
-          <DiagnosticsList diagnostics={resultado.diagnostics} className="mt-3 w-full" />
-        </div>
-
-        {/* DIREITA — ③ Canais e ④ Simulações: o que se distribui e o que se
-            testa, depois de a meta e as etapas estarem de pé. */}
-        <div className="order-3 space-y-3">
+        {/* ③ Canais e ④ Simulações: o que se distribui e o que se testa,
+            depois de a meta e as etapas estarem de pé. */}
+        <div className="space-y-3">
           <ChannelsSection
             canais={canais}
             volumes={resultado.channels}
             cobertura={resultado.channelCoverage}
+            erros={errosDeCanal}
             disabled={!canManage}
             onChange={(key, patch) =>
               setCanais((atual) => atual.map((c) => (c.key === key ? { ...c, ...patch } : c)))
@@ -487,16 +521,19 @@ export function FunnelEditor({
             plano={input}
             etapasSalvas={detail.stages.map((s) => ({ id: s.id, label: s.label, rate: s.rate }))}
             cenarios={detail.scenarios}
+            equipe={equipe}
             canManage={canManage}
           />
 
           <Glossary />
         </div>
-
-        <div className="order-4">
-          <PhaseRail />
-        </div>
       </div>
+
+      {/* O resultado, embaixo e na largura inteira: é o que a ferramenta
+          existe para dar, e até aqui ele disputava espaço com os campos que o
+          alimentam. Aparece só quando os números fecham; enquanto isso, lista
+          o que falta preencher. */}
+      <FunnelResultPanel resultado={resultado} modo={modo} equipe={equipe} />
     </div>
   );
 }
