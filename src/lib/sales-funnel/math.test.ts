@@ -43,19 +43,44 @@ test("o exemplo do canvas impresso fecha em 50 conversões e 1.000 oportunidades
   assert.deepEqual(r.diagnostics, []);
 });
 
-test("ascendente arredonda para CIMA: 205,5 propostas viram 206", () => {
-  // 37 conversões a 18% = 205,55 -> 206.
-  const r = calcularAscendente({
+test("ascendente arredonda ao MAIS PRÓXIMO, com empate para cima", () => {
+  // 37 conversões a 18% = 205,55 -> 206. Para cima ou ao mais próximo dá o
+  // mesmo resultado aqui; são os dois casos seguintes que separam as regras.
+  const acima = calcularAscendente({
     ...planoDoCanvas(),
     goalCents: 3_700_000,
     stages: [{ id: "s1", label: "Proposta", rate: 18 }],
   });
-  assert.equal(r.requiredConversions, 37);
-  assert.equal(r.stages[0]?.volume, 206);
+  assert.equal(acima.requiredConversions, 37);
+  assert.equal(acima.stages[0]?.volume, 206);
+
+  // 100 conversões a 3% = 3.333,33. Para cima dava 3.334.
+  const abaixo = calcularAscendente({
+    ...planoDoCanvas(),
+    goalCents: 10_000_000,
+    stages: [{ id: "s1", label: "Proposta", rate: 3 }],
+  });
+  assert.equal(abaixo.stages[0]?.volume, 3333);
+
+  // Empate SOBE, que é o lado comercialmente seguro: 35 conversões a 40% dão
+  // 87,5 propostas, e o plano pede 88.
+  const empate = calcularAscendente({
+    ...planoDoCanvas(),
+    goalCents: 3_500_000,
+    stages: [{ id: "s1", label: "Proposta", rate: 40 }],
+  });
+  assert.equal(empate.requiredConversions, 35);
+  assert.equal(empate.stages[0]?.volume, 88);
 });
 
 test("ticket MAIOR que a meta ainda exige uma conversão, nunca zero", () => {
+  // Metade exata: o empate sobe e daria 1 de todo modo.
   assert.equal(conversoesNecessarias(50_000, 100_000), 1);
+  // Abaixo da metade é o caso que o PISO protege. Arredondar ao mais próximo,
+  // sozinho, daria zero conversões — e um funil inteiro zerado, sem
+  // diagnóstico nenhum, para uma meta que existe.
+  assert.equal(conversoesNecessarias(30_000, 100_000), 1);
+  assert.equal(conversoesNecessarias(1, 100_000), 1);
 });
 
 test("meta zerada e ticket zerado viram erro, sem volume calculado", () => {
@@ -126,14 +151,16 @@ test("texto que não é número devolve null, e não NaN disfarçado de zero", (
   assert.equal(parseMoedaParaCentavos("-50"), null);
 });
 
-test("descendente arredonda para BAIXO: 599 prospecções não viram 30 vendas", () => {
-  // 599 -> 50% -> 299 -> 50% -> 149 -> 20% -> 29.
+test("descendente arredonda ao MAIS PRÓXIMO: 599 prospecções viram 30 vendas", () => {
+  // 599 -> 50% -> 299,5 -> 300 -> 50% -> 150 -> 20% -> 30.
+  // Truncar dava [599, 299, 149] e 29 vendas: meia unidade perdida em cada
+  // etapa se acumulava, e o funil prometia menos do que a atividade rende.
   const r = calcularDescendente(planoDoCanvas(), 599);
   assert.deepEqual(
     r.stages.map((s) => s.volume),
-    [599, 299, 149],
+    [599, 300, 150],
   );
-  assert.equal(r.requiredConversions, 29);
+  assert.equal(r.requiredConversions, 30);
 });
 
 test("descendente projeta o faturamento pelo ticket do plano", () => {
@@ -151,9 +178,47 @@ test("ida e volta: o topo do ascendente reconstrói as conversões no descendent
   const plano = planoDoCanvas();
   const subida = calcularAscendente(plano);
   const descida = calcularDescendente(plano, subida.topVolume);
-  // O arredondamento é pessimista nos dois sentidos, então a volta nunca
-  // promete MENOS do que a meta pedia — pode prometer exatamente.
-  assert.ok(descida.requiredConversions >= subida.requiredConversions);
+  assert.equal(descida.requiredConversions, subida.requiredConversions);
+});
+
+test("o ida e volta é EXATO para toda taxa e todo volume comum", () => {
+  // Com a regra antiga — para cima na subida, truncando na descida — só era
+  // possível afirmar ">=". Ao mais próximo, a volta cai exatamente nas
+  // conversões, e é disso que depende "um cenário sem alavanca é idêntico ao
+  // plano". Varrido aqui para que mexer na regra falhe em massa, em vez de
+  // sair como um número torto numa tela.
+  const grade = [
+    1, 2.3, 5, 7, 12.5, 18, 20, 25, 29, 33, 33.33, 40, 50, 60, 66.67, 75, 80, 95, 100,
+  ];
+  let casos = 0;
+  for (const a of grade) {
+    for (const b of grade) {
+      for (const c of grade) {
+        for (const conversoes of [1, 7, 35, 50, 137, 290, 1000, 4321]) {
+          const plano: FunnelInput = {
+            goalCents: conversoes * 100_000,
+            ticketCents: 100_000,
+            stages: [
+              { id: "s1", label: "A", rate: a },
+              { id: "s2", label: "B", rate: b },
+              { id: "s3", label: "C", rate: c },
+            ],
+            channels: [],
+          };
+          const subida = calcularAscendente(plano);
+          if (subida.diagnostics.length > 0) continue;
+          const descida = calcularDescendente(plano, subida.topVolume);
+          assert.equal(
+            descida.requiredConversions,
+            subida.requiredConversions,
+            `taxas ${a}/${b}/${c} com ${conversoes} conversões`,
+          );
+          casos += 1;
+        }
+      }
+    }
+  }
+  assert.ok(casos > 50_000, `a varredura precisa cobrir volume: ${casos} casos`);
 });
 
 test("a fatia de cada canal vira número absoluto de prospecções", () => {
@@ -286,9 +351,59 @@ test("nenhuma taxa de um décimo erra por um, em nenhum volume comum", () => {
       const exato = (conversoes * 1000) / bp;
       assert.equal(
         r.stages[0]?.volume,
-        Math.ceil(exato - 1e-9),
+        Math.floor(exato + 0.5),
         `taxa ${rate}% com ${conversoes} conversões`,
       );
     }
   }
+});
+
+/*
+ * O caso de teste da auditoria de 30/09/2026 contra a metodologia do canvas,
+ * travado como regressão. Os valores são os da referência, não os que o motor
+ * produzia: a ferramenta dava 36 / 90 / 150 / 455 porque arredondava para
+ * cima em cada etapa.
+ */
+
+/** Meta R$ 75.000, ticket R$ 2.140,65, etapas 33% / 60% / 40%. */
+function planoDaAuditoria(): FunnelInput {
+  return {
+    goalCents: 7_500_000,
+    ticketCents: 214_065,
+    stages: [
+      { id: "s1", label: "Oportunidade", rate: 33 },
+      { id: "s2", label: "Visita", rate: 60 },
+      { id: "s3", label: "Proposta", rate: 40 },
+    ],
+    channels: [],
+  };
+}
+
+test("auditoria: a cadeia base fecha em 35 conversões e 445 / 147 / 88", () => {
+  const r = calcularAscendente(planoDaAuditoria());
+  assert.equal(r.requiredConversions, 35); // 75.000 / 2.140,65 = 35,04
+  assert.deepEqual(
+    r.stages.map((s) => s.volume),
+    [445, 147, 88], // 445,45 · 146,67 · 87,5
+  );
+  assert.equal(r.topVolume, 445);
+});
+
+test("auditoria: a conversão geral é a taxa EXATA, sem arredondar", () => {
+  const r = calcularAscendente(planoDaAuditoria());
+  // 35 / 445 = 7,8652%. A metodologia manda usar a taxa exata nas simulações,
+  // e é por isso que este número não é arredondado no motor.
+  assert.ok(Math.abs(r.externalRate - 7.8652) < 0.001, `externalRate: ${r.externalRate}`);
+});
+
+test("auditoria: 528 prospecções no topo rendem 42 negócios", () => {
+  // A simulação 1 do canvas: 6 oportunidades por vendedor por dia, 22 dias
+  // úteis, 4 vendedores. 528 -> 174,24 -> 174 -> 104,4 -> 104 -> 41,6 -> 42.
+  const r = calcularDescendente(planoDaAuditoria(), 528);
+  assert.deepEqual(
+    r.stages.map((s) => s.volume),
+    [528, 174, 104],
+  );
+  assert.equal(r.requiredConversions, 42);
+  assert.equal(r.projectedRevenueCents, 8_990_730); // R$ 89.907,30
 });

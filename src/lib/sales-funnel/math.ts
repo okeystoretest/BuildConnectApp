@@ -35,18 +35,46 @@ function pontosBase(taxa: number): number {
 }
 
 /**
- * Divisão inteira arredondando para CIMA, sem ponto flutuante.
+ * A taxa como o motor vai de fato usá-la: 33,333% é 33,33%.
  *
- * Os dois operandos cabem com folga no inteiro seguro: o volume não passa de
- * LIMITE_VOLUME (1e9) e a escala é 1e4, então o numerador fica em 1e13 contra
- * os 9e15 de `Number.MAX_SAFE_INTEGER`.
+ * Existe para a TELA poder mostrar o descarte em vez de engoli-lo. O corte na
+ * segunda casa é consequência de `pontosBase`, e deriva dele de propósito —
+ * uma segunda constante aqui divergiria no dia em que a escala mudasse.
  */
-function dividirParaCima(numerador: number, denominador: number): number {
-  return Math.floor((numerador + denominador - 1) / denominador);
+export function taxaEfetiva(taxa: number): number {
+  return pontosBase(taxa) / 100;
 }
 
-/** Resultado vazio: o que a tela mostra quando falta dado obrigatório. */
-function vazio(diagnostics: Diagnostic[]): FunnelResult {
+/**
+ * Divisão inteira arredondando ao MAIS PRÓXIMO, empate para cima, sem ponto
+ * flutuante.
+ *
+ * É a regra da metodologia do canvas, que arredonda ao mais próximo em cada
+ * etapa: 35,04 conversões são 35, 87,5 propostas são 88, 445,45 oportunidades
+ * são 445. Até 30/09/2026 o motor arredondava para CIMA em toda etapa, e a
+ * mesma cadeia dava 36 / 90 / 150 / 455 — um plano que cobrava dez
+ * prospecções a mais do que a conta pede.
+ *
+ * O empate sobe porque é o lado seguro: entre pedir meia prospecção a menos e
+ * meia a mais, a que erra para mais ainda bate a meta.
+ *
+ * `2 * numerador` cabe com folga no inteiro seguro: o volume não passa de
+ * LIMITE_VOLUME (1e9) e a escala é 1e4, então o numerador dobrado fica em 2e13
+ * contra os 9e15 de `Number.MAX_SAFE_INTEGER`.
+ */
+export function arredondar(numerador: number, denominador: number): number {
+  return Math.floor((2 * numerador + denominador) / (2 * denominador));
+}
+
+/**
+ * Resultado vazio: o que a tela mostra quando falta dado obrigatório.
+ *
+ * Exportado porque `scenario.ts` também precisa dele — quando o cenário pede a
+ * alavanca de atividade diária num funil sem equipe declarada, o resultado é
+ * vazio com EQUIPE_AUSENTE, e reconstruir a forma do FunnelResult lá seria uma
+ * segunda cópia a manter.
+ */
+export function resultadoVazio(diagnostics: Diagnostic[]): FunnelResult {
   return {
     requiredConversions: 0,
     stages: [],
@@ -62,13 +90,17 @@ function vazio(diagnostics: Diagnostic[]): FunnelResult {
 /**
  * Conversões necessárias para bater a meta — o bloco 1 do canvas.
  *
- * Arredonda para CIMA: meia venda não existe, e registrar 49 onde são
- * precisas 49,2 é registrar um plano que não bate a meta. Ticket maior que a
- * meta continua exigindo UMA conversão, nunca zero.
+ * Arredonda ao mais próximo, como o resto da cadeia: 35,04 conversões são 35.
+ *
+ * O `Math.max(1, …)` é a ÚNICA exceção à regra em todo o motor. Existe porque
+ * arredondar ao mais próximo, sozinho, devolveria ZERO para qualquer meta
+ * abaixo de meio ticket — e zero conversões é um funil inteiro zerado, sem
+ * diagnóstico nenhum, para uma meta que a pessoa declarou. Ticket maior que a
+ * meta continua exigindo UMA conversão.
  */
 export function conversoesNecessarias(goalCents: number, ticketCents: number): number {
   if (goalCents <= 0 || ticketCents <= 0) return 0;
-  return Math.ceil(goalCents / ticketCents);
+  return Math.max(1, arredondar(goalCents, ticketCents));
 }
 
 /**
@@ -131,7 +163,7 @@ function erros(input: FunnelInput): Diagnostic[] {
  */
 export function calcularAscendente(input: FunnelInput): FunnelResult {
   const problemas = erros(input);
-  if (problemas.length > 0) return vazio(problemas);
+  if (problemas.length > 0) return resultadoVazio(problemas);
 
   const conversoes = conversoesNecessarias(input.goalCents, input.ticketCents);
 
@@ -140,9 +172,9 @@ export function calcularAscendente(input: FunnelInput): FunnelResult {
   const volumes: number[] = [];
   let abaixo = conversoes;
   for (const stage of [...input.stages].reverse()) {
-    const volume = dividirParaCima(abaixo * 10_000, pontosBase(stage.rate));
+    const volume = arredondar(abaixo * 10_000, pontosBase(stage.rate));
     if (volume >= LIMITE_VOLUME) {
-      return vazio([
+      return resultadoVazio([
         {
           code: "VOLUME_IRREAL",
           severity: "erro",
@@ -183,14 +215,17 @@ export function calcularAscendente(input: FunnelInput): FunnelResult {
  * baixo, MULTIPLICANDO. A pessoa fixa quantas prospecções consegue fazer e
  * vê no que isso dá.
  *
- * Arredonda para BAIXO: 599 prospecções que rendem 29,8 vendas rendem 29.
- * Prometer a fração é prometer uma venda que não existe.
+ * Arredonda ao MAIS PRÓXIMO, como o ascendente. Truncar, que era a regra até
+ * 30/09/2026, perdia até meia unidade em CADA etapa e a perda se acumulava:
+ * 599 prospecções davam 29 vendas onde a conta dá 30. Um funil que promete
+ * menos do que a atividade informada rende está tão errado quanto um que
+ * promete mais.
  */
 export function calcularDescendente(input: FunnelInput, topVolume: number): FunnelResult {
   const problemas = erros(input);
-  if (problemas.length > 0) return vazio(problemas);
+  if (problemas.length > 0) return resultadoVazio(problemas);
   if (!(topVolume > 0) || topVolume >= LIMITE_VOLUME) {
-    return vazio([
+    return resultadoVazio([
       {
         code: "VOLUME_IRREAL",
         severity: "erro",
@@ -203,9 +238,9 @@ export function calcularDescendente(input: FunnelInput, topVolume: number): Funn
   let volume = Math.floor(topVolume);
   for (const stage of input.stages) {
     stages.push({ id: stage.id, label: stage.label, rate: stage.rate, volume });
-    // Para BAIXO, e também em inteiros: `volume * taxa / 100` perdia uma
-    // conversão a 2,3% (3.000 rendiam 68 onde a conta exata dá 69).
-    volume = Math.floor((volume * pontosBase(stage.rate)) / 10_000);
+    // Em inteiros pelo mesmo motivo do ascendente: `volume * taxa / 100`
+    // perdia uma conversão a 2,3% (3.000 rendiam 68 onde a conta dá 69).
+    volume = arredondar(volume * pontosBase(stage.rate), 10_000);
   }
   // Saindo do laço, `volume` já passou pela taxa da última etapa: são as
   // conversões.
@@ -238,6 +273,9 @@ function duasCasas(valor: number): number {
  * Roda DEPOIS do funil porque depende do topo. Fatia inválida não entra na
  * soma: um share negativo abateria um estouro e faria a cobertura parecer
  * correta justamente quando não está.
+ *
+ * O volume de cada canal arredonda ao mais próximo, pela mesma regra do resto
+ * do motor — 33,33% de 1.000 são 333, e não 334.
  */
 export function distribuirCanais(
   resultado: FunnelResult,
@@ -263,7 +301,7 @@ export function distribuirCanais(
       id: canal.id,
       label: canal.label,
       share: canal.share,
-      volume: valida ? Math.ceil((resultado.topVolume * canal.share) / 100) : 0,
+      volume: valida ? arredondar(resultado.topVolume * pontosBase(canal.share), 10_000) : 0,
     });
   }
 
