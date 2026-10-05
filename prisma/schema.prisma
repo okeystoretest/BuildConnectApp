@@ -582,6 +582,16 @@ model SalesFunnel {
   status        SalesFunnelStatus @default(RASCUNHO)
   notes         String?           @db.Text
 
+  /// Quantos vendedores dividem o esforço do período.
+  ///
+  /// Nulo de propósito: o funil inteiro se calcula sem equipe declarada, e é
+  /// isso que mantém desenhando os funis salvos antes de 30/09/2026. Sem
+  /// equipe não há plano de ação por vendedor — e não há erro.
+  sellerCount Int?
+
+  /// Dias úteis do período, para traduzir volume em atividade diária cobrável.
+  workingDays Int?
+
   /// Subsetor de ESCOPO — o de origem quando há herança. Vendas e Marketing
   /// escrevem na mesma base, como já acontece no Cronograma.
   subsectorId String
@@ -657,8 +667,17 @@ model SalesFunnelScenario {
   /// Alavanca 3 do canvas: "melhore o ticket médio". +10 = ticket 10% maior.
   ticketPercent Float @default(0)
 
-  /// Alavanca 1: "aumente a boca do funil". Só vale no modo descendente.
-  topPercent Float @default(0)
+  /// Alavanca 1: "aumente a boca do funil", em atividade diária cobrável —
+  /// quantas oportunidades cada vendedor abre por dia útil. O topo do cenário
+  /// é este número × dias úteis × vendedores: os 528 do canvas saem de
+  /// 6 × 22 × 4.
+  ///
+  /// Nulo = o cenário herda o topo do plano.
+  ///
+  /// Substituiu um `topPercent Float @default(0)` que nasceu inerte: era
+  /// persistido, validado e lido, e nenhum cálculo o aplicava. Como percentual
+  /// os 528 seriam "+18,65%", número que ninguém digita nem confere.
+  opportunitiesPerSellerDay Float?
 
   /// Alavanca 2: "melhore as taxas internas".
   rates SalesFunnelScenarioRate[]

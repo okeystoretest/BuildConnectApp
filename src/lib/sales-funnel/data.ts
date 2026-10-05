@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { resolveAppScope } from "@/lib/app-scope";
 import { can } from "@/lib/permissions";
 import { calcularAscendente, distribuirCanais } from "./math";
-import type { FunnelInput } from "./types";
+import type { Equipe, FunnelInput } from "./types";
 import type { Role } from "@/types";
 import type {
   SalesFunnelData,
@@ -43,6 +43,21 @@ export function toFunnelInput(detail: SalesFunnelDetail): FunnelInput {
   };
 }
 
+/**
+ * Equipe declarada, ou `null`.
+ *
+ * Os dois campos andam juntos: com vendedores mas sem dias úteis não há
+ * atividade diária a cobrar, e meio plano de ação na tela seria pior que
+ * nenhum.
+ */
+export function toEquipe(detail: {
+  sellerCount?: number;
+  workingDays?: number;
+}): Equipe | null {
+  if (!detail.sellerCount || !detail.workingDays) return null;
+  return { vendedores: detail.sellerCount, diasUteis: detail.workingDays };
+}
+
 export async function getSalesFunnelData(
   slug: string,
   role: Role,
@@ -60,6 +75,8 @@ export async function getSalesFunnelData(
       goalAmount: true,
       averageTicket: true,
       status: true,
+      sellerCount: true,
+      workingDays: true,
       createdBy: { select: { fullName: true } },
       stages: {
         orderBy: { order: "asc" },
@@ -84,6 +101,8 @@ export async function getSalesFunnelData(
       goalCents,
       ticketCents,
       status: row.status,
+      sellerCount: row.sellerCount ?? undefined,
+      workingDays: row.workingDays ?? undefined,
       requiredConversions: resultado.requiredConversions,
       topVolume: resultado.topVolume,
       authorName: row.createdBy?.fullName,
@@ -116,6 +135,8 @@ export async function getSalesFunnelDetail(
       goalAmount: true,
       averageTicket: true,
       status: true,
+      sellerCount: true,
+      workingDays: true,
       notes: true,
       createdBy: { select: { fullName: true } },
       stages: {
@@ -139,7 +160,7 @@ export async function getSalesFunnelDetail(
           name: true,
           notes: true,
           ticketPercent: true,
-          topPercent: true,
+          opportunitiesPerSellerDay: true,
           rates: { select: { stageId: true, conversionRate: true } },
         },
       },
@@ -181,6 +202,8 @@ export async function getSalesFunnelDetail(
     goalCents,
     ticketCents,
     status: row.status,
+    sellerCount: row.sellerCount ?? undefined,
+    workingDays: row.workingDays ?? undefined,
     notes: row.notes ?? undefined,
     authorName: row.createdBy?.fullName,
     requiredConversions: resultado.requiredConversions,
@@ -192,7 +215,7 @@ export async function getSalesFunnelDetail(
       name: s.name,
       notes: s.notes ?? undefined,
       ticketPercent: s.ticketPercent,
-      topPercent: s.topPercent,
+      opportunitiesPerSellerDay: s.opportunitiesPerSellerDay ?? undefined,
       rates: Object.fromEntries(s.rates.map((r) => [r.stageId, r.conversionRate])),
     })),
   };

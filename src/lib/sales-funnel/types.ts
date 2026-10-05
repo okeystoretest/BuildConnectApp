@@ -16,6 +16,7 @@ export type DiagnosticCode =
   | "SEM_ETAPAS"
   | "TAXA_INVALIDA"
   | "VOLUME_IRREAL"
+  | "EQUIPE_AUSENTE"
   | "CANAIS_INSUFICIENTES"
   | "FATIA_INVALIDA"
   | "COBERTURA_INCOMPLETA"
@@ -55,6 +56,19 @@ export interface FunnelInput {
   ticketCents: number;
   stages: readonly StageInput[];
   channels: readonly ChannelInput[];
+}
+
+/**
+ * Quem executa o funil e em quanto tempo — o que transforma volume do período
+ * em atividade cobrável do vendedor.
+ *
+ * Fica FORA de `FunnelInput` de propósito: o funil inteiro se calcula sem
+ * equipe declarada, e é isso que mantém os funis salvos antes de 30/09/2026
+ * desenhando. Sem equipe não há plano de ação — não há erro.
+ */
+export interface Equipe {
+  vendedores: number;
+  diasUteis: number;
 }
 
 export interface StageVolume {
@@ -97,8 +111,17 @@ export interface ScenarioInput {
   name: string;
   /** "Melhore o ticket médio": +10 = ticket 10% maior. */
   ticketPercent: number;
-  /** "Aumente a boca do funil": +25 = 25% mais prospecções. Só no descendente. */
-  topPercent: number;
+  /**
+   * "Aumente a boca do funil", em atividade diária cobrável: 6 = cada vendedor
+   * abre 6 oportunidades por dia útil, e o topo do cenário é 6 × dias ×
+   * vendedores.
+   *
+   * Ausente = o cenário herda o topo do plano. Substituiu o `topPercent`, que
+   * nasceu inerte: como percentual, os 528 do canvas seriam "+18,65%", número
+   * que ninguém digita nem confere de cabeça. Exige equipe declarada, e sem
+   * ela o cenário devolve EQUIPE_AUSENTE.
+   */
+  opportunitiesPerSellerDay?: number;
   /** "Melhore as taxas internas": stageId → taxa que substitui a do plano. */
   rates: ReadonlyMap<string, number>;
 }
@@ -106,6 +129,15 @@ export interface ScenarioInput {
 export interface ScenarioComparison {
   plano: FunnelResult;
   cenario: FunnelResult;
+  /** Negócios que o cenário fecha além dos que a meta exigia. */
   deltaConversions: number;
-  deltaRevenueCents: number;
+  /**
+   * Faturamento do cenário menos a META, que é o "ganho" do canvas.
+   *
+   * Contra a meta, e não contra o faturamento do plano, porque o faturamento
+   * do plano é ele mesmo artefato do arredondamento — comparar com ele daria
+   * R$ 17.125,20 onde a metodologia pede R$ 17.047,95. `null` quando o cenário
+   * tem erro: não há ganho de um cálculo que não existe.
+   */
+  ganhoCents: number | null;
 }

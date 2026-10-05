@@ -23,7 +23,8 @@ export interface FunnelScenarioItem {
   name: string;
   notes?: string;
   ticketPercent: number;
-  topPercent: number;
+  /** Ausente = o cenário herda o topo do plano. */
+  opportunitiesPerSellerDay?: number;
   /** stageId → taxa. Só as etapas que o cenário muda. */
   rates: Record<string, number>;
 }
@@ -37,6 +38,9 @@ export interface SalesFunnelListItem {
   goalCents: number;
   ticketCents: number;
   status: SalesFunnelStatus;
+  /** Equipe e período. Ausentes nos funis criados antes de 30/09/2026. */
+  sellerCount?: number;
+  workingDays?: number;
   /** Calculado no servidor para o card não depender de JS. */
   requiredConversions: number;
   topVolume: number;
