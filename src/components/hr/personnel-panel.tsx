@@ -195,10 +195,18 @@ function PersonFolders({
             <div className="space-y-2">
               {group.folders.map((folder) => {
                 const isOpen = expanded === folder.key;
+                // Pasta vazia = documentação pendente, e pendência tem de
+                // saltar da tela: é para isso que a pasta vazia aparece.
+                const pending = folder.files.length === 0;
                 return (
                   <article
                     key={folder.key}
-                    className="rounded-xl border border-border bg-surface transition-colors hover:border-border-strong"
+                    className={cn(
+                      "rounded-xl border bg-surface transition-colors",
+                      pending
+                        ? "border-danger/40 bg-danger/[0.04] hover:border-danger/60"
+                        : "border-border hover:border-border-strong",
+                    )}
                   >
                     <div className="flex items-center gap-2 p-3">
                       <button
@@ -209,7 +217,8 @@ function PersonFolders({
                       >
                         <ChevronDown
                           className={cn(
-                            "h-4 w-4 shrink-0 text-muted transition-transform",
+                            "h-4 w-4 shrink-0 transition-transform",
+                            pending ? "text-danger/70" : "text-muted",
                             isOpen && "rotate-180",
                           )}
                         />
@@ -217,8 +226,15 @@ function PersonFolders({
                           <span className="block truncate text-sm font-medium text-foreground">
                             {folder.label}
                           </span>
-                          <span className="mt-0.5 block text-xs text-muted">
-                            {folder.files.length === 0
+                          {/* O rótulo também é vermelho: cor de borda sozinha
+                              não chega a quem não distingue vermelho. */}
+                          <span
+                            className={cn(
+                              "mt-0.5 block text-xs",
+                              pending ? "font-medium text-danger" : "text-muted",
+                            )}
+                          >
+                            {pending
                               ? "Pendente"
                               : `${folder.files.length} ${folder.files.length === 1 ? "arquivo" : "arquivos"}`}
                           </span>

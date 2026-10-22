@@ -115,7 +115,7 @@ export async function GET(
   const type = CONTENT_TYPE[path.extname(filePath).toLowerCase()] ?? "application/octet-stream";
   // Anexo (download) para o que o navegador não deve renderizar: formatos do
   // Office e binário desconhecido. Imagem, vídeo, PDF e texto continuam abrindo
-  // na aba — é o que hr-documents, integration-maps e o modal de vídeo esperam.
+  // na aba — é o que o Departamento Pessoal, integration-maps e o modal de vídeo esperam.
   // O que tornava isso perigoso era SVG, que agora nem é gravado (storage/
   // files.ts) nem tem Content-Type aqui. "nosniff" fecha o resto: impede o
   // navegador de adivinhar um tipo executável ignorando o Content-Type.

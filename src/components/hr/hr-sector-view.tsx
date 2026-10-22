@@ -9,19 +9,16 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { EmployeeHistoryPanel } from "@/components/hr/employee-history";
 import { EvaluationResultsPanel } from "@/components/hr/evaluation-results-panel";
 import { IntegrationMapsPanel } from "@/components/hr/integration-maps";
-import { HrDocumentsPanel } from "@/components/hr/hr-documents";
 import { PersonnelPanel } from "@/components/hr/personnel-panel";
 import { UserManagementPanel } from "@/components/hr/user-management";
 import { WhatsappPanel } from "@/components/hr/whatsapp-panel";
 import { MapUploadModal } from "@/components/hr/map-upload-modal";
 import { ReportBoard } from "@/components/reports/report-board";
-import { FileUploadModal } from "@/components/sector/file-upload-modal";
 import { SectorWelcomeVideo } from "@/components/sector/welcome-video";
 import type { SectorWelcomeVideo as SectorWelcomeVideoData } from "@/lib/welcome-video-data";
 import { useRole } from "@/providers/role-provider";
 import type {
   ManagedUser,
-  HrDocument,
   IntegrationMap,
   EmployeeSummary,
   EmployeeHistory,
@@ -41,7 +38,6 @@ export interface HrSectorViewProps {
   /** Administra o DHO: Admin, ou Gestor lotado no DHO. Libera todas as abas. */
   canHrAdmin: boolean;
   users: ManagedUser[];
-  documents: HrDocument[];
   /** Departamento Pessoal: colaboradores ATIVOS, um por pasta. */
   personnel: PersonnelPerson[];
   maps: IntegrationMap[];
@@ -69,7 +65,6 @@ export interface HrSectorViewProps {
 export function HrSectorView({
   canHrAdmin,
   users,
-  documents,
   personnel,
   maps,
   roster,
@@ -87,7 +82,6 @@ export function HrSectorView({
 }: HrSectorViewProps) {
   const { can } = useRole();
   const [mapModalOpen, setMapModalOpen] = useState(false);
-  const [docModalOpen, setDocModalOpen] = useState(false);
 
   // Abas visíveis dependem de quem administra o DHO (a página decide):
   // - Admin e Gestor lotado no DHO (canHrAdmin): tudo, mas Avaliações
@@ -169,22 +163,7 @@ export function HrSectorView({
         {active === "mapas" && canHrAdmin && (
           <IntegrationMapsPanel maps={maps} onUpload={() => setMapModalOpen(true)} />
         )}
-        {active === "documentos" && canHrAdmin && (
-          <div className="space-y-8">
-            <PersonnelPanel roster={personnel} />
-
-            {/* A antiga aba "Documentos" era esta lista plana, sob o subsetor
-                "rh". Ela fica: o pedido renomeou a aba e acrescentou a pasta
-                por colaborador, não mandou descartar o que já está arquivado
-                aqui — e esta é a única tela que alcança esses arquivos. */}
-            <section className="space-y-3 border-t border-border pt-6">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
-                Documentos gerais do DHO
-              </h3>
-              <HrDocumentsPanel documents={documents} onUpload={() => setDocModalOpen(true)} />
-            </section>
-          </div>
-        )}
+        {active === "documentos" && canHrAdmin && <PersonnelPanel roster={personnel} />}
         {active === "denuncias" && canReports && <ReportBoard reports={reports} />}
 
         {active === "usuarios" && canHrAdmin && <UserManagementPanel users={users} />}
@@ -193,11 +172,6 @@ export function HrSectorView({
       </TabPanel>
 
       <MapUploadModal open={mapModalOpen} onClose={() => setMapModalOpen(false)} />
-      <FileUploadModal
-        slug="rh"
-        open={docModalOpen}
-        onClose={() => setDocModalOpen(false)}
-      />
     </AppShell>
   );
 }

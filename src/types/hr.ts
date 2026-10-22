@@ -90,15 +90,6 @@ export interface IntegrationMap {
   filePath?: string;
 }
 
-export interface HrDocument {
-  id: string;
-  name: string;
-  size: string;
-  kind: "PDF" | "DOCX" | "XLSX" | "PPTX";
-  /** Caminho do arquivo real para visualizar/baixar. */
-  filePath?: string;
-}
-
 export interface ManagedUser {
   id: string;
   name: string;
