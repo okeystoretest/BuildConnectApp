@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import {
   ArrowLeft,
   ChevronDown,
@@ -25,6 +25,7 @@ import {
   fetchPersonnelFolders,
 } from "@/lib/personnel-actions";
 import { FileUploadModal } from "@/components/sector/file-upload-modal";
+import { ContentToolbar, type ViewMode } from "@/components/sector/content-toolbar";
 import type { PersonnelFolderGroup, PersonnelPerson } from "@/types/hr";
 
 const KIND_STYLE = {
@@ -33,6 +34,31 @@ const KIND_STYLE = {
   XLSX: "bg-primary/15 text-primary",
   PPTX: "bg-warning/15 text-warning",
 } as const;
+
+/**
+ * Paleta das pílulas de setor. Mesmos tons do `Badge`, menos o `neutral`, que
+ * é reservado para "Todos".
+ */
+const SECTOR_TONES = [
+  { idle: "border-primary/30 bg-primary/10 text-primary hover:border-primary/60", on: "border-primary bg-primary text-primary-foreground" },
+  { idle: "border-info/30 bg-info/10 text-info hover:border-info/60", on: "border-info bg-info text-white" },
+  { idle: "border-accent/30 bg-accent/10 text-accent hover:border-accent/60", on: "border-accent bg-accent text-white" },
+  { idle: "border-warning/30 bg-warning/10 text-warning hover:border-warning/60", on: "border-warning bg-warning text-white" },
+  { idle: "border-danger/30 bg-danger/10 text-danger hover:border-danger/60", on: "border-danger bg-danger text-white" },
+] as const;
+
+/**
+ * Cor do setor derivada do NOME, não da posição na lista: a pílula de "Vendas"
+ * é a mesma em qualquer filtro, e continua a mesma quando um setor é criado ou
+ * removido. Índice por ordem de aparição mudaria a cor de todo mundo.
+ */
+function sectorTone(label: string) {
+  let hash = 0;
+  for (let i = 0; i < label.length; i += 1) hash = (hash * 31 + label.charCodeAt(i)) | 0;
+  // `?? [0]` é só para o índice calculado: o módulo nunca sai da faixa, mas
+  // `noUncheckedIndexedAccess` não sabe disso.
+  return SECTOR_TONES[Math.abs(hash) % SECTOR_TONES.length] ?? SECTOR_TONES[0];
+}
 
 /**
  * Departamento Pessoal (antiga aba "Documentos" do DHO).
@@ -49,17 +75,26 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
   const isAdmin = role === "ADMIN";
 
   const [query, setQuery] = useState("");
+  const [view, setView] = useState<ViewMode>("grid");
+  const [sector, setSector] = useState<string | null>(null);
   const [open, setOpen] = useState<PersonnelPerson | null>(null);
 
+  // Os setores que de fato aparecem na lista, em ordem alfabética. Pílula de
+  // setor sem ninguém dentro só ocuparia espaço e filtraria para o vazio.
+  const sectors = useMemo(
+    () => [...new Set(roster.map((p) => p.sector))].sort((a, b) => a.localeCompare(b, "pt-BR")),
+    [roster],
+  );
+
   const term = query.trim().toLowerCase();
-  const filtered = term
-    ? roster.filter(
-        (p) =>
-          p.name.toLowerCase().includes(term) ||
-          p.username.toLowerCase().includes(term) ||
-          p.sector.toLowerCase().includes(term),
-      )
-    : roster;
+  const filtered = roster.filter(
+    (p) =>
+      (sector === null || p.sector === sector) &&
+      (!term ||
+        p.name.toLowerCase().includes(term) ||
+        p.username.toLowerCase().includes(term) ||
+        p.sector.toLowerCase().includes(term)),
+  );
 
   if (open) {
     return (
@@ -69,17 +104,56 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
 
   return (
     <div className="space-y-4">
-      <div className="relative max-w-md">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Buscar colaborador"
-          aria-label="Buscar colaborador"
-          className="focus-ring h-10 w-full rounded-lg border border-border bg-surface-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted/70 transition-colors hover:border-border-strong"
-        />
-      </div>
+      <ContentToolbar
+        query={query}
+        onQueryChange={setQuery}
+        placeholder="Buscar colaborador"
+        view={view}
+        onViewChange={setView}
+      />
+
+      {/* Uma pílula só não filtra nada: com um setor, todo mundo é dele. */}
+      {sectors.length > 1 && (
+        <div
+          role="group"
+          aria-label="Filtrar por setor"
+          className="scrollbar-slim -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1"
+        >
+          <button
+            type="button"
+            onClick={() => setSector(null)}
+            aria-pressed={sector === null}
+            className={cn(
+              "focus-ring shrink-0 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors",
+              sector === null
+                ? "border-foreground bg-foreground text-surface"
+                : "border-border-strong bg-surface-2 text-muted hover:text-foreground",
+            )}
+          >
+            Todos
+          </button>
+          {sectors.map((label) => {
+            const tone = sectorTone(label);
+            const active = sector === label;
+            return (
+              <button
+                key={label}
+                type="button"
+                // Clicar no setor já ativo desliga o filtro — sem isso a única
+                // saída seria achar o "Todos" depois de rolar a faixa.
+                onClick={() => setSector(active ? null : label)}
+                aria-pressed={active}
+                className={cn(
+                  "focus-ring shrink-0 whitespace-nowrap rounded-full border px-3.5 py-1.5 text-xs font-semibold transition-colors",
+                  active ? tone.on : tone.idle,
+                )}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {filtered.length === 0 ? (
         <EmptyState
@@ -88,10 +162,15 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
           description="Só colaboradores com cadastro ativo têm pasta no Departamento Pessoal."
         />
       ) : (
-        <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <ul
+          className={cn(
+            view === "grid" ? "grid gap-3 sm:grid-cols-2 xl:grid-cols-3" : "flex flex-col gap-2",
+          )}
+        >
           {filtered.map((person) => {
-            // Mesma régua da pasta: nada entregue é pendência (vermelho). Com
-            // algo entregue vira amarelo — começou, e não acabou.
+            // Nada entregue é pendência (vermelho); entregue pela metade é
+            // amarelo; com todas as pastas atendidas o card volta ao neutro —
+            // só quem ainda deve alguma coisa chama atenção.
             const empty = person.fileCount === 0;
             return (
               <li key={person.id}>
@@ -100,9 +179,11 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
                   onClick={() => setOpen(person)}
                   className={cn(
                     "focus-ring flex w-full items-center gap-3 rounded-xl border bg-surface p-4 text-left transition-colors",
-                    empty
-                      ? "border-danger/40 bg-danger/[0.04] hover:border-danger/60"
-                      : "border-warning/40 bg-warning/[0.04] hover:border-warning/60",
+                    person.complete
+                      ? "border-border hover:border-border-strong"
+                      : empty
+                        ? "border-danger/40 bg-danger/[0.04] hover:border-danger/60"
+                        : "border-warning/40 bg-warning/[0.04] hover:border-warning/60",
                   )}
                 >
                   <Avatar
@@ -123,8 +204,12 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
                       é a única pista do estado. */}
                   <span
                     className={cn(
-                      "shrink-0 text-xs font-medium",
-                      empty ? "text-danger" : "text-warning",
+                      "shrink-0 text-xs",
+                      person.complete
+                        ? "text-muted"
+                        : empty
+                          ? "font-medium text-danger"
+                          : "font-medium text-warning",
                     )}
                   >
                     {person.fileCount} {person.fileCount === 1 ? "arquivo" : "arquivos"}
