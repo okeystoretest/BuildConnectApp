@@ -490,12 +490,12 @@ function FolderSheet({
       }`}
       className="max-w-xl"
       footer={
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           {/* Exclusão de estrutura é só do Admin, e só de pasta criada à mão:
               as obrigatórias são constante e voltariam na renderização
-              seguinte. Fica na gaveta, longe do mosaico, porque apaga os
-              arquivos junto. */}
-          {isAdmin && !folder.fixed ? (
+              seguinte. `mr-auto` a mantém sozinha à esquerda, longe das ações
+              de rotina: ela apaga a pasta e os arquivos juntos. */}
+          {isAdmin && !folder.fixed && (
             <DeleteButton
               label={`Excluir a pasta ${folder.label}`}
               confirm={`Excluir a pasta "${folder.label}" e os ${folder.files.length} arquivo(s) dentro dela? Isso não se desfaz.`}
@@ -509,11 +509,15 @@ function FolderSheet({
                 onClose();
                 onChanged();
               }}
+              className="mr-auto"
             />
-          ) : (
-            <span />
           )}
 
+          {/* O Modal da casa não tem "X": sem este botão a única saída seria
+              clicar no fundo ou apertar Esc, e nenhuma das duas se vê. */}
+          <Button variant="ghost" onClick={onClose}>
+            Fechar
+          </Button>
           <Button onClick={onUpload}>
             <Upload className="h-4 w-4" />
             Enviar documento
@@ -521,62 +525,67 @@ function FolderSheet({
         </div>
       }
     >
-      {folder.files.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border-strong px-4 py-6 text-center text-xs text-muted">
-          Nenhum documento arquivado nesta pasta.
-        </p>
-      ) : (
-        <ul className="space-y-2">
-          {folder.files.map((file) => (
-            <li
-              key={file.id}
-              className="flex items-center gap-3 rounded-lg bg-surface-2 p-2.5"
-            >
-              <span
-                className={cn(
-                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[9px] font-bold",
-                  KIND_STYLE[file.kind],
+      {/* O corpo do Modal não tem padding próprio: `px-6` vive no cabeçalho
+          e no rodapé, e o conteúdo é de quem chama. Sem isto a lista de
+          arquivos encosta nas bordas. */}
+      <div className="px-6 py-4">
+        {folder.files.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-border-strong px-4 py-6 text-center text-xs text-muted">
+            Nenhum documento arquivado nesta pasta.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {folder.files.map((file) => (
+              <li
+                key={file.id}
+                className="flex items-center gap-3 rounded-lg bg-surface-2 p-2.5"
+              >
+                <span
+                  className={cn(
+                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[9px] font-bold",
+                    KIND_STYLE[file.kind],
+                  )}
+                >
+                  {file.kind}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm text-foreground">{file.name}</span>
+                  <span className="mt-0.5 block text-xs tabular-nums text-muted">{file.size}</span>
+                </span>
+                <a
+                  href={file.filePath}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Visualizar ${file.name}`}
+                  className="focus-ring flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-3 text-foreground transition-colors hover:bg-surface"
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                </a>
+                <a
+                  href={file.filePath}
+                  download
+                  aria-label={`Baixar ${file.name}`}
+                  className="focus-ring flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary transition-colors hover:bg-primary/25"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                </a>
+                {isAdmin && (
+                  <DeleteButton
+                    label={`Excluir ${file.name}`}
+                    confirm={`Excluir "${file.name}"? Isso não se desfaz.`}
+                    onConfirm={async () => {
+                      const fd = new FormData();
+                      fd.set("id", file.id);
+                      return deletePersonnelFile(fd);
+                    }}
+                    onDone={onChanged}
+                  />
                 )}
-              >
-                {file.kind}
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm text-foreground">{file.name}</span>
-                <span className="mt-0.5 block text-xs tabular-nums text-muted">{file.size}</span>
-              </span>
-              <a
-                href={file.filePath}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label={`Visualizar ${file.name}`}
-                className="focus-ring flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-3 text-foreground transition-colors hover:bg-surface"
-              >
-                <Eye className="h-3.5 w-3.5" />
-              </a>
-              <a
-                href={file.filePath}
-                download
-                aria-label={`Baixar ${file.name}`}
-                className="focus-ring flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary transition-colors hover:bg-primary/25"
-              >
-                <Download className="h-3.5 w-3.5" />
-              </a>
-              {isAdmin && (
-                <DeleteButton
-                  label={`Excluir ${file.name}`}
-                  confirm={`Excluir "${file.name}"? Isso não se desfaz.`}
-                  onConfirm={async () => {
-                    const fd = new FormData();
-                    fd.set("id", file.id);
-                    return deletePersonnelFile(fd);
-                  }}
-                  onDone={onChanged}
-                />
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </Modal>
   );
 }
@@ -593,11 +602,13 @@ function DeleteButton({
   confirm,
   onConfirm,
   onDone,
+  className,
 }: {
   label: string;
   confirm: string;
   onConfirm: () => Promise<{ ok: boolean; error?: string }>;
   onDone: () => void;
+  className?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -622,7 +633,10 @@ function DeleteButton({
         type="button"
         onClick={() => setOpen(true)}
         aria-label={label}
-        className="focus-ring flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-danger/15 text-danger transition-colors hover:bg-danger/25"
+        className={cn(
+          "focus-ring flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-danger/15 text-danger transition-colors hover:bg-danger/25",
+          className,
+        )}
       >
         <Trash2 className="h-3.5 w-3.5" />
       </button>
@@ -645,7 +659,7 @@ function DeleteButton({
           </div>
         }
       >
-        {error && <p className="text-xs text-danger">{error}</p>}
+        {error ? <p className="px-6 py-4 text-xs text-danger">{error}</p> : null}
       </Modal>
     </>
   );
@@ -709,21 +723,23 @@ function NewFolderModal({
         </div>
       }
     >
-      <label htmlFor="dp-folder-name" className="block text-xs font-medium text-muted">
-        Nome da pasta
-      </label>
-      <input
-        id="dp-folder-name"
-        value={name}
-        maxLength={60}
-        onChange={(e) => {
-          setError(null);
-          setName(e.target.value);
-        }}
-        placeholder="Ex.: Advertências"
-        className="focus-ring mt-1.5 h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-foreground placeholder:text-muted/70"
-      />
-      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+      <div className="px-6 py-4">
+        <label htmlFor="dp-folder-name" className="block text-xs font-medium text-muted">
+          Nome da pasta
+        </label>
+        <input
+          id="dp-folder-name"
+          value={name}
+          maxLength={60}
+          onChange={(e) => {
+            setError(null);
+            setName(e.target.value);
+          }}
+          placeholder="Ex.: Advertências"
+          className="focus-ring mt-1.5 h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-foreground placeholder:text-muted/70"
+        />
+        {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+      </div>
     </Modal>
   );
 }
