@@ -24,6 +24,18 @@ export interface FileUploadModalProps {
   open: boolean;
   /** Título do modal. TI e RH usam o padrão; a Vitrine troca por "Enviar material de apoio". */
   title?: string;
+  /** Linha de apoio sob o título (ex.: a pasta de destino no Departamento Pessoal). */
+  description?: string;
+  /**
+   * `kind` da porta de upload (`api/uploads`). O padrão arquiva como documento
+   * de setor; o Departamento Pessoal usa o seu, que grava na pasta pessoal do
+   * colaborador em vez do subsetor.
+   */
+  uploadKind?: string;
+  /** Campos extra enviados junto do arquivo (ex.: `ownerId`, `folder`). */
+  extraFields?: Record<string, string>;
+  /** Chamado após um envio bem-sucedido, antes do `router.refresh()`. */
+  onUploaded?: () => void;
   onClose: () => void;
 }
 
@@ -31,6 +43,10 @@ export function FileUploadModal({
   slug,
   open,
   title = "Enviar documento",
+  description,
+  uploadKind = "setor-documento",
+  extraFields,
+  onUploaded,
   onClose,
 }: FileUploadModalProps) {
   const router = useRouter();
@@ -77,12 +93,14 @@ export function FileUploadModal({
       fd.set("slug", slug);
       fd.set("file", file);
       fd.set("name", file.name);
+      for (const [key, value] of Object.entries(extraFields ?? {})) fd.set(key, value);
 
-      const res = await upload.send("setor-documento", fd);
+      const res = await upload.send(uploadKind, fd);
       if (res.ok) {
         reset();
         upload.reset();
         onClose();
+        onUploaded?.();
         router.refresh();
       } else {
         setError(res.error ?? "Falha no envio.");
@@ -94,6 +112,7 @@ export function FileUploadModal({
     <Modal open={open} onClose={handleClose} className="max-w-md">
       <div className="p-6">
         <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+        {description && <p className="mt-1 text-xs text-muted">{description}</p>}
 
         <div className="mt-5 space-y-4">
           <button

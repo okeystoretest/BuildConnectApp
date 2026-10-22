@@ -122,6 +122,16 @@ model User {
   notifications            NotificationRead[]
   // Notificações direcionadas a este usuário (alvo individual).
   directNotifications      Notification[]         @relation("NotificationTarget")
+  // Departamento Pessoal: a documentação pessoal arquivada deste colaborador.
+  personnelFiles           PersonnelFile[]        @relation("PersonnelFileOwner")
+
+  // Pastas EXTRA do Departamento Pessoal, criadas à mão pelo Gestor do DHO
+  // ("Adicionar mais pastas"). O catálogo obrigatório (admissionais, saúde,
+  // desempenho) é constante em `lib/personnel-catalog` e não mora aqui —
+  // guardar as 11 pastas fixas por colaborador seria replicar a constante em
+  // cada linha. Coluna, e não tabela de junção: a lista é um punhado de nomes
+  // sem atributo nenhum além do nome, e sempre lida junto com o dono.
+  personnelFolders String[] @default([])
 
   @@index([role])
   @@index([sectorId])
@@ -422,6 +432,39 @@ model Document {
   createdAt DateTime @default(now())
 
   @@index([subsectorId, order])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Departamento Pessoal — documentação pessoal do colaborador
+// ─────────────────────────────────────────────────────────────
+
+// Arquivo pessoal de um colaborador (RG, ASO, dados bancários, DISC…).
+//
+// Tabela PRÓPRIA, e não `Document` com uma coluna de dono: `Document` é
+// conteúdo de setor — entra na contagem de progresso (`lib/progress-data`),
+// no histórico do colaborador (`lib/hr-history-data`) e na vitrine do
+// subsetor. Um atestado médico ou um comprovante bancário caindo em qualquer
+// dessas listas é exposição de dado sensível, e dependeria de lembrar o
+// filtro nos três lugares. Aqui não há filtro para esquecer.
+model PersonnelFile {
+  id        String   @id @default(cuid())
+  name      String
+  kind      FileKind
+  // Tamanho em bytes; a UI formata (ex.: 2.4 MB).
+  sizeBytes Int      @default(0)
+  filePath  String
+
+  // Pasta onde o arquivo está: a chave de uma categoria do catálogo fixo
+  // (`lib/personnel-catalog`) ou o nome de uma pasta extra do colaborador
+  // (`User.personnelFolders`). Texto, e não enum: o Gestor cria pastas.
+  folder String
+
+  ownerId String
+  owner   User   @relation("PersonnelFileOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([ownerId, folder])
 }
 
 model ExternalLink {

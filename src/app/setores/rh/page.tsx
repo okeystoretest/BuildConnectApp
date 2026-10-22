@@ -5,6 +5,7 @@ import { can } from "@/lib/permissions";
 import { canAdministerDho, canUseDhoTools } from "@/lib/auth/access";
 import { getManagedUsers } from "@/lib/users-data";
 import { getHrDocuments, getIntegrationMaps } from "@/lib/hr-content-data";
+import { getPersonnelRoster } from "@/lib/personnel-data";
 import { getRecentEmployees } from "@/lib/hr-history-data";
 import { getEvaluationResultsCatalog, getEvaluationSubjects } from "@/lib/evaluation-data";
 import {
@@ -57,6 +58,7 @@ export default async function HrSectorPage() {
   const [
     users,
     documents,
+    personnel,
     maps,
     roster,
     resultsCatalog,
@@ -70,6 +72,9 @@ export default async function HrSectorPage() {
   ] = await Promise.all([
     canHrAdmin ? getManagedUsers() : Promise.resolve([]),
     canHrAdmin ? getHrDocuments() : Promise.resolve([]),
+    // Departamento Pessoal: a lista de ativos. As pastas de cada um só são
+    // lidas ao abrir a pessoa (`fetchPersonnelFolders`).
+    canHrAdmin ? getPersonnelRoster() : Promise.resolve([]),
     canHrAdmin ? getIntegrationMaps() : Promise.resolve([]),
     canHrAdmin ? getRecentEmployees() : Promise.resolve([]),
     getEvaluationResultsCatalog(sectorScope),
@@ -92,6 +97,7 @@ export default async function HrSectorPage() {
       canHrAdmin={canHrAdmin}
       users={users}
       documents={documents}
+      personnel={personnel}
       maps={maps}
       roster={roster}
       initialHistory={null}

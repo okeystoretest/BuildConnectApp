@@ -31,6 +31,10 @@ export const UPLOAD_CATEGORIES = {
   // Evidências da Central de Denúncias. Pasta própria: o material é sensível
   // e precisa ser tratado à parte em backup e retenção.
   denuncias: "denuncias",
+  // Documentação pessoal do colaborador (Departamento Pessoal). Pasta própria
+  // pelo mesmo motivo de `denuncias`: RG, dado bancário e atestado médico têm
+  // retenção e backup próprios, e não se misturam a conteúdo de setor.
+  pessoal: "pessoal",
 } as const;
 
 export type UploadCategory = keyof typeof UPLOAD_CATEGORIES;

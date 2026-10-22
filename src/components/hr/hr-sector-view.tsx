@@ -10,6 +10,7 @@ import { EmployeeHistoryPanel } from "@/components/hr/employee-history";
 import { EvaluationResultsPanel } from "@/components/hr/evaluation-results-panel";
 import { IntegrationMapsPanel } from "@/components/hr/integration-maps";
 import { HrDocumentsPanel } from "@/components/hr/hr-documents";
+import { PersonnelPanel } from "@/components/hr/personnel-panel";
 import { UserManagementPanel } from "@/components/hr/user-management";
 import { WhatsappPanel } from "@/components/hr/whatsapp-panel";
 import { MapUploadModal } from "@/components/hr/map-upload-modal";
@@ -24,6 +25,7 @@ import type {
   IntegrationMap,
   EmployeeSummary,
   EmployeeHistory,
+  PersonnelPerson,
 } from "@/types/hr";
 import type {
   AssignableEvaluationType,
@@ -40,6 +42,8 @@ export interface HrSectorViewProps {
   canHrAdmin: boolean;
   users: ManagedUser[];
   documents: HrDocument[];
+  /** Departamento Pessoal: colaboradores ATIVOS, um por pasta. */
+  personnel: PersonnelPerson[];
   maps: IntegrationMap[];
   roster: EmployeeSummary[];
   initialHistory: EmployeeHistory | null;
@@ -66,6 +70,7 @@ export function HrSectorView({
   canHrAdmin,
   users,
   documents,
+  personnel,
   maps,
   roster,
   initialHistory,
@@ -101,7 +106,7 @@ export function HrSectorView({
       { id: "historico", label: "Histórico do Colaborador" },
       ...evalTabs,
       { id: "mapas", label: "Mapas de Integração" },
-      { id: "documentos", label: "Documentos" },
+      { id: "documentos", label: "Departamento Pessoal" },
       // A Central de Denúncias é do DHO e só aparece para quem pode tratá-la.
       ...(canReports ? [{ id: "denuncias", label: "Central de Denúncias" }] : []),
       { id: "usuarios", label: "Gestão de Usuários" },
@@ -165,7 +170,20 @@ export function HrSectorView({
           <IntegrationMapsPanel maps={maps} onUpload={() => setMapModalOpen(true)} />
         )}
         {active === "documentos" && canHrAdmin && (
-          <HrDocumentsPanel documents={documents} onUpload={() => setDocModalOpen(true)} />
+          <div className="space-y-8">
+            <PersonnelPanel roster={personnel} />
+
+            {/* A antiga aba "Documentos" era esta lista plana, sob o subsetor
+                "rh". Ela fica: o pedido renomeou a aba e acrescentou a pasta
+                por colaborador, não mandou descartar o que já está arquivado
+                aqui — e esta é a única tela que alcança esses arquivos. */}
+            <section className="space-y-3 border-t border-border pt-6">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
+                Documentos gerais do DHO
+              </h3>
+              <HrDocumentsPanel documents={documents} onUpload={() => setDocModalOpen(true)} />
+            </section>
+          </div>
         )}
         {active === "denuncias" && canReports && <ReportBoard reports={reports} />}
 

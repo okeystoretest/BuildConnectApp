@@ -189,6 +189,22 @@ export async function storeFile(
   };
 }
 
+/**
+ * Mapeia MIME (ou, sem ele, a extensão) de documento para o enum FileKind.
+ *
+ * Mora aqui, e não junto das Server Actions que a usam: `sector-actions` e
+ * `personnel-actions` são módulos `"use server"`, e exportar função síncrona
+ * de um deles quebra o build.
+ */
+export function docKind(mime: string, name: string): "PDF" | "DOCX" | "XLSX" | "PPTX" | "PNG" {
+  const ext = name.toLowerCase().slice(name.lastIndexOf("."));
+  if (mime === "application/pdf" || ext === ".pdf") return "PDF";
+  if (mime.includes("presentationml") || mime === "application/vnd.ms-powerpoint" || ext === ".pptx" || ext === ".ppt") return "PPTX";
+  if (mime.includes("wordprocessing") || mime === "application/msword" || ext === ".docx" || ext === ".doc") return "DOCX";
+  if (mime.includes("spreadsheet") || mime === "application/vnd.ms-excel" || ext === ".xlsx" || ext === ".xls") return "XLSX";
+  return "PNG";
+}
+
 /** Remove um arquivo do disco pelo caminho absoluto (best-effort). */
 export async function removeFile(absolutePath: string): Promise<void> {
   await unlink(absolutePath).catch(() => {});

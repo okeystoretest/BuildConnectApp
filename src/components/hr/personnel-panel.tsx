@@ -1,0 +1,498 @@
+"use client";
+
+import { useCallback, useEffect, useState, useTransition } from "react";
+import {
+  ArrowLeft,
+  ChevronDown,
+  Download,
+  Eye,
+  FolderPlus,
+  Loader2,
+  Search,
+  Trash2,
+  Upload,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Avatar } from "@/components/ui/avatar";
+import { Modal } from "@/components/ui/modal";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { useRole } from "@/providers/role-provider";
+import {
+  createPersonnelFolder,
+  deletePersonnelFile,
+  deletePersonnelFolder,
+  fetchPersonnelFolders,
+} from "@/lib/personnel-actions";
+import { FileUploadModal } from "@/components/sector/file-upload-modal";
+import type { PersonnelFolderGroup, PersonnelPerson } from "@/types/hr";
+
+const KIND_STYLE = {
+  PDF: "bg-danger/15 text-danger",
+  DOCX: "bg-info/15 text-info",
+  XLSX: "bg-primary/15 text-primary",
+  PPTX: "bg-warning/15 text-warning",
+} as const;
+
+/**
+ * Departamento Pessoal (antiga aba "Documentos" do DHO).
+ *
+ * Dois níveis: a lista de colaboradores ATIVOS — cada um é a pasta dele, sem
+ * rotina de criação — e, ao abrir, as pastas de documentação daquela pessoa.
+ *
+ * As pastas obrigatórias aparecem SEMPRE, mesmo vazias: é a pasta vazia que
+ * diz o que ainda falta entregar. Esconder as vazias deixaria a tela limpa e
+ * inútil para o que ela existe.
+ */
+export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] }) {
+  const { role } = useRole();
+  const isAdmin = role === "ADMIN";
+
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState<PersonnelPerson | null>(null);
+
+  const term = query.trim().toLowerCase();
+  const filtered = term
+    ? roster.filter(
+        (p) =>
+          p.name.toLowerCase().includes(term) ||
+          p.username.toLowerCase().includes(term) ||
+          p.sector.toLowerCase().includes(term),
+      )
+    : roster;
+
+  if (open) {
+    return (
+      <PersonFolders person={open} isAdmin={isAdmin} onBack={() => setOpen(null)} />
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="relative max-w-md">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Buscar colaborador"
+          aria-label="Buscar colaborador"
+          className="focus-ring h-10 w-full rounded-lg border border-border bg-surface-2 pl-9 pr-3 text-sm text-foreground placeholder:text-muted/70 transition-colors hover:border-border-strong"
+        />
+      </div>
+
+      {filtered.length === 0 ? (
+        <EmptyState
+          icon={<Search className="h-5 w-5" />}
+          title="Nenhum colaborador encontrado"
+          description="Só colaboradores com cadastro ativo têm pasta no Departamento Pessoal."
+        />
+      ) : (
+        <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {filtered.map((person) => (
+            <li key={person.id}>
+              <button
+                type="button"
+                onClick={() => setOpen(person)}
+                className="focus-ring flex w-full items-center gap-3 rounded-xl border border-border bg-surface p-4 text-left transition-colors hover:border-border-strong"
+              >
+                <Avatar
+                  name={person.name}
+                  avatarPath={person.avatarPath}
+                  size="h-10 w-10"
+                />
+
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-foreground">
+                    {person.name}
+                  </span>
+                  <span className="mt-0.5 block truncate text-xs text-muted">
+                    {person.sector}
+                  </span>
+                </span>
+                <span className="shrink-0 text-xs text-muted">
+                  {person.fileCount} {person.fileCount === 1 ? "arquivo" : "arquivos"}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** Pastas de um colaborador, carregadas na abertura. */
+function PersonFolders({
+  person,
+  isAdmin,
+  onBack,
+}: {
+  person: PersonnelPerson;
+  isAdmin: boolean;
+  onBack: () => void;
+}) {
+  const [groups, setGroups] = useState<PersonnelFolderGroup[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [uploadTo, setUploadTo] = useState<{ key: string; label: string } | null>(null);
+  const [busy, startTransition] = useTransition();
+
+  const load = useCallback(() => {
+    startTransition(async () => {
+      const res = await fetchPersonnelFolders(person.id);
+      if (res.ok && res.groups) {
+        setGroups(res.groups);
+        setError(null);
+      } else {
+        setError(res.error ?? "Falha ao carregar as pastas.");
+      }
+    });
+  }, [person.id]);
+
+  useEffect(load, [load]);
+
+  return (
+    <div className="space-y-4" aria-busy={busy}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={onBack}
+            aria-label="Voltar para a lista de colaboradores"
+            className="focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-foreground transition-colors hover:bg-surface-3"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </button>
+          <div className="min-w-0">
+            <h3 className="truncate text-sm font-semibold text-foreground">{person.name}</h3>
+            <p className="truncate text-xs text-muted">{person.sector}</p>
+          </div>
+        </div>
+
+        {/* "Adicionar mais pastas": a aba já é exclusiva de quem administra o
+            DHO (Admin + Gestor lotado nele), e é essa a régua da criação. */}
+        <Button variant="secondary" onClick={() => setNewFolderOpen(true)} disabled={busy}>
+          <FolderPlus className="h-4 w-4" />
+          Adicionar mais pastas
+        </Button>
+      </div>
+
+      {error && <p className="text-xs text-danger">{error}</p>}
+
+      {groups === null ? (
+        <div className="flex items-center gap-2 p-6 text-sm text-muted">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Carregando pastas…
+        </div>
+      ) : (
+        groups.map((group) => (
+          <section key={group.label} className="space-y-2">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">
+              {group.label}
+            </h4>
+            <div className="space-y-2">
+              {group.folders.map((folder) => {
+                const isOpen = expanded === folder.key;
+                return (
+                  <article
+                    key={folder.key}
+                    className="rounded-xl border border-border bg-surface transition-colors hover:border-border-strong"
+                  >
+                    <div className="flex items-center gap-2 p-3">
+                      <button
+                        type="button"
+                        onClick={() => setExpanded(isOpen ? null : folder.key)}
+                        aria-expanded={isOpen}
+                        className="focus-ring flex min-w-0 flex-1 items-center gap-3 rounded-lg px-1 py-1 text-left"
+                      >
+                        <ChevronDown
+                          className={cn(
+                            "h-4 w-4 shrink-0 text-muted transition-transform",
+                            isOpen && "rotate-180",
+                          )}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-medium text-foreground">
+                            {folder.label}
+                          </span>
+                          <span className="mt-0.5 block text-xs text-muted">
+                            {folder.files.length === 0
+                              ? "Pendente"
+                              : `${folder.files.length} ${folder.files.length === 1 ? "arquivo" : "arquivos"}`}
+                          </span>
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setUploadTo({ key: folder.key, label: folder.label })}
+                        aria-label={`Enviar documento para ${folder.label}`}
+                        className="focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary transition-colors hover:bg-primary/25"
+                      >
+                        <Upload className="h-4 w-4" />
+                      </button>
+
+                      {/* Exclusão de estrutura é só do Admin, e só de pasta
+                          criada à mão: as obrigatórias são constante e
+                          voltariam na renderização seguinte. */}
+                      {isAdmin && !folder.fixed && (
+                        <DeleteButton
+                          label={`Excluir a pasta ${folder.label}`}
+                          confirm={`Excluir a pasta "${folder.label}" e os ${folder.files.length} arquivo(s) dentro dela? Isso não se desfaz.`}
+                          onConfirm={async () => {
+                            const fd = new FormData();
+                            fd.set("ownerId", person.id);
+                            fd.set("folder", folder.key);
+                            return deletePersonnelFolder(fd);
+                          }}
+                          onDone={load}
+                        />
+                      )}
+                    </div>
+
+                    {isOpen && (
+                      <div className="border-t border-border px-3 py-3">
+                        {folder.files.length === 0 ? (
+                          <p className="px-1 text-xs text-muted">
+                            Nenhum documento arquivado nesta pasta.
+                          </p>
+                        ) : (
+                          <ul className="space-y-2">
+                            {folder.files.map((file) => (
+                              <li
+                                key={file.id}
+                                className="flex items-center gap-3 rounded-lg bg-surface-2 p-2.5"
+                              >
+                                <span
+                                  className={cn(
+                                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[9px] font-bold",
+                                    KIND_STYLE[file.kind],
+                                  )}
+                                >
+                                  {file.kind}
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                  <span className="block truncate text-sm text-foreground">
+                                    {file.name}
+                                  </span>
+                                  <span className="mt-0.5 block text-xs text-muted">
+                                    {file.size}
+                                  </span>
+                                </span>
+                                <a
+                                  href={file.filePath}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  aria-label={`Visualizar ${file.name}`}
+                                  className="focus-ring flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-3 text-foreground transition-colors hover:bg-surface"
+                                >
+                                  <Eye className="h-3.5 w-3.5" />
+                                </a>
+                                <a
+                                  href={file.filePath}
+                                  download
+                                  aria-label={`Baixar ${file.name}`}
+                                  className="focus-ring flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary transition-colors hover:bg-primary/25"
+                                >
+                                  <Download className="h-3.5 w-3.5" />
+                                </a>
+                                {isAdmin && (
+                                  <DeleteButton
+                                    label={`Excluir ${file.name}`}
+                                    confirm={`Excluir "${file.name}"? Isso não se desfaz.`}
+                                    onConfirm={async () => {
+                                      const fd = new FormData();
+                                      fd.set("id", file.id);
+                                      return deletePersonnelFile(fd);
+                                    }}
+                                    onDone={load}
+                                  />
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        ))
+      )}
+
+      <NewFolderModal
+        open={newFolderOpen}
+        ownerId={person.id}
+        onClose={() => setNewFolderOpen(false)}
+        onCreated={load}
+      />
+
+      {/* Mesmo modal de envio das demais telas — só muda a porta (`uploadKind`)
+          e os campos que dizem de quem e de qual pasta é o documento. `slug`
+          vai vazio: aqui o destino é a pessoa, não o subsetor. */}
+      {uploadTo && (
+        <FileUploadModal
+          open
+          slug=""
+          title="Arquivar documento"
+          description={`${person.name} · ${uploadTo.label}`}
+          uploadKind="dp-documento"
+          extraFields={{ ownerId: person.id, folder: uploadTo.key }}
+          onClose={() => setUploadTo(null)}
+          onUploaded={load}
+        />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Botão de exclusão com confirmação em modal.
+ *
+ * Modal, e não `window.confirm`: o diálogo nativo bloqueia a aba inteira e sai
+ * do tema da aplicação — e o que está em jogo é o único exemplar de um
+ * documento admissional.
+ */
+function DeleteButton({
+  label,
+  confirm,
+  onConfirm,
+  onDone,
+}: {
+  label: string;
+  confirm: string;
+  onConfirm: () => Promise<{ ok: boolean; error?: string }>;
+  onDone: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, startTransition] = useTransition();
+
+  function submit() {
+    startTransition(async () => {
+      const res = await onConfirm();
+      if (res.ok) {
+        setOpen(false);
+        setError(null);
+        onDone();
+      } else {
+        setError(res.error ?? "Falha ao excluir.");
+      }
+    });
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-label={label}
+        className="focus-ring flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-danger/15 text-danger transition-colors hover:bg-danger/25"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
+
+      <Modal
+        open={open}
+        onClose={() => !busy && setOpen(false)}
+        title="Confirmar exclusão"
+        description={confirm}
+        className="max-w-md"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setOpen(false)} disabled={busy}>
+              Cancelar
+            </Button>
+            <Button variant="danger" onClick={submit} disabled={busy}>
+              {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+              Excluir
+            </Button>
+          </div>
+        }
+      >
+        {error && <p className="text-xs text-danger">{error}</p>}
+      </Modal>
+    </>
+  );
+}
+
+function NewFolderModal({
+  open,
+  ownerId,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  ownerId: string;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, startTransition] = useTransition();
+
+  function close() {
+    if (busy) return;
+    setName("");
+    setError(null);
+    onClose();
+  }
+
+  function submit() {
+    startTransition(async () => {
+      const fd = new FormData();
+      fd.set("ownerId", ownerId);
+      fd.set("name", name);
+      const res = await createPersonnelFolder(fd);
+      if (res.ok) {
+        setName("");
+        setError(null);
+        onClose();
+        onCreated();
+      } else {
+        setError(res.error ?? "Falha ao criar a pasta.");
+      }
+    });
+  }
+
+  return (
+    <Modal
+      open={open}
+      onClose={close}
+      title="Adicionar pasta"
+      description="A pasta vale só para este colaborador. As pastas obrigatórias já existem."
+      className="max-w-md"
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={close} disabled={busy}>
+            Cancelar
+          </Button>
+          <Button onClick={submit} disabled={busy}>
+            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+            Criar pasta
+          </Button>
+        </div>
+      }
+    >
+      <label htmlFor="dp-folder-name" className="block text-xs font-medium text-muted">
+        Nome da pasta
+      </label>
+      <input
+        id="dp-folder-name"
+        value={name}
+        maxLength={60}
+        onChange={(e) => {
+          setError(null);
+          setName(e.target.value);
+        }}
+        placeholder="Ex.: Advertências"
+        className="focus-ring mt-1.5 h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-foreground placeholder:text-muted/70"
+      />
+      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+    </Modal>
+  );
+}

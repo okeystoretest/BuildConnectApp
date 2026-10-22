@@ -111,3 +111,44 @@ export interface ManagedUser {
   /** Telefone já com máscara. Ausente nos cadastrados antes do campo existir. */
   phone?: string;
 }
+
+// ── Departamento Pessoal ──────────────────────────────────────
+
+/** Arquivo pessoal arquivado na pasta de um colaborador. */
+export interface PersonnelFile {
+  id: string;
+  name: string;
+  size: string;
+  kind: "PDF" | "DOCX" | "XLSX" | "PPTX";
+  filePath: string;
+}
+
+/**
+ * Pasta de um colaborador. `fixed` separa o catálogo obrigatório das pastas
+ * criadas à mão — só as criadas à mão podem ser excluídas.
+ */
+export interface PersonnelFolder {
+  /** Vai para `PersonnelFile.folder`: chave do catálogo ou nome da pasta extra. */
+  key: string;
+  label: string;
+  fixed: boolean;
+  files: readonly PersonnelFile[];
+}
+
+/** Grupo do catálogo (ou "Outras pastas", das criadas à mão). */
+export interface PersonnelFolderGroup {
+  label: string;
+  folders: readonly PersonnelFolder[];
+}
+
+/** Colaborador ativo na lista do Departamento Pessoal. */
+export interface PersonnelPerson {
+  id: string;
+  name: string;
+  username: string;
+  role: Role;
+  sector: string;
+  avatarPath?: string;
+  /** Quantos arquivos já arquivados — a lista mostra sem abrir a pasta. */
+  fileCount: number;
+}
