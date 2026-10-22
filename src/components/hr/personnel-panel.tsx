@@ -89,33 +89,50 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
         />
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((person) => (
-            <li key={person.id}>
-              <button
-                type="button"
-                onClick={() => setOpen(person)}
-                className="focus-ring flex w-full items-center gap-3 rounded-xl border border-border bg-surface p-4 text-left transition-colors hover:border-border-strong"
-              >
-                <Avatar
-                  name={person.name}
-                  avatarPath={person.avatarPath}
-                  size="h-10 w-10"
-                />
+          {filtered.map((person) => {
+            // Mesma régua da pasta: nada entregue é pendência (vermelho). Com
+            // algo entregue vira amarelo — começou, e não acabou.
+            const empty = person.fileCount === 0;
+            return (
+              <li key={person.id}>
+                <button
+                  type="button"
+                  onClick={() => setOpen(person)}
+                  className={cn(
+                    "focus-ring flex w-full items-center gap-3 rounded-xl border bg-surface p-4 text-left transition-colors",
+                    empty
+                      ? "border-danger/40 bg-danger/[0.04] hover:border-danger/60"
+                      : "border-warning/40 bg-warning/[0.04] hover:border-warning/60",
+                  )}
+                >
+                  <Avatar
+                    name={person.name}
+                    avatarPath={person.avatarPath}
+                    size="h-10 w-10"
+                  />
 
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium text-foreground">
-                    {person.name}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-foreground">
+                      {person.name}
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-muted">
+                      {person.sector}
+                    </span>
                   </span>
-                  <span className="mt-0.5 block truncate text-xs text-muted">
-                    {person.sector}
+                  {/* A contagem já diz em texto o que a cor diz — a cor nunca
+                      é a única pista do estado. */}
+                  <span
+                    className={cn(
+                      "shrink-0 text-xs font-medium",
+                      empty ? "text-danger" : "text-warning",
+                    )}
+                  >
+                    {person.fileCount} {person.fileCount === 1 ? "arquivo" : "arquivos"}
                   </span>
-                </span>
-                <span className="shrink-0 text-xs text-muted">
-                  {person.fileCount} {person.fileCount === 1 ? "arquivo" : "arquivos"}
-                </span>
-              </button>
-            </li>
-          ))}
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
