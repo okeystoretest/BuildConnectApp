@@ -1,6 +1,10 @@
 import { prisma } from "@/lib/db/prisma";
 import { formatBytes } from "@/lib/utils";
-import { PERSONNEL_GROUPS, categoryLabel } from "@/lib/personnel-catalog";
+import {
+  PERSONNEL_CATEGORY_KEYS,
+  PERSONNEL_GROUPS,
+  categoryLabel,
+} from "@/lib/personnel-catalog";
 import type {
   PersonnelFile,
   PersonnelFolderGroup,
@@ -18,7 +22,7 @@ import type { Role } from "@/types";
  * o cadastro for realmente apagado.
  */
 
-/** Colaboradores ativos, com a contagem de arquivos já arquivados. */
+/** Colaboradores ativos, com a contagem de arquivos e o estado de entrega. */
 export async function getPersonnelRoster(): Promise<PersonnelPerson[]> {
   const rows = await prisma.user.findMany({
     where: { active: true },
@@ -29,10 +33,23 @@ export async function getPersonnelRoster(): Promise<PersonnelPerson[]> {
       username: true,
       role: true,
       avatarPath: true,
+      personnelFolders: true,
       sector: { select: { label: true } },
       _count: { select: { personnelFiles: true } },
     },
   });
+
+  // Quais pastas de cada um já têm arquivo. Um `groupBy` para a lista inteira,
+  // e não uma consulta por pessoa: a tela abre com o quadro todo.
+  const filled = await prisma.personnelFile.groupBy({
+    by: ["ownerId", "folder"],
+  });
+  const filledByOwner = new Map<string, Set<string>>();
+  for (const f of filled as { ownerId: string; folder: string }[]) {
+    const set = filledByOwner.get(f.ownerId) ?? new Set<string>();
+    set.add(f.folder);
+    filledByOwner.set(f.ownerId, set);
+  }
 
   return rows.map((u: {
     id: string;
@@ -40,17 +57,27 @@ export async function getPersonnelRoster(): Promise<PersonnelPerson[]> {
     username: string;
     role: string;
     avatarPath: string | null;
+    personnelFolders: string[];
     sector: { label: string } | null;
     _count: { personnelFiles: number };
-  }) => ({
-    id: u.id,
-    name: u.fullName,
-    username: u.username,
-    role: u.role as Role,
-    sector: u.sector?.label ?? "—",
-    avatarPath: u.avatarPath ?? undefined,
-    fileCount: u._count.personnelFiles,
-  }));
+  }) => {
+    // "Completo" cobre as pastas EXTRA também, não só o catálogo: elas
+    // aparecem vermelhas na tela de pastas quando vazias, e o card não pode
+    // dizer que está tudo entregue enquanto uma delas acusa pendência.
+    const required = new Set([...PERSONNEL_CATEGORY_KEYS, ...u.personnelFolders]);
+    const has = filledByOwner.get(u.id) ?? new Set<string>();
+
+    return {
+      id: u.id,
+      name: u.fullName,
+      username: u.username,
+      role: u.role as Role,
+      sector: u.sector?.label ?? "—",
+      avatarPath: u.avatarPath ?? undefined,
+      fileCount: u._count.personnelFiles,
+      complete: [...required].every((folder) => has.has(folder)),
+    };
+  });
 }
 
 /**

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { prisma } from "@/lib/db/prisma";
+import { PERSONNEL_CATEGORY_KEYS } from "./personnel-catalog";
 import { getPersonnelFolders, getPersonnelRoster } from "./personnel-data";
 
 /**
@@ -78,6 +79,62 @@ test("o colaborador ativo entra na lista com a contagem de arquivos", async () =
   const mine = roster.find((p) => p.id === ownerId);
   assert.ok(mine, "colaborador ativo tem de aparecer na lista");
   assert.equal(mine.fileCount, 3);
+  // 3 arquivos, mas 10 das 11 obrigatórias vazias: entregou, não terminou.
+  assert.equal(mine.complete, false);
+});
+
+test("'completo' exige TODA pasta com arquivo — a extra vazia também conta", async () => {
+  const solo = await prisma.user.create({
+    data: {
+      username: `dp-full-${stamp()}${MARK}`,
+      fullName: `Completo ${MARK}`,
+      passwordHash: "x",
+      role: "COLABORADOR",
+    },
+    select: { id: true },
+  });
+
+  const onePerFolder = async () =>
+    prisma.personnelFile.createMany({
+      data: PERSONNEL_CATEGORY_KEYS.map((folder) => ({
+        ownerId: solo.id,
+        folder,
+        name: `${folder} ${MARK}.pdf`,
+        kind: "PDF" as const,
+        sizeBytes: 10,
+        filePath: `/uploads/pessoal/2026/10/${folder}.pdf`,
+      })),
+    });
+
+  const find = async () => (await getPersonnelRoster()).find((p) => p.id === solo.id);
+
+  assert.equal((await find())?.complete, false, "sem arquivo nenhum não é completo");
+
+  await onePerFolder();
+  assert.equal((await find())?.complete, true, "as 11 obrigatórias cobertas = completo");
+
+  // Criar uma pasta extra reabre a pendência: ela nasce vazia, e é vermelha
+  // na tela de pastas — o card não pode dizer que está tudo entregue.
+  await prisma.user.update({
+    where: { id: solo.id },
+    data: { personnelFolders: ["Advertências"] },
+  });
+  assert.equal((await find())?.complete, false, "pasta extra vazia derruba o completo");
+
+  await prisma.personnelFile.create({
+    data: {
+      ownerId: solo.id,
+      folder: "Advertências",
+      name: `Adv ${MARK}.pdf`,
+      kind: "PDF",
+      sizeBytes: 10,
+      filePath: "/uploads/pessoal/2026/10/adv2.pdf",
+    },
+  });
+  assert.equal((await find())?.complete, true, "extra preenchida devolve o completo");
+
+  await prisma.personnelFile.deleteMany({ where: { ownerId: solo.id } });
+  await prisma.user.delete({ where: { id: solo.id } });
 });
 
 test("as pastas obrigatórias vêm todas, vazias inclusive", async () => {

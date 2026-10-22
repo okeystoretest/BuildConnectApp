@@ -51,6 +51,11 @@ export const PERSONNEL_GROUPS: readonly PersonnelGroup[] = [
   },
 ] as const;
 
+/** As chaves obrigatórias, achatadas — toda pasta que existe para todo mundo. */
+export const PERSONNEL_CATEGORY_KEYS: readonly string[] = PERSONNEL_GROUPS.flatMap((g) =>
+  g.categories.map((c) => c.key),
+);
+
 /** Rótulo de uma pasta fixa; `null` quando a chave não é do catálogo. */
 export function categoryLabel(key: string): string | null {
   for (const group of PERSONNEL_GROUPS) {

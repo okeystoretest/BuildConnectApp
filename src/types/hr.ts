@@ -142,4 +142,6 @@ export interface PersonnelPerson {
   avatarPath?: string;
   /** Quantos arquivos já arquivados — a lista mostra sem abrir a pasta. */
   fileCount: number;
+  /** Toda pasta da pessoa — catálogo e extras — já tem pelo menos um arquivo. */
+  complete: boolean;
 }
