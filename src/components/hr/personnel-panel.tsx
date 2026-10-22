@@ -35,15 +35,20 @@ const KIND_STYLE = {
 } as const;
 
 /**
- * Paleta das pílulas de setor. Mesmos tons do `Badge`, menos o `neutral`, que
- * é reservado para "Todos".
+ * Paleta das pílulas de setor — só os tons SEM significado nesta tela.
+ *
+ * `danger`, `warning` e `primary` estão fora de propósito: aqui eles dizem
+ * pendente, parcial e em dia, e os cards logo abaixo das pílulas usam
+ * exatamente essas três cores. Uma pílula "DHO" vermelha acima de uma fileira
+ * de cards vermelhos faz o nome do setor parecer um alarme.
+ *
+ * Sobram dois tons, e é o que há: identidade de setor se repete a cada dois
+ * setores. Mais variedade pediria token novo na paleta do app, que é decisão
+ * de outro escopo.
  */
 const SECTOR_TONES = [
-  { idle: "border-primary/30 bg-primary/10 text-primary hover:border-primary/60", on: "border-primary bg-primary text-primary-foreground" },
   { idle: "border-info/30 bg-info/10 text-info hover:border-info/60", on: "border-info bg-info text-white" },
   { idle: "border-accent/30 bg-accent/10 text-accent hover:border-accent/60", on: "border-accent bg-accent text-white" },
-  { idle: "border-warning/30 bg-warning/10 text-warning hover:border-warning/60", on: "border-warning bg-warning text-white" },
-  { idle: "border-danger/30 bg-danger/10 text-danger hover:border-danger/60", on: "border-danger bg-danger text-white" },
 ] as const;
 
 /**
