@@ -7,8 +7,8 @@ import { canAdministerDho } from "@/lib/auth/access";
 import { docKind, storeFile, removeFile, FileStorageError } from "@/lib/storage/files";
 import { toAbsolutePath } from "@/lib/storage/config";
 import {
+  catalogKeyByName,
   categoryLabel,
-  collidesWithCatalog,
   normalizeFolderName,
 } from "@/lib/personnel-catalog";
 import { getPersonnelFolders } from "@/lib/personnel-data";
@@ -23,14 +23,18 @@ export interface ActionResult {
 /**
  * Departamento Pessoal — RBAC.
  *
- * A matriz de permissões de papel não serve aqui: `content.upload` abriria o
- * arquivo pessoal de qualquer colaborador para o Gestor de qualquer setor. A
- * régua é a mesma da aba, `canAdministerDho` (Admin + Gestor lotado no DHO) —
- * é documentação de RH, e quem a manuseia é o RH.
+ * UMA régua para tudo: `canAdministerDho` (Admin + Gestor lotado no DHO), a
+ * mesma que abre a aba. Arquivar, criar pasta, excluir pasta e excluir
+ * arquivo passam por ela.
  *
- * Arquivar e CRIAR pasta: Gestor do DHO.
- * EXCLUIR pasta ou arquivo: só Admin. Exclusão aqui apaga o único exemplar de
- * um documento admissional, e isso não se desfaz.
+ * A matriz de permissões de papel não serve: `content.upload` abriria o
+ * arquivo pessoal de qualquer colaborador para o Gestor de qualquer setor. É
+ * documentação de RH, e quem a manuseia é o RH.
+ *
+ * A exclusão já foi exclusiva do Admin. Deixou de ser a pedido: o Gestor do
+ * DHO é quem monta e mantém o dossiê, e depender do Admin para corrigir a
+ * própria estrutura travava o trabalho. A confirmação na tela continua sendo
+ * o freio, porque excluir apaga o único exemplar de um documento.
  */
 async function requireDhoManager() {
   const user = await getCurrentUser();
@@ -41,21 +45,12 @@ async function requireDhoManager() {
   return { user, error: null };
 }
 
-async function requireAdmin() {
-  const user = await getCurrentUser();
-  if (!user) return { user: null, error: "Sessão expirada. Faça login novamente." };
-  if ((user.role as Role) !== "ADMIN") {
-    return { user: null, error: "Apenas o Administrador pode excluir." };
-  }
-  return { user, error: null };
-}
-
 /** Colaborador ATIVO; inativo não recebe nem entrega documentação. */
 async function activeOwner(ownerId: string) {
   if (!ownerId) return null;
   return prisma.user.findFirst({
     where: { id: ownerId, active: true },
-    select: { id: true, personnelFolders: true },
+    select: { id: true, personnelFolders: true, personnelRemovedFolders: true },
   });
 }
 
@@ -99,10 +94,13 @@ export async function uploadPersonnelFile(formData: FormData): Promise<ActionRes
   const owner = await activeOwner(ownerId);
   if (!owner) return { ok: false, error: "Colaborador não encontrado." };
 
-  // A pasta tem de existir de fato: ou é do catálogo fixo, ou está na lista
-  // do colaborador. Sem esta checagem o `folder` vindo do formulário criaria
-  // pastas invisíveis — nada na tela as mostraria, e o arquivo sumia.
-  const known = Boolean(categoryLabel(folder)) || owner.personnelFolders.includes(folder);
+  // A pasta tem de existir de fato: ou é do catálogo fixo e não foi excluída
+  // para esta pessoa, ou está na lista dela. Sem esta checagem o `folder`
+  // vindo do formulário criaria pastas invisíveis — nada na tela as mostraria,
+  // e o arquivo sumia.
+  const known =
+    (Boolean(categoryLabel(folder)) && !owner.personnelRemovedFolders.includes(folder)) ||
+    owner.personnelFolders.includes(folder);
   if (!known) return { ok: false, error: "Pasta não encontrada." };
 
   const name = String(formData.get("name") ?? "").trim() || file.name;
@@ -149,12 +147,29 @@ export async function createPersonnelFolder(formData: FormData): Promise<ActionR
   const ownerId = String(formData.get("ownerId") ?? "");
   const name = normalizeFolderName(String(formData.get("name") ?? ""));
   if (!name) return { ok: false, error: "Informe o nome da pasta." };
-  if (collidesWithCatalog(name)) {
-    return { ok: false, error: "Já existe uma pasta obrigatória com esse nome." };
-  }
 
   const owner = await activeOwner(ownerId);
   if (!owner) return { ok: false, error: "Colaborador não encontrado." };
+
+  // Nome de pasta modelo. Se ela foi excluída para esta pessoa, criar com o
+  // mesmo nome RESTAURA a original — recusar deixaria quem apagou "CTPS" sem
+  // nenhuma forma de tê-la de volta. Se não foi excluída, ela já está na tela.
+  const catalogKey = catalogKeyByName(name);
+  if (catalogKey) {
+    if (!owner.personnelRemovedFolders.includes(catalogKey)) {
+      return { ok: false, error: "Essa pasta modelo já está na lista." };
+    }
+    await prisma.user.update({
+      where: { id: owner.id },
+      data: {
+        personnelRemovedFolders: owner.personnelRemovedFolders.filter(
+          (f: string) => f !== catalogKey,
+        ),
+      },
+    });
+    revalidatePath("/setores/rh");
+    return { ok: true };
+  }
 
   if (owner.personnelFolders.some((f: string) => f.toLowerCase() === name.toLowerCase())) {
     return { ok: false, error: "Esse colaborador já tem uma pasta com esse nome." };
@@ -174,23 +189,28 @@ export async function createPersonnelFolder(formData: FormData): Promise<ActionR
 // ──────────────────────────────────────────────
 
 /**
- * Exclui uma pasta extra E os arquivos dentro dela.
+ * Exclui uma pasta E os arquivos dentro dela.
  *
- * Pasta do catálogo não é excluível: ela é constante em código e voltaria na
- * próxima renderização — o botão só apareceria para enganar.
+ * Vale para os dois tipos, por caminhos diferentes: a pasta criada à mão sai
+ * de `personnelFolders`, e a pasta do CATÁLOGO entra em
+ * `personnelRemovedFolders` — ela é constante em código, então só registrando
+ * a remoção ela deixa de voltar na renderização seguinte.
  */
 export async function deletePersonnelFolder(formData: FormData): Promise<ActionResult> {
-  const { user, error } = await requireAdmin();
+  const { user, error } = await requireDhoManager();
   if (!user) return { ok: false, error: error ?? undefined };
 
   const ownerId = String(formData.get("ownerId") ?? "");
   const folder = String(formData.get("folder") ?? "");
-  if (categoryLabel(folder)) {
-    return { ok: false, error: "Pastas obrigatórias não podem ser excluídas." };
-  }
+  if (!folder) return { ok: false, error: "Pasta não informada." };
 
   const owner = await activeOwner(ownerId);
   if (!owner) return { ok: false, error: "Colaborador não encontrado." };
+
+  const fromCatalog = Boolean(categoryLabel(folder));
+  if (!fromCatalog && !owner.personnelFolders.includes(folder)) {
+    return { ok: false, error: "Pasta não encontrada." };
+  }
 
   const files = await prisma.personnelFile.findMany({
     where: { ownerId: owner.id, folder },
@@ -201,7 +221,15 @@ export async function deletePersonnelFolder(formData: FormData): Promise<ActionR
     prisma.personnelFile.deleteMany({ where: { ownerId: owner.id, folder } }),
     prisma.user.update({
       where: { id: owner.id },
-      data: { personnelFolders: owner.personnelFolders.filter((f: string) => f !== folder) },
+      data: fromCatalog
+        ? // `set` com a lista inteira, e não `push`: excluir duas vezes a
+          // mesma pasta (duas abas, dois cliques) não pode duplicar a chave.
+          {
+            personnelRemovedFolders: [
+              ...new Set([...owner.personnelRemovedFolders, folder]),
+            ],
+          }
+        : { personnelFolders: owner.personnelFolders.filter((f: string) => f !== folder) },
     }),
   ]);
 
@@ -219,7 +247,7 @@ export async function deletePersonnelFolder(formData: FormData): Promise<ActionR
 }
 
 export async function deletePersonnelFile(formData: FormData): Promise<ActionResult> {
-  const { user, error } = await requireAdmin();
+  const { user, error } = await requireDhoManager();
   if (!user) return { ok: false, error: error ?? undefined };
 
   const id = String(formData.get("id") ?? "");

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   PERSONNEL_GROUPS,
+  catalogKeyByName,
   categoryLabel,
   collidesWithCatalog,
   normalizeFolderName,
@@ -31,4 +32,14 @@ test("pasta extra não pode duplicar uma obrigatória, por chave ou por rótulo"
   assert.equal(collidesWithCatalog("ASO"), true);
   assert.equal(collidesWithCatalog("Comprovante de residência"), true);
   assert.equal(collidesWithCatalog("Advertências"), false);
+});
+
+test("catalogKeyByName devolve a CHAVE — é por ela que a pasta excluída volta", () => {
+  // Criar "ASO" depois de excluí-la tem de restaurar a original, e a lista de
+  // removidas guarda chave. Casar só o rótulo deixaria o nome digitado sem
+  // caminho de volta.
+  assert.equal(catalogKeyByName("aso"), "aso");
+  assert.equal(catalogKeyByName("ASO (admissional, periódico, demissional, retorno)"), "aso");
+  assert.equal(catalogKeyByName("Comprovante de Residência"), "comprovante-residencia");
+  assert.equal(catalogKeyByName("Advertências"), null);
 });

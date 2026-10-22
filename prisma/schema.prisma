@@ -133,6 +133,15 @@ model User {
   // sem atributo nenhum além do nome, e sempre lida junto com o dono.
   personnelFolders String[] @default([])
 
+  // Pastas do CATÁLOGO que foram excluídas para esta pessoa. Existe porque o
+  // catálogo é constante: sem registrar a remoção, a pasta excluída voltaria
+  // na renderização seguinte. Guarda a chave (`docs-pessoais`, `aso`…), nunca
+  // o rótulo — o rótulo pode ser reescrito, a chave não.
+  //
+  // Lista do que SAIU, e não do que ficou: assim uma categoria nova no
+  // catálogo nasce visível para todo mundo, sem migração de dados.
+  personnelRemovedFolders String[] @default([])
+
   @@index([role])
   @@index([sectorId])
   @@index([unitId])

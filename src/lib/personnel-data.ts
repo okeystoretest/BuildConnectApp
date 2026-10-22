@@ -34,6 +34,7 @@ export async function getPersonnelRoster(): Promise<PersonnelPerson[]> {
       role: true,
       avatarPath: true,
       personnelFolders: true,
+      personnelRemovedFolders: true,
       sector: { select: { label: true } },
       _count: { select: { personnelFiles: true } },
     },
@@ -58,14 +59,23 @@ export async function getPersonnelRoster(): Promise<PersonnelPerson[]> {
     role: string;
     avatarPath: string | null;
     personnelFolders: string[];
+    personnelRemovedFolders: string[];
     sector: { label: string } | null;
     _count: { personnelFiles: number };
   }) => {
     // "Completo" cobre as pastas EXTRA também, não só o catálogo: elas
     // aparecem vermelhas na tela de pastas quando vazias, e o card não pode
     // dizer que está tudo entregue enquanto uma delas acusa pendência.
-    const required = new Set([...PERSONNEL_CATEGORY_KEYS, ...u.personnelFolders]);
+    //
+    // E uma pasta EXCLUÍDA não é exigida: sem este desconto, quem teve uma
+    // pasta do catálogo removida nunca mais apareceria em dia.
     const has = filledByOwner.get(u.id) ?? new Set<string>();
+    const removed = new Set(u.personnelRemovedFolders);
+    const required = new Set(
+      [...PERSONNEL_CATEGORY_KEYS, ...u.personnelFolders].filter(
+        (f) => !removed.has(f) || has.has(f),
+      ),
+    );
 
     return {
       id: u.id,
@@ -93,7 +103,7 @@ export async function getPersonnelFolders(
 ): Promise<PersonnelFolderGroup[] | null> {
   const owner = await prisma.user.findFirst({
     where: { id: ownerId, active: true },
-    select: { personnelFolders: true },
+    select: { personnelFolders: true, personnelRemovedFolders: true },
   });
   if (!owner) return null;
 
@@ -123,15 +133,23 @@ export async function getPersonnelFolders(
     byFolder.set(f.folder, list);
   }
 
+  // Pasta do catálogo excluída para esta pessoa não é gerada. A exceção é ela
+  // ainda ter arquivo: nenhum documento desaparece da tela porque a pasta
+  // saiu — ele voltaria inalcançável, e a exclusão apaga os arquivos junto.
+  const removed = new Set(owner.personnelRemovedFolders);
+  const visible = (key: string) => !removed.has(key) || (byFolder.get(key)?.length ?? 0) > 0;
+
   const groups: PersonnelFolderGroup[] = PERSONNEL_GROUPS.map((g) => ({
     label: g.label,
-    folders: g.categories.map((c) => ({
-      key: c.key,
-      label: c.label,
-      fixed: true,
-      files: byFolder.get(c.key) ?? [],
-    })),
-  }));
+    folders: g.categories
+      .filter((c) => visible(c.key))
+      .map((c) => ({
+        key: c.key,
+        label: c.label,
+        fixed: true,
+        files: byFolder.get(c.key) ?? [],
+      })),
+  })).filter((g) => g.folders.length > 0);
 
   // Pastas extra. Entram também as pastas de arquivos cuja chave não é mais do
   // catálogo nem da lista do colaborador — um arquivo nunca fica invisível por

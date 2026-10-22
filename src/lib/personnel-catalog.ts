@@ -77,15 +77,25 @@ export function normalizeFolderName(raw: string): string {
 }
 
 /**
- * Recusa o nome de pasta extra que colidiria com o catálogo fixo, por chave ou
- * por rótulo. Sem isso, uma pasta "ASO" criada à mão apareceria duas vezes e os
- * arquivos se dividiriam entre as duas, sem que ninguém entendesse por quê.
+ * A chave do catálogo que este nome designa — por chave ou por rótulo, sem
+ * diferenciar maiúsculas. `null` quando o nome não é de nenhuma pasta modelo.
+ *
+ * Serve a dois usos opostos: recusar uma pasta à mão que duplicaria uma do
+ * catálogo (os arquivos se dividiriam entre as duas), e RECONHECER o nome de
+ * uma pasta modelo que foi excluída, para restaurá-la em vez de recusar.
  */
-export function collidesWithCatalog(name: string): boolean {
+export function catalogKeyByName(name: string): string | null {
   const lowered = name.toLowerCase();
-  return PERSONNEL_GROUPS.some((g) =>
-    g.categories.some(
+  for (const group of PERSONNEL_GROUPS) {
+    const found = group.categories.find(
       (c) => c.key.toLowerCase() === lowered || c.label.toLowerCase() === lowered,
-    ),
-  );
+    );
+    if (found) return found.key;
+  }
+  return null;
+}
+
+/** Atalho de leitura sobre `catalogKeyByName`. */
+export function collidesWithCatalog(name: string): boolean {
+  return catalogKeyByName(name) !== null;
 }

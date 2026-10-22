@@ -152,7 +152,7 @@ test("as pastas obrigatórias vêm todas, vazias inclusive", async () => {
   assert.equal(ctps?.files.length, 0);
 });
 
-test("pasta criada à mão vem como não-fixa (só ela pode ser excluída)", async () => {
+test("pasta criada à mão vem como não-fixa — o que muda é a confirmação", async () => {
   const groups = await getPersonnelFolders(ownerId);
   const extra = groups?.flatMap((g) => g.folders).find((f) => f.key === "Advertências");
   assert.equal(extra?.fixed, false);
@@ -164,6 +164,98 @@ test("arquivo de pasta fora da lista não desaparece — vai para Outras pastas"
   const orphan = groups?.flatMap((g) => g.folders).find((f) => f.key === "Pasta Extinta");
   assert.ok(orphan, "a pasta do arquivo tem de ser mostrada mesmo fora do array");
   assert.equal(orphan.files.length, 1);
+});
+
+test("pasta modelo excluída some da lista e deixa de ser exigida", async () => {
+  const solo = await prisma.user.create({
+    data: {
+      username: `dp-rm-${stamp()}${MARK}`,
+      fullName: `Removida ${MARK}`,
+      passwordHash: "x",
+      role: "COLABORADOR",
+      // Todas as obrigatórias menos "ctps" já entregues.
+      personnelRemovedFolders: [],
+    },
+    select: { id: true },
+  });
+
+  await prisma.personnelFile.createMany({
+    data: PERSONNEL_CATEGORY_KEYS.filter((k) => k !== "ctps").map((folder) => ({
+      ownerId: solo.id,
+      folder,
+      name: `${folder} ${MARK}.pdf`,
+      kind: "PDF" as const,
+      sizeBytes: 10,
+      filePath: `/uploads/pessoal/2026/10/${folder}.pdf`,
+    })),
+  });
+
+  const card = async () => (await getPersonnelRoster()).find((p) => p.id === solo.id);
+  const keys = async () =>
+    (await getPersonnelFolders(solo.id))?.flatMap((g) => g.folders).map((f) => f.key) ?? [];
+
+  assert.ok((await keys()).includes("ctps"), "a pasta modelo começa na lista");
+  assert.equal((await card())?.complete, false, "a pasta vazia segura o completo");
+
+  // Excluir a CTPS desta pessoa: some da tela e para de ser cobrada.
+  await prisma.user.update({
+    where: { id: solo.id },
+    data: { personnelRemovedFolders: ["ctps"] },
+  });
+  assert.equal((await keys()).includes("ctps"), false, "a excluída não é gerada de novo");
+  assert.equal((await card())?.complete, true, "o que foi excluído não é exigido");
+
+  // E o grupo inteiro desaparece quando a última pasta dele sai.
+  await prisma.user.update({
+    where: { id: solo.id },
+    data: { personnelRemovedFolders: ["perfil-comportamental", "avaliacoes-desempenho"] },
+  });
+  await prisma.personnelFile.deleteMany({
+    where: { ownerId: solo.id, folder: { in: ["perfil-comportamental", "avaliacoes-desempenho"] } },
+  });
+  const groups = await getPersonnelFolders(solo.id);
+  assert.equal(
+    groups?.some((g) => g.label === "Desempenho e comportamento"),
+    false,
+    "grupo sem pasta nenhuma não vira cabeçalho órfão",
+  );
+
+  await prisma.personnelFile.deleteMany({ where: { ownerId: solo.id } });
+  await prisma.user.delete({ where: { id: solo.id } });
+});
+
+test("arquivo sobrevivente mantém visível a pasta modelo marcada como excluída", async () => {
+  const solo = await prisma.user.create({
+    data: {
+      username: `dp-ghost-${stamp()}${MARK}`,
+      fullName: `Fantasma ${MARK}`,
+      passwordHash: "x",
+      role: "COLABORADOR",
+      personnelRemovedFolders: ["aso"],
+    },
+    select: { id: true },
+  });
+
+  // Estado que só uma corrida produz: marcada como removida, mas com arquivo.
+  // Nenhum documento pode sumir da tela por causa disso.
+  await prisma.personnelFile.create({
+    data: {
+      ownerId: solo.id,
+      folder: "aso",
+      name: `ASO ${MARK}.pdf`,
+      kind: "PDF",
+      sizeBytes: 10,
+      filePath: "/uploads/pessoal/2026/10/aso-ghost.pdf",
+    },
+  });
+
+  const folders = (await getPersonnelFolders(solo.id))?.flatMap((g) => g.folders) ?? [];
+  const aso = folders.find((f) => f.key === "aso");
+  assert.ok(aso, "pasta removida COM arquivo continua visível");
+  assert.equal(aso.files.length, 1);
+
+  await prisma.personnelFile.deleteMany({ where: { ownerId: solo.id } });
+  await prisma.user.delete({ where: { id: solo.id } });
 });
 
 test("colaborador inativo sai da lista e das pastas, sem perder arquivo", async () => {

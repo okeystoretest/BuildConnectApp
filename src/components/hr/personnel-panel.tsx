@@ -17,7 +17,6 @@ import { Avatar } from "@/components/ui/avatar";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { useRole } from "@/providers/role-provider";
 import {
   createPersonnelFolder,
   deletePersonnelFile,
@@ -71,9 +70,6 @@ function sectorTone(label: string) {
  * inútil para o que ela existe.
  */
 export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] }) {
-  const { role } = useRole();
-  const isAdmin = role === "ADMIN";
-
   const [query, setQuery] = useState("");
   const [view, setView] = useState<ViewMode>("grid");
   const [sector, setSector] = useState<string | null>(null);
@@ -98,7 +94,7 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
 
   if (open) {
     return (
-      <PersonFolders person={open} isAdmin={isAdmin} onBack={() => setOpen(null)} />
+      <PersonFolders person={open} onBack={() => setOpen(null)} />
     );
   }
 
@@ -227,11 +223,9 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
 /** Pastas de um colaborador, carregadas na abertura. */
 function PersonFolders({
   person,
-  isAdmin,
   onBack,
 }: {
   person: PersonnelPerson;
-  isAdmin: boolean;
   onBack: () => void;
 }) {
   const [groups, setGroups] = useState<PersonnelFolderGroup[] | null>(null);
@@ -378,7 +372,6 @@ function PersonFolders({
         <FolderSheet
           folder={openFolder}
           person={person}
-          isAdmin={isAdmin}
           onClose={() => setOpenKey(null)}
           onUpload={() => setUploadTo({ key: openFolder.key, label: openFolder.label })}
           onChanged={load}
@@ -466,14 +459,12 @@ function Completeness({ groups }: { groups: readonly PersonnelFolderGroup[] }) {
 function FolderSheet({
   folder,
   person,
-  isAdmin,
   onClose,
   onUpload,
   onChanged,
 }: {
   folder: PersonnelFolder;
   person: PersonnelPerson;
-  isAdmin: boolean;
   onClose: () => void;
   onUpload: () => void;
   onChanged: () => void;
@@ -491,27 +482,32 @@ function FolderSheet({
       className="max-w-xl"
       footer={
         <div className="flex flex-wrap items-center justify-end gap-2">
-          {/* Exclusão de estrutura é só do Admin, e só de pasta criada à mão:
-              as obrigatórias são constante e voltariam na renderização
-              seguinte. `mr-auto` a mantém sozinha à esquerda, longe das ações
-              de rotina: ela apaga a pasta e os arquivos juntos. */}
-          {isAdmin && !folder.fixed && (
-            <DeleteButton
-              label={`Excluir a pasta ${folder.label}`}
-              confirm={`Excluir a pasta "${folder.label}" e os ${folder.files.length} arquivo(s) dentro dela? Isso não se desfaz.`}
-              onConfirm={async () => {
-                const fd = new FormData();
-                fd.set("ownerId", person.id);
-                fd.set("folder", folder.key);
-                return deletePersonnelFolder(fd);
-              }}
-              onDone={() => {
-                onClose();
-                onChanged();
-              }}
-              className="mr-auto"
-            />
-          )}
+          {/* Quem chega nesta aba já é Admin ou Gestor lotado no DHO — não há
+              terceiro papel para distinguir aqui, e os dois excluem. A pasta
+              modelo também sai: a remoção fica gravada por colaborador, e
+              recriá-la pelo mesmo nome a traz de volta.
+
+              `mr-auto` a mantém sozinha à esquerda, longe das ações de
+              rotina: ela apaga a pasta e os arquivos juntos. */}
+          <DeleteButton
+            label={`Excluir a pasta ${folder.label}`}
+            confirm={
+              folder.fixed
+                ? `Excluir a pasta modelo "${folder.label}" e os ${folder.files.length} arquivo(s) dentro dela? Ela sai da lista deste colaborador; criar uma pasta com o mesmo nome a traz de volta.`
+                : `Excluir a pasta "${folder.label}" e os ${folder.files.length} arquivo(s) dentro dela? Isso não se desfaz.`
+            }
+            onConfirm={async () => {
+              const fd = new FormData();
+              fd.set("ownerId", person.id);
+              fd.set("folder", folder.key);
+              return deletePersonnelFolder(fd);
+            }}
+            onDone={() => {
+              onClose();
+              onChanged();
+            }}
+            className="mr-auto"
+          />
 
           {/* O Modal da casa não tem "X": sem este botão a única saída seria
               clicar no fundo ou apertar Esc, e nenhuma das duas se vê. */}
@@ -569,18 +565,16 @@ function FolderSheet({
                 >
                   <Download className="h-3.5 w-3.5" />
                 </a>
-                {isAdmin && (
-                  <DeleteButton
-                    label={`Excluir ${file.name}`}
-                    confirm={`Excluir "${file.name}"? Isso não se desfaz.`}
-                    onConfirm={async () => {
-                      const fd = new FormData();
-                      fd.set("id", file.id);
-                      return deletePersonnelFile(fd);
-                    }}
-                    onDone={onChanged}
-                  />
-                )}
+                <DeleteButton
+                  label={`Excluir ${file.name}`}
+                  confirm={`Excluir "${file.name}"? Isso não se desfaz.`}
+                  onConfirm={async () => {
+                    const fd = new FormData();
+                    fd.set("id", file.id);
+                    return deletePersonnelFile(fd);
+                  }}
+                  onDone={onChanged}
+                />
               </li>
             ))}
           </ul>
