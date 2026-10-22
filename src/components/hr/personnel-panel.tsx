@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import {
   ArrowLeft,
-  ChevronDown,
   Download,
   Eye,
   FolderPlus,
   Loader2,
+  Plus,
   Search,
   Trash2,
   Upload,
@@ -26,7 +26,7 @@ import {
 } from "@/lib/personnel-actions";
 import { FileUploadModal } from "@/components/sector/file-upload-modal";
 import { ContentToolbar, type ViewMode } from "@/components/sector/content-toolbar";
-import type { PersonnelFolderGroup, PersonnelPerson } from "@/types/hr";
+import type { PersonnelFolder, PersonnelFolderGroup, PersonnelPerson } from "@/types/hr";
 
 const KIND_STYLE = {
   PDF: "bg-danger/15 text-danger",
@@ -236,7 +236,7 @@ function PersonFolders({
 }) {
   const [groups, setGroups] = useState<PersonnelFolderGroup[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [openKey, setOpenKey] = useState<string | null>(null);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [uploadTo, setUploadTo] = useState<{ key: string; label: string } | null>(null);
   const [busy, startTransition] = useTransition();
@@ -254,6 +254,10 @@ function PersonFolders({
   }, [person.id]);
 
   useEffect(load, [load]);
+
+  // A pasta aberta é DERIVADA das pastas carregadas: guardar o objeto deixaria
+  // a gaveta exibindo a lista anterior depois de enviar ou excluir um arquivo.
+  const openFolder = groups?.flatMap((g) => g.folders).find((f) => f.key === openKey) ?? null;
 
   return (
     <div className="space-y-4" aria-busy={busy}>
@@ -289,157 +293,96 @@ function PersonFolders({
           Carregando pastas…
         </div>
       ) : (
-        groups.map((group) => (
-          <section key={group.label} className="space-y-2">
-            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">
-              {group.label}
-            </h4>
-            <div className="space-y-2">
-              {group.folders.map((folder) => {
-                const isOpen = expanded === folder.key;
-                // Pasta vazia = documentação pendente, e pendência tem de
-                // saltar da tela: é para isso que a pasta vazia aparece.
-                const pending = folder.files.length === 0;
-                return (
-                  <article
-                    key={folder.key}
-                    className={cn(
-                      "rounded-xl border bg-surface transition-colors",
-                      pending
-                        ? "border-danger/40 bg-danger/[0.04] hover:border-danger/60"
-                        : "border-border hover:border-border-strong",
-                    )}
-                  >
-                    <div className="flex items-center gap-2 p-3">
+        <>
+          <Completeness groups={groups} />
+
+          {groups.map((group) => (
+            <section key={group.label} className="space-y-2">
+              {/* A régua à direita do rótulo separa os grupos sem gastar uma
+                  linha inteira de cabeçalho — o mosaico precisa da altura. */}
+              <h4 className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
+                {group.label}
+                <span aria-hidden="true" className="h-px flex-1 bg-border" />
+              </h4>
+
+              <ul className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(10rem,1fr))]">
+                {group.folders.map((folder) => {
+                  // Pasta vazia = documentação pendente, e pendência tem de
+                  // saltar da tela: é para isso que a pasta vazia aparece.
+                  const pending = folder.files.length === 0;
+                  return (
+                    <li key={folder.key} className="relative">
                       <button
                         type="button"
-                        onClick={() => setExpanded(isOpen ? null : folder.key)}
-                        aria-expanded={isOpen}
-                        className="focus-ring flex min-w-0 flex-1 items-center gap-3 rounded-lg px-1 py-1 text-left"
+                        onClick={() => setOpenKey(folder.key)}
+                        className={cn(
+                          "focus-ring flex h-full w-full flex-col gap-2 rounded-xl border p-3 pr-10 text-left transition-colors",
+                          pending
+                            ? "border-danger/45 bg-danger/[0.06] hover:border-danger/70"
+                            : "border-border bg-surface hover:border-border-strong",
+                        )}
                       >
-                        <ChevronDown
+                        <span
+                          aria-hidden="true"
                           className={cn(
-                            "h-4 w-4 shrink-0 transition-transform",
-                            pending ? "text-danger/70" : "text-muted",
-                            isOpen && "rotate-180",
+                            "h-1.5 w-1.5 rounded-full",
+                            pending ? "bg-danger" : "bg-primary",
                           )}
                         />
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-sm font-medium text-foreground">
-                            {folder.label}
-                          </span>
-                          {/* O rótulo também é vermelho: cor de borda sozinha
-                              não chega a quem não distingue vermelho. */}
-                          <span
-                            className={cn(
-                              "mt-0.5 block text-xs",
-                              pending ? "font-medium text-danger" : "text-muted",
-                            )}
-                          >
-                            {pending
-                              ? "Pendente"
-                              : `${folder.files.length} ${folder.files.length === 1 ? "arquivo" : "arquivos"}`}
-                          </span>
+                        {/* Duas linhas fixas: os rótulos do catálogo variam de
+                            "ASO" a uma frase, e altura solta desalinharia a
+                            grade inteira. */}
+                        <span className="line-clamp-2 min-h-[2.2em] text-[13px] font-medium leading-snug text-foreground">
+                          {folder.label}
+                        </span>
+                        {/* O rótulo também é vermelho: cor de borda sozinha não
+                            chega a quem não distingue vermelho. */}
+                        <span
+                          className={cn(
+                            "text-[11px] tabular-nums",
+                            pending ? "font-medium text-danger" : "text-muted",
+                          )}
+                        >
+                          {pending
+                            ? "Pendente"
+                            : `${folder.files.length} ${folder.files.length === 1 ? "arquivo" : "arquivos"}`}
                         </span>
                       </button>
 
+                      {/* Irmão do ladrilho, não filho: botão dentro de botão é
+                          HTML inválido. Vai direto ao envio, sem passar pela
+                          gaveta — fechar pendência é a razão da tela existir. */}
                       <button
                         type="button"
                         onClick={() => setUploadTo({ key: folder.key, label: folder.label })}
                         aria-label={`Enviar documento para ${folder.label}`}
-                        className="focus-ring flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary transition-colors hover:bg-primary/25"
-                      >
-                        <Upload className="h-4 w-4" />
-                      </button>
-
-                      {/* Exclusão de estrutura é só do Admin, e só de pasta
-                          criada à mão: as obrigatórias são constante e
-                          voltariam na renderização seguinte. */}
-                      {isAdmin && !folder.fixed && (
-                        <DeleteButton
-                          label={`Excluir a pasta ${folder.label}`}
-                          confirm={`Excluir a pasta "${folder.label}" e os ${folder.files.length} arquivo(s) dentro dela? Isso não se desfaz.`}
-                          onConfirm={async () => {
-                            const fd = new FormData();
-                            fd.set("ownerId", person.id);
-                            fd.set("folder", folder.key);
-                            return deletePersonnelFolder(fd);
-                          }}
-                          onDone={load}
-                        />
-                      )}
-                    </div>
-
-                    {isOpen && (
-                      <div className="border-t border-border px-3 py-3">
-                        {folder.files.length === 0 ? (
-                          <p className="px-1 text-xs text-muted">
-                            Nenhum documento arquivado nesta pasta.
-                          </p>
-                        ) : (
-                          <ul className="space-y-2">
-                            {folder.files.map((file) => (
-                              <li
-                                key={file.id}
-                                className="flex items-center gap-3 rounded-lg bg-surface-2 p-2.5"
-                              >
-                                <span
-                                  className={cn(
-                                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[9px] font-bold",
-                                    KIND_STYLE[file.kind],
-                                  )}
-                                >
-                                  {file.kind}
-                                </span>
-                                <span className="min-w-0 flex-1">
-                                  <span className="block truncate text-sm text-foreground">
-                                    {file.name}
-                                  </span>
-                                  <span className="mt-0.5 block text-xs text-muted">
-                                    {file.size}
-                                  </span>
-                                </span>
-                                <a
-                                  href={file.filePath}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  aria-label={`Visualizar ${file.name}`}
-                                  className="focus-ring flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-3 text-foreground transition-colors hover:bg-surface"
-                                >
-                                  <Eye className="h-3.5 w-3.5" />
-                                </a>
-                                <a
-                                  href={file.filePath}
-                                  download
-                                  aria-label={`Baixar ${file.name}`}
-                                  className="focus-ring flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary transition-colors hover:bg-primary/25"
-                                >
-                                  <Download className="h-3.5 w-3.5" />
-                                </a>
-                                {isAdmin && (
-                                  <DeleteButton
-                                    label={`Excluir ${file.name}`}
-                                    confirm={`Excluir "${file.name}"? Isso não se desfaz.`}
-                                    onConfirm={async () => {
-                                      const fd = new FormData();
-                                      fd.set("id", file.id);
-                                      return deletePersonnelFile(fd);
-                                    }}
-                                    onDone={load}
-                                  />
-                                )}
-                              </li>
-                            ))}
-                          </ul>
+                        className={cn(
+                          "focus-ring absolute right-2.5 top-2.5 flex h-6 w-6 items-center justify-center rounded-md transition-colors",
+                          pending
+                            ? "bg-danger/15 text-danger hover:bg-danger/25"
+                            : "bg-surface-2 text-muted hover:bg-surface-3 hover:text-foreground",
                         )}
-                      </div>
-                    )}
-                  </article>
-                );
-              })}
-            </div>
-          </section>
-        ))
+                      >
+                        <Plus className="h-3.5 w-3.5" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          ))}
+        </>
+      )}
+
+      {openFolder && (
+        <FolderSheet
+          folder={openFolder}
+          person={person}
+          isAdmin={isAdmin}
+          onClose={() => setOpenKey(null)}
+          onUpload={() => setUploadTo({ key: openFolder.key, label: openFolder.label })}
+          onChanged={load}
+        />
       )}
 
       <NewFolderModal
@@ -465,6 +408,176 @@ function PersonFolders({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Quanto do dossiê já foi entregue, em número e em imagem.
+ *
+ * Um segmento por pasta, na ordem da tela: o painel responde "o que falta
+ * desta pessoa" antes de qualquer rótulo ser lido. A contagem ao lado diz o
+ * mesmo em texto — a barra é reforço, nunca a única pista.
+ */
+function Completeness({ groups }: { groups: readonly PersonnelFolderGroup[] }) {
+  const folders = groups.flatMap((g) => g.folders);
+  const done = folders.filter((f) => f.files.length > 0).length;
+  const pending = folders.length - done;
+
+  return (
+    <div className="rounded-xl border border-border bg-surface p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <p className="text-sm font-semibold tabular-nums text-foreground">
+          {done} de {folders.length} {folders.length === 1 ? "pasta entregue" : "pastas entregues"}
+        </p>
+        <p
+          className={cn(
+            "text-xs tabular-nums",
+            pending > 0 ? "font-medium text-danger" : "text-primary",
+          )}
+        >
+          {pending > 0
+            ? `${pending} ${pending === 1 ? "pendente" : "pendentes"}`
+            : "Documentação completa"}
+        </p>
+      </div>
+
+      <div aria-hidden="true" className="mt-2.5 flex gap-[3px]">
+        {folders.map((f) => (
+          <span
+            key={f.key}
+            className={cn(
+              "h-1.5 flex-1 rounded-full",
+              f.files.length > 0 ? "bg-primary" : "bg-danger",
+            )}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Os arquivos de uma pasta, por cima do mosaico.
+ *
+ * Modal e não gaveta lateral: é o recipiente que o resto do módulo já usa
+ * (envio, nova pasta, confirmação de exclusão), e ele cumpre o mesmo papel —
+ * mostrar o conteúdo sem desmontar o panorama atrás.
+ */
+function FolderSheet({
+  folder,
+  person,
+  isAdmin,
+  onClose,
+  onUpload,
+  onChanged,
+}: {
+  folder: PersonnelFolder;
+  person: PersonnelPerson;
+  isAdmin: boolean;
+  onClose: () => void;
+  onUpload: () => void;
+  onChanged: () => void;
+}) {
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={folder.label}
+      description={`${person.name} · ${
+        folder.files.length === 0
+          ? "nenhum documento arquivado"
+          : `${folder.files.length} ${folder.files.length === 1 ? "arquivo" : "arquivos"}`
+      }`}
+      className="max-w-xl"
+      footer={
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {/* Exclusão de estrutura é só do Admin, e só de pasta criada à mão:
+              as obrigatórias são constante e voltariam na renderização
+              seguinte. Fica na gaveta, longe do mosaico, porque apaga os
+              arquivos junto. */}
+          {isAdmin && !folder.fixed ? (
+            <DeleteButton
+              label={`Excluir a pasta ${folder.label}`}
+              confirm={`Excluir a pasta "${folder.label}" e os ${folder.files.length} arquivo(s) dentro dela? Isso não se desfaz.`}
+              onConfirm={async () => {
+                const fd = new FormData();
+                fd.set("ownerId", person.id);
+                fd.set("folder", folder.key);
+                return deletePersonnelFolder(fd);
+              }}
+              onDone={() => {
+                onClose();
+                onChanged();
+              }}
+            />
+          ) : (
+            <span />
+          )}
+
+          <Button onClick={onUpload}>
+            <Upload className="h-4 w-4" />
+            Enviar documento
+          </Button>
+        </div>
+      }
+    >
+      {folder.files.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-border-strong px-4 py-6 text-center text-xs text-muted">
+          Nenhum documento arquivado nesta pasta.
+        </p>
+      ) : (
+        <ul className="space-y-2">
+          {folder.files.map((file) => (
+            <li
+              key={file.id}
+              className="flex items-center gap-3 rounded-lg bg-surface-2 p-2.5"
+            >
+              <span
+                className={cn(
+                  "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[9px] font-bold",
+                  KIND_STYLE[file.kind],
+                )}
+              >
+                {file.kind}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm text-foreground">{file.name}</span>
+                <span className="mt-0.5 block text-xs tabular-nums text-muted">{file.size}</span>
+              </span>
+              <a
+                href={file.filePath}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Visualizar ${file.name}`}
+                className="focus-ring flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-3 text-foreground transition-colors hover:bg-surface"
+              >
+                <Eye className="h-3.5 w-3.5" />
+              </a>
+              <a
+                href={file.filePath}
+                download
+                aria-label={`Baixar ${file.name}`}
+                className="focus-ring flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary transition-colors hover:bg-primary/25"
+              >
+                <Download className="h-3.5 w-3.5" />
+              </a>
+              {isAdmin && (
+                <DeleteButton
+                  label={`Excluir ${file.name}`}
+                  confirm={`Excluir "${file.name}"? Isso não se desfaz.`}
+                  onConfirm={async () => {
+                    const fd = new FormData();
+                    fd.set("id", file.id);
+                    return deletePersonnelFile(fd);
+                  }}
+                  onDone={onChanged}
+                />
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Modal>
   );
 }
 
