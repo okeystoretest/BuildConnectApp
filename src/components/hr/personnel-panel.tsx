@@ -505,27 +505,29 @@ function Completeness({ groups }: { groups: readonly PersonnelFolderGroup[] }) {
               {/* O fio é NEUTRO de propósito: ele costura a trilha, não mede
                   avanço. As pastas não têm ordem obrigatória, e um fio que
                   "enche" prometeria uma sequência que não existe. */}
-              {i > 0 && <span aria-hidden="true" className="mt-[9px] h-px w-5 bg-border" />}
+              {i > 0 && <span aria-hidden="true" className="mt-3 h-px w-7 bg-border" />}
 
-              <div className="flex w-[4.5rem] flex-col items-center gap-1.5 text-center">
+              <div className="flex w-[6.5rem] flex-col items-center gap-2 text-center">
                 <span
                   className={cn(
-                    "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded border",
+                    "flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 transition-colors",
                     done
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "border-danger/60 bg-danger/10",
+                      ? "border-primary bg-primary text-primary-foreground shadow-sm shadow-primary/30"
+                      : "border-danger/50 bg-danger/5",
                   )}
                 >
-                  {done && <Check className="h-3 w-3" strokeWidth={3} />}
+                  {done && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
                 </span>
+                {/* Sem corte e sem reticências: o nome é curto por escrito no
+                    catálogo, e quebra em quantas linhas precisar. */}
                 <span
                   title={folder.label}
                   className={cn(
-                    "line-clamp-2 text-[10px] leading-tight",
+                    "text-[11px] leading-tight",
                     done ? "text-muted" : "font-medium text-danger",
                   )}
                 >
-                  {shortLabel(folder.label)}
+                  {folder.short}
                 </span>
                 {/* O estado não pode existir só na cor e no desenho. */}
                 <span className="sr-only">{done ? "entregue" : "pendente"}</span>
@@ -536,16 +538,6 @@ function Completeness({ groups }: { groups: readonly PersonnelFolderGroup[] }) {
       </ol>
     </div>
   );
-}
-
-/**
- * Encurta o rótulo para caber numa parada da trilha: corta o parêntese, que é
- * sempre o detalhamento ("ASO (admissional, periódico…)" vira "ASO"). O nome
- * inteiro continua alcançável no `title` e no ladrilho logo abaixo.
- */
-function shortLabel(label: string): string {
-  const cut = label.indexOf(" (");
-  return cut > 0 ? label.slice(0, cut) : label;
 }
 
 /**
