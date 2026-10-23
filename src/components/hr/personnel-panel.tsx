@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import {
   ArrowLeft,
+  Check,
   Download,
   Eye,
   FolderPlus,
@@ -493,19 +494,58 @@ function Completeness({ groups }: { groups: readonly PersonnelFolderGroup[] }) {
         </p>
       </div>
 
-      <div aria-hidden="true" className="mt-2.5 flex gap-[3px]">
-        {folders.map((f) => (
-          <span
-            key={f.key}
-            className={cn(
-              "h-1.5 flex-1 rounded-full",
-              f.files.length > 0 ? "bg-primary" : "bg-danger",
-            )}
-          />
-        ))}
-      </div>
+      {/* Trilha horizontal: uma parada por pasta, na ordem do catálogo. Rola
+          de lado no celular em vez de espremer onze paradas na largura da
+          tela — parada ilegível não informa nada. */}
+      <ol className="scrollbar-slim -mx-1 mt-3 flex items-start overflow-x-auto px-1 pb-1">
+        {folders.map((folder, i) => {
+          const done = folder.files.length > 0;
+          return (
+            <li key={folder.key} className="flex shrink-0 items-start">
+              {/* O fio é NEUTRO de propósito: ele costura a trilha, não mede
+                  avanço. As pastas não têm ordem obrigatória, e um fio que
+                  "enche" prometeria uma sequência que não existe. */}
+              {i > 0 && <span aria-hidden="true" className="mt-[9px] h-px w-5 bg-border" />}
+
+              <div className="flex w-[4.5rem] flex-col items-center gap-1.5 text-center">
+                <span
+                  className={cn(
+                    "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded border",
+                    done
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-danger/60 bg-danger/10",
+                  )}
+                >
+                  {done && <Check className="h-3 w-3" strokeWidth={3} />}
+                </span>
+                <span
+                  title={folder.label}
+                  className={cn(
+                    "line-clamp-2 text-[10px] leading-tight",
+                    done ? "text-muted" : "font-medium text-danger",
+                  )}
+                >
+                  {shortLabel(folder.label)}
+                </span>
+                {/* O estado não pode existir só na cor e no desenho. */}
+                <span className="sr-only">{done ? "entregue" : "pendente"}</span>
+              </div>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
+}
+
+/**
+ * Encurta o rótulo para caber numa parada da trilha: corta o parêntese, que é
+ * sempre o detalhamento ("ASO (admissional, periódico…)" vira "ASO"). O nome
+ * inteiro continua alcançável no `title` e no ladrilho logo abaixo.
+ */
+function shortLabel(label: string): string {
+  const cut = label.indexOf(" (");
+  return cut > 0 ? label.slice(0, cut) : label;
 }
 
 /**
