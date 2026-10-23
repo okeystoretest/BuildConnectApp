@@ -35,33 +35,42 @@ const KIND_STYLE = {
 } as const;
 
 /**
- * Paleta das pílulas de setor — só os tons SEM significado nesta tela.
+ * Paleta das pílulas de setor: os tokens `sector-*`, que existem só para dizer
+ * QUEM e nunca COMO ESTÁ.
  *
- * `danger`, `warning` e `primary` estão fora de propósito: aqui eles dizem
- * pendente, parcial e em dia, e os cards logo abaixo das pílulas usam
- * exatamente essas três cores. Uma pílula "DHO" vermelha acima de uma fileira
- * de cards vermelhos faz o nome do setor parecer um alarme.
+ * Nenhum tom semântico entra aqui. `danger` e `warning` dizem pendente e
+ * parcial nos cards logo abaixo das pílulas, e `primary` é a cor de ação do
+ * app — uma pílula "DHO" vermelha sobre uma fileira de cards vermelhos faz o
+ * nome do setor parecer alarme.
  *
- * Sobram dois tons, e é o que há: identidade de setor se repete a cada dois
- * setores. Mais variedade pediria token novo na paleta do app, que é decisão
- * de outro escopo.
+ * Seis tons para os seis setores. Além disso a cor se repete, e tudo bem: a
+ * pílula traz o nome escrito, e a cor é reforço.
  */
 const SECTOR_TONES = [
-  { idle: "border-info/30 bg-info/10 text-info hover:border-info/60", on: "border-info bg-info text-white" },
-  { idle: "border-accent/30 bg-accent/10 text-accent hover:border-accent/60", on: "border-accent bg-accent text-white" },
+  { idle: "border-sector-1/40 bg-sector-1/10 text-sector-1 hover:border-sector-1", on: "border-sector-1 bg-sector-1 text-sector-fg" },
+  { idle: "border-sector-2/40 bg-sector-2/10 text-sector-2 hover:border-sector-2", on: "border-sector-2 bg-sector-2 text-sector-fg" },
+  { idle: "border-sector-3/40 bg-sector-3/10 text-sector-3 hover:border-sector-3", on: "border-sector-3 bg-sector-3 text-sector-fg" },
+  { idle: "border-sector-4/40 bg-sector-4/10 text-sector-4 hover:border-sector-4", on: "border-sector-4 bg-sector-4 text-sector-fg" },
+  { idle: "border-sector-5/40 bg-sector-5/10 text-sector-5 hover:border-sector-5", on: "border-sector-5 bg-sector-5 text-sector-fg" },
+  { idle: "border-sector-6/40 bg-sector-6/10 text-sector-6 hover:border-sector-6", on: "border-sector-6 bg-sector-6 text-sector-fg" },
 ] as const;
 
 /**
- * Cor do setor derivada do NOME, não da posição na lista: a pílula de "Vendas"
- * é a mesma em qualquer filtro, e continua a mesma quando um setor é criado ou
- * removido. Índice por ordem de aparição mudaria a cor de todo mundo.
+ * Cor do setor pela POSIÇÃO na lista alfabética, e não por hash do nome.
+ *
+ * O hash dava a cada setor uma cor estável, que sobrevivia a criar ou remover
+ * outro — mas sorteava, e sortear seis cores em seis casas acerta todas em
+ * 1,5% das vezes. Na prática dois setores saíam iguais, que é exatamente o
+ * defeito que esta paleta existe para resolver.
+ *
+ * A posição garante distintas até a sexta. O preço é que incluir um setor no
+ * meio do alfabeto repinta os seguintes — cor fixa por setor pediria guardá-la
+ * no cadastro, e ninguém pediu para escolher cor de setor.
  */
-function sectorTone(label: string) {
-  let hash = 0;
-  for (let i = 0; i < label.length; i += 1) hash = (hash * 31 + label.charCodeAt(i)) | 0;
+function sectorTone(index: number) {
   // `?? [0]` é só para o índice calculado: o módulo nunca sai da faixa, mas
   // `noUncheckedIndexedAccess` não sabe disso.
-  return SECTOR_TONES[Math.abs(hash) % SECTOR_TONES.length] ?? SECTOR_TONES[0];
+  return SECTOR_TONES[index % SECTOR_TONES.length] ?? SECTOR_TONES[0];
 }
 
 /**
@@ -133,8 +142,8 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
           >
             Todos
           </button>
-          {sectors.map((label) => {
-            const tone = sectorTone(label);
+          {sectors.map((label, index) => {
+            const tone = sectorTone(index);
             const active = sector === label;
             return (
               <button

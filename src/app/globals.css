@@ -27,6 +27,24 @@
     --bc-warning: 38 92% 50%;
     --bc-danger: 0 72% 60%;
 
+    /* Identidade de setor — cor que diz QUEM, nunca COMO ESTÁ.
+     *
+     * Seis matizes espalhadas de 28 em 28 graus pelo arco 185–324, escolhido
+     * por exclusão: fora dele moram o vermelho do `danger`, o âmbar do
+     * `warning` e o verde do `primary`, que nas telas significam pendente,
+     * parcial e ação. Uma pílula de setor nessas cores vira alarme.
+     *
+     * Claras no tema escuro e escuras no claro, como o resto da paleta — e
+     * por isso `--bc-sector-fg` inverte junto: texto escuro sobre o
+     * preenchimento claro, texto branco sobre o escuro. */
+    --bc-sector-1: 185 75% 55%;
+    --bc-sector-2: 212 85% 62%;
+    --bc-sector-3: 240 85% 75%;
+    --bc-sector-4: 268 80% 68%;
+    --bc-sector-5: 296 70% 65%;
+    --bc-sector-6: 324 72% 62%;
+    --bc-sector-fg: 253 32% 10%;
+
     --bc-ring: 142 69% 58%;
     --bc-radius: 0.75rem;
   }
@@ -48,6 +66,16 @@
 
     --bc-accent: 253 74% 56%;
     --bc-accent-soft: 253 80% 92%;
+
+    /* Mesmas matizes, escurecidas para passar o contraste sobre o branco —
+     * elas carregam texto, não só preenchimento. */
+    --bc-sector-1: 185 85% 24%;
+    --bc-sector-2: 212 80% 42%;
+    --bc-sector-3: 240 60% 46%;
+    --bc-sector-4: 268 58% 46%;
+    --bc-sector-5: 296 55% 42%;
+    --bc-sector-6: 324 62% 42%;
+    --bc-sector-fg: 0 0% 100%;
   }
 
   * {

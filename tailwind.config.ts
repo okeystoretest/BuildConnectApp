@@ -30,6 +30,18 @@ const config: Config = {
         info: "hsl(var(--bc-info))",
         warning: "hsl(var(--bc-warning))",
         danger: "hsl(var(--bc-danger))",
+        // Identidade de setor. Numeradas porque a cor é atribuída por hash do
+        // nome, não escolhida: nomear cada uma ("teal", "índigo") prometeria
+        // uma associação fixa que não existe.
+        sector: {
+          "1": "hsl(var(--bc-sector-1))",
+          "2": "hsl(var(--bc-sector-2))",
+          "3": "hsl(var(--bc-sector-3))",
+          "4": "hsl(var(--bc-sector-4))",
+          "5": "hsl(var(--bc-sector-5))",
+          "6": "hsl(var(--bc-sector-6))",
+          fg: "hsl(var(--bc-sector-fg))",
+        },
         ring: "hsl(var(--bc-ring))",
       },
       borderRadius: {
