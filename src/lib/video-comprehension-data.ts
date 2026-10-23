@@ -50,7 +50,7 @@ const PENDING_SELECT = {
   id: true,
   answer: true,
   submittedAt: true,
-  user: { select: { id: true, fullName: true, sectorId: true } },
+  user: { select: { id: true, fullName: true, sectorId: true, role: true } },
   video: { select: { title: true, filePath: true } },
 } as const;
 
@@ -72,7 +72,11 @@ export async function getPendingComprehensionTasks(
 
   const tasks: VideoComprehensionTask[] = [];
   for (const c of pending) {
-    const author: ComprehensionAuthor = { authorId: c.user.id, authorSectorId: c.user.sectorId };
+    const author: ComprehensionAuthor = {
+      authorId: c.user.id,
+      authorSectorId: c.user.sectorId,
+      authorRole: c.user.role as Role,
+    };
     if (!resolveGraders(author, candidates).some((g) => g.id === graderId)) continue;
     tasks.push({
       comprehensionId: c.id,
@@ -189,7 +193,7 @@ export async function sweepStaleComprehensions(): Promise<number> {
         id: true,
         submittedAt: true,
         staleNotifiedAt: true,
-        user: { select: { id: true, sectorId: true } },
+        user: { select: { id: true, sectorId: true, role: true } },
       },
     }),
     loadGraderCandidates(),
@@ -200,7 +204,11 @@ export async function sweepStaleComprehensions(): Promise<number> {
 
   const graderIds = new Set<string>();
   for (const r of stale) {
-    const author: ComprehensionAuthor = { authorId: r.user.id, authorSectorId: r.user.sectorId };
+    const author: ComprehensionAuthor = {
+      authorId: r.user.id,
+      authorSectorId: r.user.sectorId,
+      authorRole: r.user.role as Role,
+    };
     for (const g of resolveGraders(author, candidates)) graderIds.add(g.id);
   }
 

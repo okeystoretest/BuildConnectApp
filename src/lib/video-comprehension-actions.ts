@@ -103,7 +103,7 @@ export async function submitVideoComprehension(input: {
     // aviso é consequência do envio, não condição dele.
     const candidates = await loadGraderCandidates();
     const graders = resolveGraders(
-      { authorId: user.id, authorSectorId: user.sectorId },
+      { authorId: user.id, authorSectorId: user.sectorId, authorRole: user.role as Role },
       candidates,
     );
     void notifyGraderQueue(graders.map((g) => g.id));
@@ -162,7 +162,7 @@ export async function gradeVideoComprehension(input: {
       gradedAt: true,
       videoId: true,
       video: { select: { title: true, subsector: { select: { slug: true } } } },
-      user: { select: { id: true, sectorId: true } },
+      user: { select: { id: true, sectorId: true, role: true } },
     },
   });
   if (!target) return { ok: false, error: "Resposta não encontrada." };
@@ -170,7 +170,11 @@ export async function gradeVideoComprehension(input: {
 
   const candidates = await loadGraderCandidates();
   const me = candidates.find((c) => c.id === actor.id);
-  const author = { authorId: target.user.id, authorSectorId: target.user.sectorId };
+  const author = {
+    authorId: target.user.id,
+    authorSectorId: target.user.sectorId,
+    authorRole: target.user.role as Role,
+  };
   if (!me || !canGrade(me, author, candidates)) {
     return { ok: false, error: "Esta resposta não cabe a você avaliar." };
   }

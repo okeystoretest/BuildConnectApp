@@ -24,6 +24,8 @@ export interface GraderCandidate {
 export interface ComprehensionAuthor {
   authorId: string;
   authorSectorId: string | null;
+  /** Papel de quem respondeu. Resposta de Gestor sobe para a administração. */
+  authorRole: Role;
 }
 
 export function resolveGraders(
@@ -31,6 +33,17 @@ export function resolveGraders(
   candidates: readonly GraderCandidate[],
 ): GraderCandidate[] {
   const others = candidates.filter((c) => c.id !== author.authorId);
+
+  // Resposta de GESTOR vai para TODOS os Admins, de qualquer setor — nunca
+  // para um par do mesmo setor. Quem gere o setor não é avaliado por outro
+  // gestor dele; a nota de quem manda vem de cima.
+  //
+  // Sem Admin cadastrado a regra cede para a de baixo, senão a resposta de um
+  // Gestor ficaria sem ninguém para avaliá-la e esperaria para sempre.
+  if (author.authorRole === "GESTOR") {
+    const admins = others.filter((c) => c.role === "ADMIN");
+    if (admins.length > 0) return admins;
+  }
 
   if (author.authorSectorId) {
     const sectorManagers = others.filter(
