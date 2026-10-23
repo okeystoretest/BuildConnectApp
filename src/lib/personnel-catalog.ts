@@ -18,12 +18,15 @@ export interface PersonnelCategory {
 }
 
 export interface PersonnelGroup {
+  /** Identidade do bloco. O rótulo é renomeável; esta chave não muda nunca. */
+  key: string;
   label: string;
   categories: readonly PersonnelCategory[];
 }
 
 export const PERSONNEL_GROUPS: readonly PersonnelGroup[] = [
   {
+    key: "admissionais",
     label: "Admissionais e contratuais",
     categories: [
       { key: "docs-pessoais", label: "Documentos pessoais (RG, CPF, CNH, Passaporte)" },
@@ -36,6 +39,7 @@ export const PERSONNEL_GROUPS: readonly PersonnelGroup[] = [
     ],
   },
   {
+    key: "saude",
     label: "Saúde e segurança do trabalho",
     categories: [
       { key: "aso", label: "ASO (admissional, periódico, demissional, retorno)" },
@@ -43,6 +47,7 @@ export const PERSONNEL_GROUPS: readonly PersonnelGroup[] = [
     ],
   },
   {
+    key: "desempenho",
     label: "Desempenho e comportamento",
     categories: [
       { key: "perfil-comportamental", label: "Perfil comportamental (DISC)" },
@@ -50,6 +55,13 @@ export const PERSONNEL_GROUPS: readonly PersonnelGroup[] = [
     ],
   },
 ] as const;
+
+/**
+ * O bloco das pastas criadas à mão. Não sai do catálogo — é montado na
+ * leitura — mas tem chave como os outros, para poder ser renomeado igual.
+ */
+export const OTHERS_GROUP_KEY = "outras";
+export const OTHERS_GROUP_LABEL = "Outras pastas";
 
 /** As chaves obrigatórias, achatadas — toda pasta que existe para todo mundo. */
 export const PERSONNEL_CATEGORY_KEYS: readonly string[] = PERSONNEL_GROUPS.flatMap((g) =>

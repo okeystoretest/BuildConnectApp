@@ -7,6 +7,9 @@ import { canAdministerDho } from "@/lib/auth/access";
 import { docKind, storeFile, removeFile, FileStorageError } from "@/lib/storage/files";
 import { toAbsolutePath } from "@/lib/storage/config";
 import {
+  OTHERS_GROUP_KEY,
+  OTHERS_GROUP_LABEL,
+  PERSONNEL_GROUPS,
   catalogKeyByName,
   categoryLabel,
   normalizeFolderName,
@@ -182,6 +185,52 @@ export async function createPersonnelFolder(formData: FormData): Promise<ActionR
 
   revalidatePath("/setores/rh");
   return { ok: true };
+}
+
+// ──────────────────────────────────────────────
+// Renomear um bloco de pastas
+// ──────────────────────────────────────────────
+
+/**
+ * Troca o nome de um bloco ("Admissionais e contratuais"…) para TODO MUNDO.
+ *
+ * Global, e não por colaborador: o bloco é a taxonomia do DHO, e a mesma
+ * pasta cairia sob nomes diferentes de pessoa para pessoa — o contrário de
+ * uma taxonomia.
+ *
+ * Voltar ao nome de fábrica é apagar a linha, não gravar o texto original: o
+ * de fábrica mora na constante, e gravá-lo deixaria duas verdades sobre como
+ * o bloco se chama no dia em que a constante mudasse.
+ */
+export async function renamePersonnelGroup(formData: FormData): Promise<ActionResult> {
+  const { user, error } = await requireDhoManager();
+  if (!user) return { ok: false, error: error ?? undefined };
+
+  const key = String(formData.get("key") ?? "");
+  const original = knownGroup(key);
+  if (!original) return { ok: false, error: "Bloco não encontrado." };
+
+  const label = normalizeFolderName(String(formData.get("label") ?? ""));
+  if (!label) return { ok: false, error: "Informe o nome do bloco." };
+
+  if (label === original) {
+    await prisma.personnelGroupName.deleteMany({ where: { key } });
+  } else {
+    await prisma.personnelGroupName.upsert({
+      where: { key },
+      update: { label },
+      create: { key, label },
+    });
+  }
+
+  revalidatePath("/setores/rh");
+  return { ok: true };
+}
+
+/** Nome de fábrica do bloco; `null` quando a chave não é de nenhum. */
+function knownGroup(key: string): string | null {
+  if (key === OTHERS_GROUP_KEY) return OTHERS_GROUP_LABEL;
+  return PERSONNEL_GROUPS.find((g) => g.key === key)?.label ?? null;
 }
 
 // ──────────────────────────────────────────────

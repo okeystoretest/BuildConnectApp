@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db/prisma";
 import { formatBytes } from "@/lib/utils";
 import {
+  OTHERS_GROUP_KEY,
+  OTHERS_GROUP_LABEL,
   PERSONNEL_CATEGORY_KEYS,
   PERSONNEL_GROUPS,
   categoryLabel,
@@ -140,8 +142,17 @@ export async function getPersonnelFolders(
   const removed = new Set(owner.personnelRemovedFolders);
   const visible = (key: string) => !removed.has(key) || (byFolder.get(key)?.length ?? 0) > 0;
 
+  // Só os blocos RENOMEADOS têm linha; o resto cai no nome de fábrica.
+  const renamed = new Map(
+    (await prisma.personnelGroupName.findMany()).map(
+      (r: { key: string; label: string }) => [r.key, r.label] as const,
+    ),
+  );
+  const groupLabel = (key: string, fallback: string) => renamed.get(key) ?? fallback;
+
   const groups: PersonnelFolderGroup[] = PERSONNEL_GROUPS.map((g) => ({
-    label: g.label,
+    key: g.key,
+    label: groupLabel(g.key, g.label),
     folders: g.categories
       .filter((c) => visible(c.key))
       .map((c) => ({
@@ -162,7 +173,8 @@ export async function getPersonnelFolders(
 
   if (extraNames.size > 0) {
     groups.push({
-      label: "Outras pastas",
+      key: OTHERS_GROUP_KEY,
+      label: groupLabel(OTHERS_GROUP_KEY, OTHERS_GROUP_LABEL),
       folders: [...extraNames].sort((a, b) => a.localeCompare(b, "pt-BR")).map((name) => ({
         key: name,
         label: name,

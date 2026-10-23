@@ -7,6 +7,7 @@ import {
   Eye,
   FolderPlus,
   Loader2,
+  Pencil,
   Plus,
   Search,
   Trash2,
@@ -19,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   createPersonnelFolder,
+  renamePersonnelGroup,
   deletePersonnelFile,
   deletePersonnelFolder,
   fetchPersonnelFolders,
@@ -270,6 +272,7 @@ function PersonFolders({
   const [error, setError] = useState<string | null>(null);
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [renaming, setRenaming] = useState<PersonnelFolderGroup | null>(null);
   const [uploadTo, setUploadTo] = useState<{ key: string; label: string } | null>(null);
   const [busy, startTransition] = useTransition();
 
@@ -332,8 +335,18 @@ function PersonFolders({
             <section key={group.label} className="space-y-2">
               {/* A régua à direita do rótulo separa os grupos sem gastar uma
                   linha inteira de cabeçalho — o mosaico precisa da altura. */}
-              <h4 className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
+              <h4 className="group/bloco flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.11em] text-muted">
                 {group.label}
+                <button
+                  type="button"
+                  onClick={() => setRenaming(group)}
+                  aria-label={`Renomear o bloco ${group.label}`}
+                  // Discreto até o ponteiro chegar perto, mas sempre presente
+                  // para o teclado e para quem navega por toque.
+                  className="focus-ring flex h-5 w-5 shrink-0 items-center justify-center rounded text-muted/50 transition-colors hover:bg-surface-2 hover:text-foreground focus-visible:text-foreground group-hover/bloco:text-muted"
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
                 <span aria-hidden="true" className="h-px flex-1 bg-border" />
               </h4>
 
@@ -422,6 +435,14 @@ function PersonFolders({
         onClose={() => setNewFolderOpen(false)}
         onCreated={load}
       />
+
+      {renaming && (
+        <RenameGroupModal
+          group={renaming}
+          onClose={() => setRenaming(null)}
+          onRenamed={load}
+        />
+      )}
 
       {/* Mesmo modal de envio das demais telas — só muda a porta (`uploadKind`)
           e os campos que dizem de quem e de qual pasta é o documento. `slug`
@@ -694,6 +715,79 @@ function DeleteButton({
         {error ? <p className="px-6 py-4 text-xs text-danger">{error}</p> : null}
       </Modal>
     </>
+  );
+}
+
+/**
+ * Renomeia um bloco de pastas.
+ *
+ * O aviso de que vale para todo mundo não é decoração: a tela inteira em volta
+ * é a de UM colaborador, e sem ele a renomeação pareceria local.
+ */
+function RenameGroupModal({
+  group,
+  onClose,
+  onRenamed,
+}: {
+  group: PersonnelFolderGroup;
+  onClose: () => void;
+  onRenamed: () => void;
+}) {
+  const [label, setLabel] = useState(group.label);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, startTransition] = useTransition();
+
+  function submit() {
+    startTransition(async () => {
+      const fd = new FormData();
+      fd.set("key", group.key);
+      fd.set("label", label);
+      const res = await renamePersonnelGroup(fd);
+      if (res.ok) {
+        onClose();
+        onRenamed();
+      } else {
+        setError(res.error ?? "Falha ao renomear o bloco.");
+      }
+    });
+  }
+
+  return (
+    <Modal
+      open
+      onClose={() => !busy && onClose()}
+      title="Renomear bloco"
+      description="O nome vale para todos os colaboradores — o bloco é o mesmo em todas as pastas."
+      className="max-w-md"
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose} disabled={busy}>
+            Cancelar
+          </Button>
+          <Button onClick={submit} disabled={busy}>
+            {busy && <Loader2 className="h-4 w-4 animate-spin" />}
+            Salvar
+          </Button>
+        </div>
+      }
+    >
+      <div className="px-6 py-4">
+        <label htmlFor="dp-group-name" className="block text-xs font-medium text-muted">
+          Nome do bloco
+        </label>
+        <input
+          id="dp-group-name"
+          value={label}
+          maxLength={60}
+          onChange={(e) => {
+            setError(null);
+            setLabel(e.target.value);
+          }}
+          className="focus-ring mt-1.5 h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-foreground placeholder:text-muted/70"
+        />
+        {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+      </div>
+    </Modal>
   );
 }
 

@@ -258,6 +258,30 @@ test("arquivo sobrevivente mantém visível a pasta modelo marcada como excluíd
   await prisma.user.delete({ where: { id: solo.id } });
 });
 
+test("bloco renomeado troca o rótulo sem mexer na chave nem nas pastas", async () => {
+  const antes = await getPersonnelFolders(ownerId);
+  const bloco = antes?.find((g) => g.key === "saude");
+  assert.equal(bloco?.label, "Saúde e segurança do trabalho", "nome de fábrica");
+  const pastasAntes = bloco?.folders.map((f) => f.key);
+
+  await prisma.personnelGroupName.upsert({
+    where: { key: "saude" },
+    update: { label: "Medicina do trabalho" },
+    create: { key: "saude", label: "Medicina do trabalho" },
+  });
+
+  const depois = (await getPersonnelFolders(ownerId))?.find((g) => g.key === "saude");
+  assert.equal(depois?.label, "Medicina do trabalho");
+  // A chave amarra as pastas ao bloco: renomear não pode soltá-las.
+  assert.deepEqual(depois?.folders.map((f) => f.key), pastasAntes);
+
+  // Apagar a linha devolve o nome de fábrica — ele mora na constante, e não
+  // numa segunda cópia gravada no banco.
+  await prisma.personnelGroupName.deleteMany({ where: { key: "saude" } });
+  const revertido = (await getPersonnelFolders(ownerId))?.find((g) => g.key === "saude");
+  assert.equal(revertido?.label, "Saúde e segurança do trabalho");
+});
+
 test("colaborador inativo sai da lista e das pastas, sem perder arquivo", async () => {
   await prisma.user.update({ where: { id: ownerId }, data: { active: false } });
 

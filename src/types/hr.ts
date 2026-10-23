@@ -128,6 +128,8 @@ export interface PersonnelFolder {
 
 /** Grupo do catálogo (ou "Outras pastas", das criadas à mão). */
 export interface PersonnelFolderGroup {
+  /** Chave do bloco. O rótulo é renomeável; é por esta chave que se renomeia. */
+  key: string;
   label: string;
   folders: readonly PersonnelFolder[];
 }

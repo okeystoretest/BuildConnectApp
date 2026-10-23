@@ -476,6 +476,22 @@ model PersonnelFile {
   @@index([ownerId, folder])
 }
 
+// Nome dado a um BLOCO de pastas do Departamento Pessoal ("Admissionais e
+// contratuais", "Saúde e segurança do trabalho"…).
+//
+// Só existe linha para bloco RENOMEADO: o nome de fábrica é constante em
+// `lib/personnel-catalog`, e gravar os quatro na instalação criaria duas
+// verdades sobre como o bloco se chama. Sem linha, vale a constante.
+//
+// `key` é a chave primária e vem do catálogo — renomear troca o rótulo, nunca
+// a chave, que é o que amarra as pastas ao bloco.
+model PersonnelGroupName {
+  key   String @id
+  label String
+
+  updatedAt DateTime @updatedAt
+}
+
 model ExternalLink {
   id       String  @id @default(cuid())
   label    String
