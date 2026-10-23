@@ -127,7 +127,15 @@ export function HrSectorView({
   }
 
   return (
-    <AppShell eyebrow="Setores · DHO" title="DHO">
+    <AppShell
+      eyebrow="Setores · DHO"
+      title="DHO"
+      // Só o Departamento Pessoal ocupa a tela toda: são onze pastas por
+      // colaborador, e a trilha de progresso nasce mais larga que a coluna de
+      // leitura. As demais abas são listas e formulários, que ficam melhores
+      // na largura confortável.
+      wide={active === "documentos"}
+    >
       <PageHeader
         title="DHO"
         description={
