@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
-import { createPortal } from "react-dom";
 import {
   ArrowLeft,
   Check,
@@ -9,8 +8,6 @@ import {
   Eye,
   FolderPlus,
   Loader2,
-  Maximize2,
-  Minimize2,
   Pencil,
   Plus,
   Search,
@@ -20,7 +17,6 @@ import {
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { Modal } from "@/components/ui/modal";
-import { useFullscreen } from "@/components/ui/use-fullscreen";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
@@ -115,7 +111,6 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
   const [view, setView] = useState<ViewMode>("grid");
   const [sector, setSector] = useState<string | null>(null);
   const [open, setOpen] = useState<PersonnelPerson | null>(null);
-  const expand = useFullscreen();
 
   // Os setores que de fato aparecem na lista, em ordem alfabética. Pílula de
   // setor sem ninguém dentro só ocuparia espaço e filtraria para o vazio.
@@ -138,9 +133,13 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
         p.sector.toLowerCase().includes(term)),
   );
 
-  const body = open ? (
-    <PersonFolders person={open} onBack={() => setOpen(null)} />
-  ) : (
+  if (open) {
+    return (
+      <PersonFolders person={open} onBack={() => setOpen(null)} />
+    );
+  }
+
+  return (
     <div className="space-y-4">
       <ContentToolbar
         query={query}
@@ -260,55 +259,6 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
       )}
     </div>
   );
-
-  const control = (
-    <div className="flex justify-end">
-      <Button
-        variant="secondary"
-        size="sm"
-        onClick={() => expand.setOn(!expand.on)}
-        aria-pressed={expand.on}
-      >
-        {expand.on ? (
-          <>
-            <Minimize2 className="h-4 w-4" />
-            Sair da tela cheia
-          </>
-        ) : (
-          <>
-            <Maximize2 className="h-4 w-4" />
-            Expandir
-          </>
-        )}
-      </Button>
-    </div>
-  );
-
-  if (!expand.on) {
-    return (
-      <div className="space-y-3">
-        {control}
-        {body}
-      </div>
-    );
-  }
-
-  // Portal: o overlay precisa escapar de qualquer ancestral com `transform`,
-  // que quebraria o `position: fixed`. `overflow-y-auto` porque o mosaico de
-  // onze pastas passa da altura da janela — a tela cheia dá LARGURA, não
-  // cancela a rolagem.
-  return expand.mounted
-    ? createPortal(
-        <div
-          ref={expand.ref}
-          className="fixed inset-0 z-50 flex flex-col gap-3 overflow-y-auto bg-background p-4 sm:p-6"
-        >
-          {control}
-          {body}
-        </div>,
-        document.body,
-      )
-    : body;
 }
 
 /** Pastas de um colaborador, carregadas na abertura. */
