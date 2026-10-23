@@ -35,7 +35,7 @@ export async function getPersonnelRoster(): Promise<PersonnelPerson[]> {
       avatarPath: true,
       personnelFolders: true,
       personnelRemovedFolders: true,
-      sector: { select: { label: true } },
+      sector: { select: { label: true, slug: true } },
       _count: { select: { personnelFiles: true } },
     },
   });
@@ -60,7 +60,7 @@ export async function getPersonnelRoster(): Promise<PersonnelPerson[]> {
     avatarPath: string | null;
     personnelFolders: string[];
     personnelRemovedFolders: string[];
-    sector: { label: string } | null;
+    sector: { label: string; slug: string } | null;
     _count: { personnelFiles: number };
   }) => {
     // "Completo" cobre as pastas EXTRA também, não só o catálogo: elas
@@ -83,6 +83,7 @@ export async function getPersonnelRoster(): Promise<PersonnelPerson[]> {
       username: u.username,
       role: u.role as Role,
       sector: u.sector?.label ?? "—",
+      sectorSlug: u.sector?.slug ?? "",
       avatarPath: u.avatarPath ?? undefined,
       fileCount: u._count.personnelFiles,
       complete: [...required].every((folder) => has.has(folder)),

@@ -56,21 +56,41 @@ const SECTOR_TONES = [
 ] as const;
 
 /**
- * Cor do setor pela POSIÇÃO na lista alfabética, e não por hash do nome.
+ * A cor de cada setor, escolhida e fixa — pelo SLUG, não pelo rótulo.
  *
- * O hash dava a cada setor uma cor estável, que sobrevivia a criar ou remover
- * outro — mas sorteava, e sortear seis cores em seis casas acerta todas em
- * 1,5% das vezes. Na prática dois setores saíam iguais, que é exatamente o
- * defeito que esta paleta existe para resolver.
+ * O slug é a identidade; o rótulo é reescrito (o setor `ti` aparece como
+ * "Retaguarda", o `rh` como "DHO"). Cor presa ao rótulo mudaria numa
+ * renomeação, que é mudança de texto e não de setor.
  *
- * A posição garante distintas até a sexta. O preço é que incluir um setor no
- * meio do alfabeto repinta os seguintes — cor fixa por setor pediria guardá-la
- * no cadastro, e ninguém pediu para escolher cor de setor.
+ * A atribuição segue a natureza de cada um, do tom mais frio ao mais quente:
+ * Logística é rota e movimento, Produção é o chão de fábrica, Administrativo
+ * é o institucional, DHO são as pessoas, Retaguarda é a tecnologia, e
+ * Comercial é o que fala para fora.
  */
-function sectorTone(index: number) {
+const SECTOR_COLOR: Record<string, number> = {
+  logistica: 0, // ciano
+  producao: 1, // azul
+  administrativo: 2, // índigo
+  rh: 3, // violeta — DHO
+  ti: 4, // magenta — Retaguarda
+  comercial: 5, // rosa
+};
+
+/**
+ * Setor fora do mapa (criado depois desta escolha) cai num tom derivado do
+ * próprio slug: estável entre sessões, sem repintar os que já têm cor. Pode
+ * coincidir com um dos seis, e é o preço de não ter escolha registrada.
+ */
+function sectorTone(slug: string) {
+  let index = SECTOR_COLOR[slug];
+  if (index === undefined) {
+    let hash = 0;
+    for (let i = 0; i < slug.length; i += 1) hash = (hash * 31 + slug.charCodeAt(i)) | 0;
+    index = Math.abs(hash) % SECTOR_TONES.length;
+  }
   // `?? [0]` é só para o índice calculado: o módulo nunca sai da faixa, mas
   // `noUncheckedIndexedAccess` não sabe disso.
-  return SECTOR_TONES[index % SECTOR_TONES.length] ?? SECTOR_TONES[0];
+  return SECTOR_TONES[index] ?? SECTOR_TONES[0];
 }
 
 /**
@@ -91,10 +111,14 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
 
   // Os setores que de fato aparecem na lista, em ordem alfabética. Pílula de
   // setor sem ninguém dentro só ocuparia espaço e filtraria para o vazio.
-  const sectors = useMemo(
-    () => [...new Set(roster.map((p) => p.sector))].sort((a, b) => a.localeCompare(b, "pt-BR")),
-    [roster],
-  );
+  // Leva o slug junto: o filtro compara o rótulo, a cor vem do slug.
+  const sectors = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const p of roster) if (!seen.has(p.sector)) seen.set(p.sector, p.sectorSlug);
+    return [...seen]
+      .map(([label, slug]) => ({ label, slug }))
+      .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
+  }, [roster]);
 
   const term = query.trim().toLowerCase();
   const filtered = roster.filter(
@@ -142,8 +166,8 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
           >
             Todos
           </button>
-          {sectors.map((label, index) => {
-            const tone = sectorTone(index);
+          {sectors.map(({ label, slug }) => {
+            const tone = sectorTone(slug);
             const active = sector === label;
             return (
               <button

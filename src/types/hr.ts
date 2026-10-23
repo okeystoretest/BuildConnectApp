@@ -139,6 +139,8 @@ export interface PersonnelPerson {
   username: string;
   role: Role;
   sector: string;
+  /** Slug do setor — chave estável da cor. O rótulo é reescrito; o slug não. */
+  sectorSlug: string;
   avatarPath?: string;
   /** Quantos arquivos já arquivados — a lista mostra sem abrir a pasta. */
   fileCount: number;
