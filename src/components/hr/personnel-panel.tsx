@@ -351,7 +351,7 @@ function PersonFolders({
                 <span aria-hidden="true" className="h-px flex-1 bg-border" />
               </h4>
 
-              <ul className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(10rem,1fr))]">
+              <ul className="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(13rem,1fr))]">
                 {group.folders.map((folder) => {
                   // Pasta vazia = documentação pendente, e pendência tem de
                   // saltar da tela: é para isso que a pasta vazia aparece.
@@ -375,10 +375,11 @@ function PersonFolders({
                             pending ? "bg-danger" : "bg-primary",
                           )}
                         />
-                        {/* Duas linhas fixas: os rótulos do catálogo variam de
-                            "ASO" a uma frase, e altura solta desalinharia a
-                            grade inteira. */}
-                        <span className="line-clamp-2 min-h-[2.2em] text-[13px] font-medium leading-snug text-foreground">
+                        {/* Sem corte: o ladrilho é largo o bastante para o
+                            rótulo inteiro quebrar em linhas. O `min-h` segura
+                            duas — os rótulos vão de "ASO" a uma frase, e
+                            altura solta desalinharia a grade inteira. */}
+                        <span className="min-h-[2.8em] text-[13px] font-medium leading-snug text-foreground">
                           {folder.label}
                         </span>
                         {/* O rótulo também é vermelho: cor de borda sozinha não
