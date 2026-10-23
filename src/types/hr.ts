@@ -122,8 +122,6 @@ export interface PersonnelFolder {
   /** Vai para `PersonnelFile.folder`: chave do catálogo ou nome da pasta extra. */
   key: string;
   label: string;
-  /** Nome curto, para a trilha de progresso. Pasta criada à mão usa o próprio nome. */
-  short: string;
   fixed: boolean;
   files: readonly PersonnelFile[];
 }

@@ -158,7 +158,6 @@ export async function getPersonnelFolders(
       .map((c) => ({
         key: c.key,
         label: c.label,
-        short: c.short,
         fixed: true,
         files: byFolder.get(c.key) ?? [],
       })),
@@ -179,7 +178,6 @@ export async function getPersonnelFolders(
       folders: [...extraNames].sort((a, b) => a.localeCompare(b, "pt-BR")).map((name) => ({
         key: name,
         label: name,
-        short: name,
         fixed: false,
         files: byFolder.get(name) ?? [],
       })),

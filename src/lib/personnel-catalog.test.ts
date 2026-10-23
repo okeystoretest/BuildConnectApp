@@ -43,22 +43,3 @@ test("catalogKeyByName devolve a CHAVE — é por ela que a pasta excluída volt
   assert.equal(catalogKeyByName("Comprovante de Residência"), "comprovante-residencia");
   assert.equal(catalogKeyByName("Advertências"), null);
 });
-
-test("todo nome curto existe e cabe numa parada da trilha", () => {
-  // A parada tem 6,5rem. Acima de ~26 caracteres o nome volta a estourar, e
-  // foi para fugir disso que o campo existe — sem o teste, a próxima
-  // categoria entra com o rótulo inteiro e o "…" volta.
-  for (const group of PERSONNEL_GROUPS) {
-    for (const c of group.categories) {
-      assert.ok(c.short.trim().length > 0, `${c.key}: sem nome curto`);
-      assert.ok(
-        c.short.length <= 26,
-        `${c.key}: nome curto com ${c.short.length} caracteres, não cabe`,
-      );
-      assert.ok(
-        c.short.length <= c.label.length,
-        `${c.key}: o "curto" é maior que o rótulo`,
-      );
-    }
-  }
-});

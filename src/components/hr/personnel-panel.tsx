@@ -505,9 +505,9 @@ function Completeness({ groups }: { groups: readonly PersonnelFolderGroup[] }) {
               {/* O fio é NEUTRO de propósito: ele costura a trilha, não mede
                   avanço. As pastas não têm ordem obrigatória, e um fio que
                   "enche" prometeria uma sequência que não existe. */}
-              {i > 0 && <span aria-hidden="true" className="mt-3 h-px w-7 bg-border" />}
+              {i > 0 && <span aria-hidden="true" className="mt-3 h-px w-6 bg-border" />}
 
-              <div className="flex w-[6.5rem] flex-col items-center gap-2 text-center">
+              <div className="flex w-[8.5rem] flex-col items-center gap-2 text-center">
                 <span
                   className={cn(
                     "flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 transition-colors",
@@ -518,16 +518,17 @@ function Completeness({ groups }: { groups: readonly PersonnelFolderGroup[] }) {
                 >
                   {done && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
                 </span>
-                {/* Sem corte e sem reticências: o nome é curto por escrito no
-                    catálogo, e quebra em quantas linhas precisar. */}
+                {/* O nome da parada é o NOME DA PASTA, igual ao do ladrilho
+                    abaixo — dois nomes para a mesma pasta fariam o leitor
+                    procurar duas vezes. A parada é larga o bastante para ele
+                    quebrar em linhas, sem corte e sem reticências. */}
                 <span
-                  title={folder.label}
                   className={cn(
                     "text-[11px] leading-tight",
                     done ? "text-muted" : "font-medium text-danger",
                   )}
                 >
-                  {folder.short}
+                  {folder.label}
                 </span>
                 {/* O estado não pode existir só na cor e no desenho. */}
                 <span className="sr-only">{done ? "entregue" : "pendente"}</span>

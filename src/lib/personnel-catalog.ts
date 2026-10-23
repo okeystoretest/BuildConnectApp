@@ -15,13 +15,6 @@
 export interface PersonnelCategory {
   key: string;
   label: string;
-  /**
-   * Nome curto, para onde o rótulo inteiro não cabe (a trilha de progresso).
-   * Escrito à mão, e não cortado do longo: "Título de eleitor e certificado de
-   * reservista" cortado vira "Título de eleitor e certific…", que não é um
-   * nome. Aqui vira "Eleitor e reservista", que é.
-   */
-  short: string;
 }
 
 export interface PersonnelGroup {
@@ -36,29 +29,29 @@ export const PERSONNEL_GROUPS: readonly PersonnelGroup[] = [
     key: "admissionais",
     label: "Admissionais e contratuais",
     categories: [
-      { key: "docs-pessoais", label: "Documentos pessoais (RG, CPF, CNH, Passaporte)", short: "Documentos pessoais" },
-      { key: "comprovante-residencia", label: "Comprovante de residência", short: "Comprovante de residência" },
-      { key: "ctps", label: "Carteira de Trabalho (CTPS)", short: "CTPS" },
-      { key: "eleitor-reservista", label: "Título de eleitor e certificado de reservista", short: "Eleitor e reservista" },
-      { key: "escolaridade", label: "Comprovante de escolaridade", short: "Escolaridade" },
-      { key: "certidoes", label: "Certidões (casamento, nascimento de dependentes)", short: "Certidões" },
-      { key: "dados-bancarios", label: "Dados bancários para folha", short: "Dados bancários" },
+      { key: "docs-pessoais", label: "Documentos pessoais (RG, CPF, CNH, Passaporte)" },
+      { key: "comprovante-residencia", label: "Comprovante de residência" },
+      { key: "ctps", label: "Carteira de Trabalho (CTPS)" },
+      { key: "eleitor-reservista", label: "Título de eleitor e certificado de reservista" },
+      { key: "escolaridade", label: "Comprovante de escolaridade" },
+      { key: "certidoes", label: "Certidões (casamento, nascimento de dependentes)" },
+      { key: "dados-bancarios", label: "Dados bancários para folha" },
     ],
   },
   {
     key: "saude",
     label: "Saúde e segurança do trabalho",
     categories: [
-      { key: "aso", label: "ASO (admissional, periódico, demissional, retorno)", short: "ASO" },
-      { key: "atestados-medicos", label: "Atestados médicos e licenças", short: "Atestados e licenças" },
+      { key: "aso", label: "ASO (admissional, periódico, demissional, retorno)" },
+      { key: "atestados-medicos", label: "Atestados médicos e licenças" },
     ],
   },
   {
     key: "desempenho",
     label: "Desempenho e comportamento",
     categories: [
-      { key: "perfil-comportamental", label: "Perfil comportamental (DISC)", short: "Perfil DISC" },
-      { key: "avaliacoes-desempenho", label: "Avaliações de desempenho e feedback", short: "Desempenho" },
+      { key: "perfil-comportamental", label: "Perfil comportamental (DISC)" },
+      { key: "avaliacoes-desempenho", label: "Avaliações de desempenho e feedback" },
     ],
   },
 ] as const;
