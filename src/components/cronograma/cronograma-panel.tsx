@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -15,6 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useRole } from "@/providers/role-provider";
 import { Button } from "@/components/ui/button";
+import { useFullscreen } from "@/components/ui/use-fullscreen";
 import { BRAND, BRAND_ORDER, FUNNEL, FUNNEL_ORDER, MONTH_LABEL } from "@/lib/funnel";
 import {
   collabScopesForSlug,
@@ -97,9 +98,12 @@ export function CronogramaPanel({ slug, sectorLabel, data }: CronogramaPanelProp
   const canFilterUsers = can("cronograma.filterUsers");
 
   const [view, setView] = useState<CalendarView>("month");
-  const [fullscreen, setFullscreen] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  const overlayRef = useRef<HTMLDivElement | null>(null);
+  const {
+    on: fullscreen,
+    setOn: setFullscreen,
+    mounted,
+    ref: overlayRef,
+  } = useFullscreen();
   const [visible, setVisible] = useState<readonly FunnelStage[]>(FUNNEL_ORDER);
   /** Recorte por marca. Vazio = sem filtro; ver `lib/cronograma-filters`. */
   const [brands, setBrands] = useState<readonly ContentBrand[]>([]);
@@ -118,49 +122,6 @@ export function CronogramaPanel({ slug, sectorLabel, data }: CronogramaPanelProp
    * um retrato desatualizado do post.
    */
   const [detailsId, setDetailsId] = useState<string | null>(null);
-
-  // O overlay é renderizado por portal — só depois da hidratação.
-  useEffect(() => setMounted(true), []);
-
-  /**
-   * Tela cheia de verdade.
-   *
-   * Duas camadas: o overlay em portal garante que o calendário ocupe a janela
-   * inteira (imune a qualquer ancestral com `transform`, que quebraria
-   * `position: fixed`), e a Fullscreen API do navegador some também com a
-   * barra de endereço e as abas. Se a API for negada, o overlay sozinho já
-   * entrega a visualização ampliada.
-   */
-  useEffect(() => {
-    if (!fullscreen) return;
-
-    const node = overlayRef.current;
-    if (node && !document.fullscreenElement) {
-      void node.requestFullscreen?.().catch(() => {
-        /* sem permissão ou sem suporte: o overlay basta */
-      });
-    }
-
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setFullscreen(false);
-    }
-    // ESC nativo sai do fullscreen do navegador; o overlay tem de acompanhar.
-    function onFullscreenChange() {
-      if (!document.fullscreenElement) setFullscreen(false);
-    }
-
-    document.addEventListener("keydown", onKey);
-    document.addEventListener("fullscreenchange", onFullscreenChange);
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.removeEventListener("fullscreenchange", onFullscreenChange);
-      document.body.style.overflow = previous;
-      if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => {});
-    };
-  }, [fullscreen]);
 
   const detailsPost = useMemo(
     () => data.posts.find((post) => post.id === detailsId) ?? null,
