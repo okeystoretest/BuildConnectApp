@@ -2,7 +2,7 @@
 
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Page } from "@/lib/paginate";
+import { pageWindow, type Page } from "@/lib/paginate";
 
 export interface PaginationProps {
   page: Page<unknown>;
@@ -16,7 +16,7 @@ export interface PaginationProps {
 export function Pagination({ page, onChange, noun, className }: PaginationProps) {
   if (page.pages <= 1) return null;
 
-  const numbers = Array.from({ length: page.pages }, (_, i) => i + 1);
+  const slots = pageWindow(page.page, page.pages);
 
   return (
     <nav
@@ -37,22 +37,34 @@ export function Pagination({ page, onChange, noun, className }: PaginationProps)
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
-        {numbers.map((n) => (
-          <button
-            key={n}
-            type="button"
-            onClick={() => onChange(n)}
-            aria-current={n === page.page ? "page" : undefined}
-            className={cn(
-              "focus-ring h-8 min-w-8 rounded-lg px-2 text-xs transition-colors",
-              n === page.page
-                ? "bg-primary font-semibold text-primary-foreground"
-                : "text-muted hover:text-foreground",
-            )}
-          >
-            {n}
-          </button>
-        ))}
+        {slots.map((slot, i) =>
+          slot === "gap" ? (
+            // Não é botão: não há uma "página reticências" para onde ir.
+            <span
+              key={`gap-${i}`}
+              aria-hidden="true"
+              className="flex h-8 min-w-8 items-center justify-center text-xs text-muted"
+            >
+              …
+            </span>
+          ) : (
+            <button
+              key={slot}
+              type="button"
+              onClick={() => onChange(slot)}
+              aria-current={slot === page.page ? "page" : undefined}
+              aria-label={`Página ${slot}`}
+              className={cn(
+                "focus-ring h-8 min-w-8 rounded-lg px-2 text-xs tabular-nums transition-colors",
+                slot === page.page
+                  ? "bg-primary font-semibold text-primary-foreground"
+                  : "text-muted hover:text-foreground",
+              )}
+            >
+              {slot}
+            </button>
+          ),
+        )}
         <button
           type="button"
           onClick={() => onChange(page.page + 1)}

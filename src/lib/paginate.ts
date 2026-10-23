@@ -9,6 +9,48 @@ export interface Page<T> {
   total: number;
 }
 
+/** Quantos vizinhos de cada lado da página atual a faixa mostra. */
+const SPAN = 1;
+
+/** Acima disto a faixa recorta; até aqui cabem todos os números. */
+const MAX_SLOTS = 7;
+
+/**
+ * Os números a desenhar na faixa de paginação, com `"gap"` onde a sequência
+ * salta.
+ *
+ * Existe porque desenhar uma página por número não escala: 366 pendências dão
+ * 37 botões, que estouram a linha e empurram a seta de "próxima" para fora da
+ * tela. A faixa fica com as duas pontas sempre visíveis (a 1 e a última são os
+ * destinos mais pedidos) e uma janela em volta da atual.
+ *
+ * A largura é FIXA em `MAX_SLOTS`: perto das pontas a janela é empurrada para
+ * dentro em vez de encolher, senão a faixa mudaria de tamanho a cada clique e
+ * os botões fugiriam do cursor.
+ */
+export function pageWindow(current: number, pages: number): (number | "gap")[] {
+  if (pages <= MAX_SLOTS) {
+    return Array.from({ length: pages }, (_, i) => i + 1);
+  }
+
+  let start = Math.max(2, current - SPAN);
+  let end = Math.min(pages - 1, current + SPAN);
+
+  // Encostou numa ponta: a janela cresce para o outro lado e a largura se
+  // mantém. Perto do início a fileira é [1 … n, gap, última], então sobram
+  // MAX_SLOTS-2 números antes da lacuna; perto do fim é [1, gap, n … última],
+  // e a lacuna come mais uma casa.
+  if (current - SPAN <= 2) end = Math.min(pages - 1, MAX_SLOTS - 2);
+  if (current + SPAN >= pages - 1) start = Math.max(2, pages - (MAX_SLOTS - 3));
+
+  const out: (number | "gap")[] = [1];
+  if (start > 2) out.push("gap");
+  for (let n = start; n <= end; n += 1) out.push(n);
+  if (end < pages - 1) out.push("gap");
+  out.push(pages);
+  return out;
+}
+
 /**
  * Paginação no cliente sobre uma lista já carregada.
  *
