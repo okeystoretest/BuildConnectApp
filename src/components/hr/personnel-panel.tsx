@@ -108,7 +108,32 @@ const STATUS: Record<
 };
 
 /** A ordem em que os contadores aparecem: do mais urgente ao mais tranquilo. */
-const DASHBOARD_ORDER: readonly FolderStatus[] = ["pendente", "vencido", "cuidado", "ok"];
+/**
+ * Os quatro ladrilhos do painel, na ordem em que aparecem.
+ *
+ * "completo" não é um `FolderStatus` — é outra pergunta, e atravessa os
+ * outros: quem entregou tudo e tem documento a vencer está em Cuidado e
+ * completo ao mesmo tempo. Por isso os quatro números NÃO somam o total, e é
+ * de propósito: o primeiro diz quantos estão prontos, os três seguintes dizem
+ * o que falta resolver.
+ *
+ * "Em dia" saiu: era quase sempre o mesmo recorte de "Completos", e dois
+ * números parecidos lado a lado só fazem o olho procurar a diferença.
+ */
+/** O ladrilho de "Completos" — primário, porque é a única boa notícia da fila. */
+const COMPLETE_TILE = {
+  label: "Completos",
+  tile: "border-primary/40 bg-primary/[0.07] hover:border-primary/60",
+  text: "font-medium text-primary",
+  icon: <CheckCircle2 className="h-4 w-4" />,
+};
+
+const DASHBOARD_ORDER: readonly (FolderStatus | "completo")[] = [
+  "completo",
+  "pendente",
+  "vencido",
+  "cuidado",
+];
 
 /**
  * Paleta das pílulas de setor: os tokens `sector-*`, que existem só para dizer
@@ -260,45 +285,12 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
 
   return (
     <div className="space-y-4">
-      {/* Quantos já têm o dossiê fechado: tudo o que se exige entregue e nada
-          vencido. Fica ACIMA e separado dos quatro contadores de propósito —
-          aqueles se excluem e somam o total, este atravessa três deles, e
-          enfileirar os cinco faria os números parecerem somar e não somarem. */}
-      <button
-        type="button"
-        onClick={() => setStatus(status === "completo" ? null : "completo")}
-        aria-pressed={status === "completo"}
-        className={cn(
-          "focus-ring flex w-full items-center gap-3 rounded-xl border p-4 text-left transition-colors",
-          status === "completo"
-            ? "border-foreground bg-surface-2"
-            : "border-primary/40 bg-primary/[0.07] hover:border-primary/60",
-        )}
-      >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-primary">
-          <CheckCircle2 className="h-4 w-4" />
-        </span>
-        <span className="min-w-0">
-          <span className="block text-2xl font-bold leading-none tracking-tight tabular-nums text-primary">
-            {completos}
-            {/* O total junto: "18" sozinho não diz se é bom. */}
-            <span className="ml-1.5 text-sm font-medium text-muted">de {inSector.length}</span>
-          </span>
-          <span className="mt-1 block truncate text-xs text-foreground">
-            {completos === 1 ? "colaborador com a pasta completa" : "colaboradores com a pasta completa"}
-          </span>
-          <span className="block truncate text-[11px] text-muted">
-            Tudo o que se exige entregue, nada vencido. Pastas opcionais não contam.
-          </span>
-        </span>
-      </button>
-
-      {/* O painel do setor: o quadro inteiro em quatro números, e cada número
-          é o filtro da lista abaixo. Clicar no contador aceso desliga o
-          filtro — sem isso a única saída seria recarregar a aba. */}
+      {/* O painel do setor: quatro números, e cada um é o filtro da lista
+          abaixo. Clicar no contador aceso desliga o filtro — sem isso a única
+          saída seria recarregar a aba. */}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {DASHBOARD_ORDER.map((key) => {
-          const tone = STATUS[key];
+          const tone = key === "completo" ? COMPLETE_TILE : STATUS[key];
           const active = status === key;
           return (
             <button
@@ -326,17 +318,17 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
                     tone.text,
                   )}
                 >
-                  {counts[key]}
+                  {key === "completo" ? completos : counts[key]}
                 </span>
                 <span className="mt-1 block truncate text-xs text-foreground">{tone.label}</span>
                 <span className="block truncate text-[11px] text-muted">
-                  {key === "pendente"
-                    ? "Falta documento na pasta"
-                    : key === "vencido"
-                      ? "Documento fora da validade"
-                      : key === "cuidado"
-                        ? `Vence em até ${EXPIRY_WARNING_DAYS} dias`
-                        : "Dossiê completo e válido"}
+                  {key === "completo"
+                    ? "Tudo entregue, nada vencido"
+                    : key === "pendente"
+                      ? "Falta documento na pasta"
+                      : key === "vencido"
+                        ? "Documento fora da validade"
+                        : `Vence em até ${EXPIRY_WARNING_DAYS} dias`}
                 </span>
               </span>
             </button>
