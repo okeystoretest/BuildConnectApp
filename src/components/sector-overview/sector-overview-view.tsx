@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { StatCard } from "@/components/ui/stat-card";
 import { Tabs, TabPanel, type TabItem } from "@/components/ui/tabs";
 import { MembersGrid } from "./members-grid";
+import { Pagination } from "@/components/ui/pagination";
+import { paginate } from "@/lib/paginate";
 import { ScopePills } from "./scope-pills";
 import { VideoQualityGrid } from "./video-quality-grid";
 import type { OverviewScope, SectorOverview } from "@/lib/sector-overview-data";
@@ -39,12 +41,30 @@ export function SectorOverviewView({
 }) {
   const [tab, setTab] = useState("colaboradores");
   const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
 
   const needle = fold(query.trim());
+
   const members = useMemo(
     () => (needle ? data.members.filter((m) => fold(m.name).includes(needle)) : data.members),
     [data.members, needle],
   );
+
+  /*
+   * Nove por página: a grade é de 3 colunas em tela larga, então nove fecham
+   * três linhas cheias — meia linha solta no rodapé é o que faz a página
+   * parecer cortada.
+   */
+  const current = paginate(members, page, 9);
+  const resetKey = `${needle}|${tab}`;
+  const [lastKey, setLastKey] = useState(resetKey);
+  if (lastKey !== resetKey) {
+    // Renderização, e não efeito: ajustar estado derivado durante o render é o
+    // caminho que o React recomenda, e evita o piscar de uma página vazia.
+    setLastKey(resetKey);
+    setPage(1);
+  }
+
   const videos = useMemo(
     () => (needle ? data.videos.filter((v) => fold(v.title).includes(needle)) : data.videos),
     [data.videos, needle],
@@ -104,11 +124,14 @@ export function SectorOverviewView({
 
         <TabPanel tabId={tab} className="mt-5">
           {tab === "colaboradores" && (
-            <MembersGrid
-              members={members}
-              filtered={Boolean(needle)}
-              canSeeDocuments={canSeeDocuments}
-            />
+            <div className="space-y-4">
+              <MembersGrid
+                members={current.items}
+                filtered={Boolean(needle)}
+                canSeeDocuments={canSeeDocuments}
+              />
+              <Pagination page={current} onChange={setPage} noun="colaboradores" />
+            </div>
           )}
           {tab === "qualidade" && <VideoQualityGrid videos={videos} filtered={Boolean(needle)} />}
         </TabPanel>

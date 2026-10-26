@@ -7,6 +7,7 @@ import {
   CalendarClock,
   Check,
   CheckCircle2,
+  CircleDashed,
   Download,
   Eye,
   FileWarning,
@@ -19,6 +20,8 @@ import {
   Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Pagination } from "@/components/ui/pagination";
+import { paginate } from "@/lib/paginate";
 import {
   EXPIRY_WARNING_DAYS,
   dayLabel,
@@ -83,6 +86,16 @@ const STATUS: Record<
     mark: "border-warning bg-warning/15 text-warning",
     plus: "bg-warning/15 text-warning hover:bg-warning/25",
     icon: <CalendarClock className="h-4 w-4" />,
+  },
+  opcional: {
+    label: "Opcional",
+    tile: "border-border bg-surface hover:border-border-strong",
+    text: "text-muted",
+    // Sem marca de entregue e sem alarme: a pasta está vazia, mas a falta não
+    // é falta. O `+` continua convidando a enviar, para quem TEM o documento.
+    mark: "border-dashed border-border-strong bg-surface-2",
+    plus: "bg-surface-2 text-muted hover:bg-surface-3 hover:text-foreground",
+    icon: <CircleDashed className="h-4 w-4" />,
   },
   ok: {
     label: "Em dia",
@@ -170,7 +183,14 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
   const [query, setQuery] = useState("");
   const [view, setView] = useState<ViewMode>("grid");
   const [sector, setSector] = useState<string | null>(null);
-  const [status, setStatus] = useState<FolderStatus | null>(null);
+  /*
+   * O filtro da lista. "completo" não é um `FolderStatus`: é outra PERGUNTA.
+   * Os quatro estados se excluem e somam o total; "completo" atravessa três
+   * deles — quem entregou tudo e tem documento a vencer está em Cuidado e
+   * completo ao mesmo tempo. Por isso ele não entra na grade dos quatro.
+   */
+  const [status, setStatus] = useState<FolderStatus | "completo" | null>(null);
+  const [page, setPage] = useState(1);
   const [open, setOpen] = useState<PersonnelPerson | null>(null);
 
   // Os setores que de fato aparecem na lista, em ordem alfabética. Pílula de
@@ -192,20 +212,45 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
     [roster, sector],
   );
   const counts = useMemo(() => {
-    const out: Record<FolderStatus, number> = { pendente: 0, vencido: 0, cuidado: 0, ok: 0 };
+    // `opcional` entra por exigência do tipo e fica sempre em zero:
+    // `personStatus` nunca o devolve (ver a tabela de severidade). Sem a
+    // chave, um estado novo passaria despercebido aqui.
+    const out: Record<FolderStatus, number> = {
+      pendente: 0,
+      vencido: 0,
+      cuidado: 0,
+      ok: 0,
+      opcional: 0,
+    };
     for (const p of inSector) out[p.status] += 1;
     return out;
   }, [inSector]);
 
+  const completos = useMemo(() => inSector.filter((p) => p.complete).length, [inSector]);
+
   const term = query.trim().toLowerCase();
   const filtered = inSector.filter(
     (p) =>
-      (status === null || p.status === status) &&
+      (status === null || (status === "completo" ? p.complete : p.status === status)) &&
       (!term ||
         p.name.toLowerCase().includes(term) ||
         p.username.toLowerCase().includes(term) ||
         p.sector.toLowerCase().includes(term)),
   );
+
+  // Quinze por página. O quadro inteiro numa rolagem só afoga o painel de
+  // contadores, que é o que a aba existe para mostrar primeiro.
+  const current = paginate(filtered, page, 15);
+
+  // Mudou o filtro, o setor ou a busca: volta para a primeira. Ficar na
+  // página 4 de uma lista que agora tem uma mostraria vazio, e pareceria
+  // "ninguém encontrado".
+  const resetKey = `${status ?? ""}|${sector ?? ""}|${term}`;
+  const [lastKey, setLastKey] = useState(resetKey);
+  if (lastKey !== resetKey) {
+    setLastKey(resetKey);
+    setPage(1);
+  }
 
   if (open) {
     return (
@@ -215,6 +260,39 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
 
   return (
     <div className="space-y-4">
+      {/* Quantos já têm o dossiê fechado: tudo o que se exige entregue e nada
+          vencido. Fica ACIMA e separado dos quatro contadores de propósito —
+          aqueles se excluem e somam o total, este atravessa três deles, e
+          enfileirar os cinco faria os números parecerem somar e não somarem. */}
+      <button
+        type="button"
+        onClick={() => setStatus(status === "completo" ? null : "completo")}
+        aria-pressed={status === "completo"}
+        className={cn(
+          "focus-ring flex w-full items-center gap-3 rounded-xl border p-4 text-left transition-colors",
+          status === "completo"
+            ? "border-foreground bg-surface-2"
+            : "border-primary/40 bg-primary/[0.07] hover:border-primary/60",
+        )}
+      >
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-2 text-primary">
+          <CheckCircle2 className="h-4 w-4" />
+        </span>
+        <span className="min-w-0">
+          <span className="block text-2xl font-bold leading-none tracking-tight tabular-nums text-primary">
+            {completos}
+            {/* O total junto: "18" sozinho não diz se é bom. */}
+            <span className="ml-1.5 text-sm font-medium text-muted">de {inSector.length}</span>
+          </span>
+          <span className="mt-1 block truncate text-xs text-foreground">
+            {completos === 1 ? "colaborador com a pasta completa" : "colaboradores com a pasta completa"}
+          </span>
+          <span className="block truncate text-[11px] text-muted">
+            Tudo o que se exige entregue, nada vencido. Pastas opcionais não contam.
+          </span>
+        </span>
+      </button>
+
       {/* O painel do setor: o quadro inteiro em quatro números, e cada número
           é o filtro da lista abaixo. Clicar no contador aceso desliga o
           filtro — sem isso a única saída seria recarregar a aba. */}
@@ -276,7 +354,8 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
 
       {status !== null && (
         <p className="text-xs text-muted">
-          Mostrando {filtered.length} de {inSector.length} — {STATUS[status].label.toLowerCase()}.{" "}
+          Mostrando {filtered.length} de {inSector.length} —{" "}
+          {status === "completo" ? "pasta completa" : STATUS[status].label.toLowerCase()}.{" "}
           <button
             type="button"
             onClick={() => setStatus(null)}
@@ -342,7 +421,7 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
             view === "grid" ? "grid gap-3 sm:grid-cols-2 xl:grid-cols-3" : "flex flex-col gap-2",
           )}
         >
-          {filtered.map((person) => {
+          {current.items.map((person) => {
             // A cor do card é o pior estado do dossiê — a mesma tabela do
             // ladrilho e do contador. Só quem deve alguma coisa chama atenção.
             const tone = STATUS[person.status];
@@ -393,6 +472,8 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
           })}
         </ul>
       )}
+
+      <Pagination page={current} onChange={setPage} noun="colaboradores" />
     </div>
   );
 }

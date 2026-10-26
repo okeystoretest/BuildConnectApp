@@ -11,12 +11,13 @@ import {
   OTHERS_GROUP_LABEL,
   PERSONNEL_GROUPS,
   catalogKeyByName,
+  catalogCategory,
   categoryLabel,
   normalizeFolderName,
 } from "@/lib/personnel-catalog";
 import { getPersonnelFolders } from "@/lib/personnel-data";
 import { withoutFilePaths } from "@/lib/personnel-visibility";
-import { parseDay } from "@/lib/personnel-expiry";
+import { addDays, parseDay, todayBR } from "@/lib/personnel-expiry";
 import type { PersonnelFolderGroup } from "@/types/hr";
 import type { Role } from "@/types";
 
@@ -164,8 +165,20 @@ export async function uploadPersonnelFile(formData: FormData): Promise<ActionRes
   // Pasta que vence EXIGE a data nova. É isso que "o reajuste ocorre mediante
   // o upload" significa: sem data nova, o documento novo herdaria o
   // vencimento do antigo e a pasta seguiria vermelha com um ASO em dia dentro.
-  const day = expiryField(formData);
-  if (day === false) return { ok: false, error: "Data de vencimento inválida." };
+  const typed = expiryField(formData);
+  if (typed === false) return { ok: false, error: "Data de vencimento inválida." };
+
+  /*
+   * Pasta de validade fixa calcula a data sozinha, a partir do ENVIO.
+   *
+   * O exame médico admissional vale um ano — isso é regra do documento, não
+   * escolha de quem arquiva, e pedi-la ao DHO a cada remessa só criaria
+   * oportunidade de digitar errado. Data informada à mão ainda prevalece: um
+   * exame com validade diferente na folha é mais verdadeiro que a regra geral.
+   */
+  const validityDays = catalogCategory(folder)?.validityDays;
+  const day = typed ?? (validityDays ? addDays(todayBR(), validityDays) : null);
+
   const expires = await prisma.personnelFolderExpiry.findUnique({
     where: { ownerId_folder: { ownerId: owner.id, folder } },
     select: { folder: true },

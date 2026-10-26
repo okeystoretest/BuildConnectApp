@@ -26,8 +26,10 @@ export const EXPIRY_WARNING_DAYS = 30;
  *
  * `pendente` é não ter entregue nada — é o estado que a ferramenta existe para
  * mostrar. `vencido` e `cuidado` só existem para pasta com vencimento gravado.
+ * `opcional` é pasta vazia que NÃO é falta: certidão de filho menor para quem
+ * não tem filho menor não é pendência de ninguém.
  */
-export type FolderStatus = "pendente" | "vencido" | "cuidado" | "ok";
+export type FolderStatus = "pendente" | "vencido" | "cuidado" | "ok" | "opcional";
 
 /** Dia de calendário de hoje em Brasília, no formato das comparações. */
 export function todayBR(now: Date = new Date()): string {
@@ -42,6 +44,16 @@ export function todayBR(now: Date = new Date()): string {
  */
 export function isoDay(date: Date): string {
   return date.toISOString().slice(0, 10);
+}
+
+/**
+ * O dia que cai `days` dias depois de `day`.
+ *
+ * Em UTC, como todo o resto deste módulo: somar 365 dias a um `Date` local
+ * atravessaria o horário de verão e devolveria o dia anterior em alguns anos.
+ */
+export function addDays(day: string, days: number): string {
+  return isoDay(new Date(Date.parse(`${day}T00:00:00Z`) + days * 86_400_000));
 }
 
 /** Dias de calendário entre dois dias; negativo quando `day` já passou. */
@@ -59,8 +71,10 @@ export function folderStatus(
   hasFiles: boolean,
   expiresOn: string | null,
   today: string,
+  optional = false,
 ): FolderStatus {
-  if (!hasFiles) return "pendente";
+  // Vazia e opcional não é falta; vazia e obrigatória é o ponto da ferramenta.
+  if (!hasFiles) return optional ? "opcional" : "pendente";
   if (!expiresOn) return "ok";
   const days = daysUntil(expiresOn, today);
   if (days < 0) return "vencido";
@@ -72,6 +86,11 @@ const SEVERITY: Record<FolderStatus, number> = {
   vencido: 2,
   cuidado: 1,
   ok: 0,
+  // Zero, igual a `ok`: pasta opcional vazia não piora o estado de ninguém. E
+  // como `personStatus` começa em `ok` e só troca quando a severidade é MAIOR,
+  // `opcional` nunca vira o estado de uma pessoa — o que manteria os quatro
+  // contadores do painel sem fechar com o total.
+  opcional: 0,
 };
 
 /**
@@ -126,6 +145,7 @@ export function folderStatusLabel(
   expiresOn: string | null,
   fileCount: number,
 ): string {
+  if (status === "opcional") return "Opcional";
   if (status === "pendente") return "Pendente";
   if (status === "vencido" && expiresOn) return `Vencido em ${dayLabel(expiresOn)}`;
   if (status === "cuidado" && expiresOn) return `Vence em ${dayLabel(expiresOn)}`;

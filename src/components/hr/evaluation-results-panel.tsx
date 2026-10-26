@@ -21,7 +21,7 @@ import { FormsPanel } from "@/components/hr/forms-panel";
 import { RoundConsolidatedView } from "@/components/hr/round-consolidated-view";
 import { fetchEvaluationDetail } from "@/lib/evaluation-results-actions";
 import { fetchRoundConsolidated } from "@/lib/evaluation-rounds-actions";
-import { paginate } from "@/lib/paginate";
+import { paginate, type Page } from "@/lib/paginate";
 import { cn } from "@/lib/utils";
 import { isPassing } from "@/lib/video-comprehension";
 import { useRole } from "@/providers/role-provider";
@@ -80,6 +80,20 @@ export function EvaluationResultsPanel({
   const { can } = useRole();
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [subjectId, setSubjectId] = useState<string | null>(null);
+  /*
+   * Uma página para as DUAS listagens de colaborador (compreensão de vídeo e
+   * desempenho). São telas que não aparecem juntas — abrir uma fecha a outra —
+   * e dois estados separados só dariam a chance de ficarem dessincronizados.
+   */
+  const [subjectPage, setSubjectPage] = useState(1);
+
+  // Trocar de listagem recomeça na primeira página: sair da página 3 de uma
+  // lista longa para uma de cinco pessoas mostraria a última, não a primeira.
+  const [lastOpen, setLastOpen] = useState(openKey);
+  if (lastOpen !== openKey) {
+    setLastOpen(openKey);
+    setSubjectPage(1);
+  }
 
   const selectedType = catalog.find((t) => t.slug === openKey) ?? null;
   const selectedSubject = selectedType?.subjects.find((s) => s.subjectId === subjectId) ?? null;
@@ -187,15 +201,17 @@ export function EvaluationResultsPanel({
           <p className="text-sm text-muted">
             Selecione o colaborador cujas respostas você quer consultar.
           </p>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {comprehension.map((s) => (
+          <SubjectList
+            page={paginate(comprehension, subjectPage, SUBJECT_PAGE_SIZE)}
+            onPage={setSubjectPage}
+            render={(s) => (
               <ComprehensionSubjectCard
                 key={s.subjectId}
                 subject={s}
                 onOpen={() => setSubjectId(s.subjectId)}
               />
-            ))}
-          </div>
+            )}
+          />
         </div>
       );
     }
@@ -246,15 +262,17 @@ export function EvaluationResultsPanel({
             <p className="text-sm text-muted">
               Selecione o colaborador cujos resultados você quer consultar.
             </p>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {selectedType.subjects.map((subject) => (
+            <SubjectList
+              page={paginate(selectedType.subjects, subjectPage, SUBJECT_PAGE_SIZE)}
+              onPage={setSubjectPage}
+              render={(subject) => (
                 <SubjectCard
                   key={subject.subjectId}
                   subject={subject}
                   onOpen={() => setSubjectId(subject.subjectId)}
                 />
-              ))}
-            </div>
+              )}
+            />
           </>
         )}
       </div>
@@ -488,6 +506,33 @@ function ComprehensionSubjectCard({
 }
 
 /** Quantos registros cabem numa página do nível 3. */
+/** Quantos colaboradores por página nas duas listagens de resultado. */
+const SUBJECT_PAGE_SIZE = 15;
+
+/**
+ * A grade de colaboradores com o rodapé de paginação.
+ *
+ * Um componente só para as duas listagens (compreensão de vídeo e desempenho)
+ * porque elas são o mesmo card na mesma grade: duplicar a grade e o rodapé
+ * faria uma mudar de largura sem a outra na primeira vez que alguém mexesse.
+ */
+function SubjectList<T>({
+  page,
+  onPage,
+  render,
+}: {
+  page: Page<T>;
+  onPage: (page: number) => void;
+  render: (item: T) => React.ReactNode;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{page.items.map(render)}</div>
+      <Pagination page={page} onChange={onPage} noun="colaboradores" />
+    </div>
+  );
+}
+
 const COMPREHENSION_PAGE_SIZE = 10;
 
 /**

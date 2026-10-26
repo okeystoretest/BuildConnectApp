@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Tabs, TabPanel, type TabItem } from "@/components/ui/tabs";
+import { Pagination } from "@/components/ui/pagination";
+import { paginate } from "@/lib/paginate";
 import { AnsweredEvaluationsPanel } from "@/components/me/answered-evaluations-panel";
 import { EvaluationFormModal } from "@/components/hr/evaluation-form-modal";
 import { FormResponseModal } from "@/components/forms/form-response-modal";
@@ -52,6 +54,7 @@ interface ActiveTask {
  */
 export function MyEvaluationsPanel({ tasks, forms, answered }: MyEvaluationsPanelProps) {
   const [tab, setTab] = useState("pendentes");
+  const [page, setPage] = useState(1);
   const [active, setActive] = useState<ActiveTask | null>(null);
   const [activeForm, setActiveForm] = useState<FormDraft | null>(null);
   const [activeComprehension, setActiveComprehension] = useState<VideoComprehensionTask | null>(
@@ -95,6 +98,10 @@ export function MyEvaluationsPanel({ tasks, forms, answered }: MyEvaluationsPane
    * e esconderia o histórico de quem está com a fila em dia — justamente quem
    * mais tem o que reler.
    */
+  // Dez por página, o mesmo da aba "Respondidas": as duas listam registro do
+  // mesmo tamanho, e números diferentes fariam a página saltar ao trocar de aba.
+  const pendingPage = paginate(tasks, page, 10);
+
   const pending =
     tasks.length === 0 ? (
       <EmptyState
@@ -108,7 +115,7 @@ export function MyEvaluationsPanel({ tasks, forms, answered }: MyEvaluationsPane
         Pendências para você. O DHO vê o resultado com o nome de cada avaliador.
       </p>
 
-      {tasks.map((t) => {
+      {pendingPage.items.map((t) => {
         const isForm = t.kind === "FORMULARIO";
         const isComprehension = t.kind === "COMPREENSAO_VIDEO";
         return (
@@ -182,6 +189,7 @@ export function MyEvaluationsPanel({ tasks, forms, answered }: MyEvaluationsPane
         );
       })}
 
+      <Pagination page={pendingPage} onChange={setPage} noun="pendências" className="pt-1" />
     </div>
   );
 

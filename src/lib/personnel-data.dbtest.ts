@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test, { after, before } from "node:test";
 import { prisma } from "@/lib/db/prisma";
-import { PERSONNEL_CATEGORY_KEYS } from "./personnel-catalog";
+import { PERSONNEL_CATEGORY_KEYS, countsForProgress } from "./personnel-catalog";
+import { addDays, todayBR } from "./personnel-expiry";
 import { getPersonnelFolders, getPersonnelRoster } from "./personnel-data";
 
 /**
@@ -41,11 +42,11 @@ before(async () => {
     data: [
       {
         ownerId,
-        folder: "aso",
-        name: `ASO admissional ${MARK}.pdf`,
+        folder: "exame-medico-admissional",
+        name: `Exame admissional ${MARK}.pdf`,
         kind: "PDF",
         sizeBytes: 1024,
-        filePath: "/uploads/pessoal/2026/10/aso.pdf",
+        filePath: "/uploads/pessoal/2026/10/exame.pdf",
       },
       {
         ownerId,
@@ -111,7 +112,7 @@ test("'completo' exige TODA pasta com arquivo — a extra vazia também conta", 
   assert.equal((await find())?.complete, false, "sem arquivo nenhum não é completo");
 
   await onePerFolder();
-  assert.equal((await find())?.complete, true, "as 11 obrigatórias cobertas = completo");
+  assert.equal((await find())?.complete, true, "as obrigatórias cobertas = completo");
 
   // Criar uma pasta extra reabre a pendência: ela nasce vazia, e é vermelha
   // na tela de pastas — o card não pode dizer que está tudo entregue.
@@ -137,15 +138,108 @@ test("'completo' exige TODA pasta com arquivo — a extra vazia também conta", 
   await prisma.user.delete({ where: { id: solo.id } });
 });
 
+test("pasta opcional vazia não derruba o 'completo'", async () => {
+  const solo = await prisma.user.create({
+    data: {
+      username: `dp-opc-${stamp()}${MARK}`,
+      fullName: `Opcional ${MARK}`,
+      passwordHash: "x",
+      role: "COLABORADOR",
+    },
+    select: { id: true },
+  });
+  const find = async () => (await getPersonnelRoster()).find((p) => p.id === solo.id);
+
+  // Só as pastas que CONTAM, deixando as opcionais vazias de propósito.
+  await prisma.personnelFile.createMany({
+    data: PERSONNEL_CATEGORY_KEYS.filter(countsForProgress).map((folder) => ({
+      ownerId: solo.id,
+      folder,
+      name: `${folder} ${MARK}.pdf`,
+      kind: "PDF" as const,
+      sizeBytes: 10,
+      filePath: `/uploads/pessoal/2026/10/${folder}.pdf`,
+    })),
+  });
+
+  const pessoa = await find();
+  assert.equal(pessoa?.complete, true, "certidão de filho menor vazia não é falta");
+  assert.equal(pessoa?.pendingFolders, 0, "opcional vazia não entra em Pendentes");
+  assert.equal(pessoa?.status, "ok");
+
+  await prisma.personnelFile.deleteMany({ where: { ownerId: solo.id } });
+  await prisma.user.delete({ where: { id: solo.id } });
+});
+
+test("documento vencido tira do 'completo'; a vencer, não", async () => {
+  const solo = await prisma.user.create({
+    data: {
+      username: `dp-venc-${stamp()}${MARK}`,
+      fullName: `Vencimento ${MARK}`,
+      passwordHash: "x",
+      role: "COLABORADOR",
+    },
+    select: { id: true },
+  });
+  const find = async () => (await getPersonnelRoster()).find((p) => p.id === solo.id);
+  const emDias = (dias: number) =>
+    new Date(`${addDays(todayBR(), dias)}T00:00:00Z`);
+
+  await prisma.personnelFile.createMany({
+    data: PERSONNEL_CATEGORY_KEYS.filter(countsForProgress).map((folder) => ({
+      ownerId: solo.id,
+      folder,
+      name: `${folder} ${MARK}.pdf`,
+      kind: "PDF" as const,
+      sizeBytes: 10,
+      filePath: `/uploads/pessoal/2026/10/${folder}.pdf`,
+    })),
+  });
+  assert.equal((await find())?.complete, true);
+
+  // A vencer em 10 dias: o documento AINDA vale, então segue completo — e já
+  // acende o aviso. São duas informações diferentes, e é por isso que
+  // "Completo" não é o mesmo que "Em dia".
+  const vencer = async (dias: number) =>
+    prisma.personnelFolderExpiry.upsert({
+      where: { ownerId_folder: { ownerId: solo.id, folder: "exame-medico-admissional" } },
+      update: { expiresAt: emDias(dias) },
+      create: { ownerId: solo.id, folder: "exame-medico-admissional", expiresAt: emDias(dias) },
+    });
+
+  await vencer(10);
+  let pessoa = await find();
+  assert.equal(pessoa?.complete, true, "documento a vencer ainda é documento válido");
+  assert.equal(pessoa?.status, "cuidado");
+
+  // Vencido ontem: sai de completo.
+  await vencer(-1);
+  pessoa = await find();
+  assert.equal(pessoa?.complete, false, "vencido tira do completo");
+  assert.equal(pessoa?.status, "vencido");
+
+  // Documento novo com validade futura: volta sozinho.
+  await vencer(400);
+  pessoa = await find();
+  assert.equal(pessoa?.complete, true, "resolvida a pendência, volta a completo");
+  assert.equal(pessoa?.status, "ok");
+
+  await prisma.personnelFolderExpiry.deleteMany({ where: { ownerId: solo.id } });
+  await prisma.personnelFile.deleteMany({ where: { ownerId: solo.id } });
+  await prisma.user.delete({ where: { id: solo.id } });
+});
+
 test("as pastas obrigatórias vêm todas, vazias inclusive", async () => {
   const groups = await getPersonnelFolders(ownerId);
   assert.ok(groups);
 
   const fixed = groups.flatMap((g) => g.folders).filter((f) => f.fixed);
-  assert.equal(fixed.length, 11);
+  // Contra a constante, e não contra um número escrito aqui: trocar o
+  // catálogo não deve derrubar um teste que fala sobre OUTRA coisa.
+  assert.equal(fixed.length, PERSONNEL_CATEGORY_KEYS.length);
 
-  const aso = fixed.find((f) => f.key === "aso");
-  assert.equal(aso?.files.length, 1);
+  const exame = fixed.find((f) => f.key === "exame-medico-admissional");
+  assert.equal(exame?.files.length, 1);
 
   // A pasta sem nada entregue continua na tela — é o que a torna útil.
   const ctps = fixed.find((f) => f.key === "ctps");
@@ -260,26 +354,26 @@ test("arquivo sobrevivente mantém visível a pasta modelo marcada como excluíd
 
 test("bloco renomeado troca o rótulo sem mexer na chave nem nas pastas", async () => {
   const antes = await getPersonnelFolders(ownerId);
-  const bloco = antes?.find((g) => g.key === "saude");
-  assert.equal(bloco?.label, "Saúde e segurança do trabalho", "nome de fábrica");
+  const bloco = antes?.find((g) => g.key === "documentos");
+  assert.equal(bloco?.label, "Documentação do colaborador", "nome de fábrica");
   const pastasAntes = bloco?.folders.map((f) => f.key);
 
   await prisma.personnelGroupName.upsert({
-    where: { key: "saude" },
-    update: { label: "Medicina do trabalho" },
-    create: { key: "saude", label: "Medicina do trabalho" },
+    where: { key: "documentos" },
+    update: { label: "Papelada da admissão" },
+    create: { key: "documentos", label: "Papelada da admissão" },
   });
 
-  const depois = (await getPersonnelFolders(ownerId))?.find((g) => g.key === "saude");
-  assert.equal(depois?.label, "Medicina do trabalho");
+  const depois = (await getPersonnelFolders(ownerId))?.find((g) => g.key === "documentos");
+  assert.equal(depois?.label, "Papelada da admissão");
   // A chave amarra as pastas ao bloco: renomear não pode soltá-las.
   assert.deepEqual(depois?.folders.map((f) => f.key), pastasAntes);
 
   // Apagar a linha devolve o nome de fábrica — ele mora na constante, e não
   // numa segunda cópia gravada no banco.
-  await prisma.personnelGroupName.deleteMany({ where: { key: "saude" } });
-  const revertido = (await getPersonnelFolders(ownerId))?.find((g) => g.key === "saude");
-  assert.equal(revertido?.label, "Saúde e segurança do trabalho");
+  await prisma.personnelGroupName.deleteMany({ where: { key: "documentos" } });
+  const revertido = (await getPersonnelFolders(ownerId))?.find((g) => g.key === "documentos");
+  assert.equal(revertido?.label, "Documentação do colaborador");
 });
 
 test("colaborador inativo sai da lista e das pastas, sem perder arquivo", async () => {
@@ -323,11 +417,13 @@ test("o vencimento pinta a pasta e o card, e o dia é lido sem escorregar", asyn
   });
 
   const card = async () => (await getPersonnelRoster()).find((p) => p.id === solo.id);
-  const aso = async () =>
-    (await getPersonnelFolders(solo.id))?.flatMap((g) => g.folders).find((f) => f.key === "aso");
+  const exame = async () =>
+    (await getPersonnelFolders(solo.id))
+      ?.flatMap((g) => g.folders)
+      .find((f) => f.key === "exame-medico-admissional");
 
   assert.equal((await card())?.status, "ok", "dossiê completo e sem vencimento = ok");
-  assert.equal((await aso())?.expiresOn, null);
+  assert.equal((await exame())?.expiresOn, null);
 
   const inDays = (n: number) => {
     const d = new Date(Date.now() + n * 86_400_000);
@@ -337,25 +433,31 @@ test("o vencimento pinta a pasta e o card, e o dia é lido sem escorregar", asyn
   // Dentro da janela de aviso: amarelo.
   const soon = inDays(10);
   await prisma.personnelFolderExpiry.create({
-    data: { ownerId: solo.id, folder: "aso", expiresAt: new Date(`${soon}T00:00:00Z`) },
+    data: {
+      ownerId: solo.id,
+      folder: "exame-medico-admissional",
+      expiresAt: new Date(`${soon}T00:00:00Z`),
+    },
   });
-  assert.equal((await aso())?.expiresOn, soon, "o dia gravado é o dia lido de volta");
-  assert.equal((await aso())?.status, "cuidado");
+  assert.equal((await exame())?.expiresOn, soon, "o dia gravado é o dia lido de volta");
+  assert.equal((await exame())?.status, "cuidado");
   assert.equal((await card())?.status, "cuidado");
   assert.equal((await card())?.warningFolders, 1);
 
   // Já passou: vermelho.
   await prisma.personnelFolderExpiry.update({
-    where: { ownerId_folder: { ownerId: solo.id, folder: "aso" } },
+    where: {
+      ownerId_folder: { ownerId: solo.id, folder: "exame-medico-admissional" },
+    },
     data: { expiresAt: new Date(`${inDays(-1)}T00:00:00Z`) },
   });
-  assert.equal((await aso())?.status, "vencido");
+  assert.equal((await exame())?.status, "vencido");
   assert.equal((await card())?.status, "vencido");
   assert.equal((await card())?.expiredFolders, 1);
 
   // Pasta vazia é pendente mesmo vencendo — e pendente ganha de vencido no card.
   await prisma.personnelFile.deleteMany({ where: { ownerId: solo.id, folder: "ctps" } });
-  assert.equal((await aso())?.status, "vencido", "a CTPS vazia não muda o ASO");
+  assert.equal((await exame())?.status, "vencido", "a CTPS vazia não muda o exame");
   assert.equal((await card())?.status, "pendente");
 
   await prisma.personnelFile.deleteMany({ where: { ownerId: solo.id } });

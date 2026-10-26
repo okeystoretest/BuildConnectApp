@@ -6,6 +6,7 @@ import {
   PERSONNEL_CATEGORY_KEYS,
   PERSONNEL_GROUPS,
   categoryLabel,
+  countsForProgress,
 } from "@/lib/personnel-catalog";
 import {
   folderStatus,
@@ -95,7 +96,7 @@ export async function getPersonnelRoster(): Promise<PersonnelPerson[]> {
     // pasta ser removida do catálogo, e o painel não pode calar isso.
     const expiries = expiryByOwner.get(u.id) ?? new Map<string, string>();
     const statuses = [...new Set([...required, ...has])].map((folder) =>
-      folderStatus(has.has(folder), expiries.get(folder) ?? null, today),
+      folderStatus(has.has(folder), expiries.get(folder) ?? null, today, !countsForProgress(folder)),
     );
 
     return {
@@ -107,8 +108,22 @@ export async function getPersonnelRoster(): Promise<PersonnelPerson[]> {
       sectorSlug: u.sector?.slug ?? "",
       avatarPath: u.avatarPath ?? undefined,
       fileCount: u._count.personnelFiles,
-      complete: [...required].every((folder) => has.has(folder)),
+      /*
+       * "Completo" = entregou tudo o que se exige dele e nada está vencido.
+       *
+       * Pasta opcional fica de fora: cobrar certidão de filho menor de quem
+       * não tem filho deixaria o número permanentemente abaixo do real.
+       *
+       * Documento A VENCER ainda conta como completo — ele é válido hoje, e o
+       * aviso de 30 dias já aparece no contador "Cuidado". Sai de completo
+       * quando VENCE, e volta sozinho quando o documento novo entra.
+       */
+      complete:
+        [...required].every((folder) => !countsForProgress(folder) || has.has(folder)) &&
+        !statuses.includes("vencido"),
       status: personStatus(statuses),
+      // "pendente" já exclui as opcionais: `folderStatus` as devolve como
+      // "opcional" quando vazias.
       pendingFolders: statuses.filter((s) => s === "pendente").length,
       expiredFolders: statuses.filter((s) => s === "vencido").length,
       warningFolders: statuses.filter((s) => s === "cuidado").length,
@@ -202,7 +217,7 @@ export async function getPersonnelFolders(
       fixed,
       files,
       expiresOn,
-      status: folderStatus(files.length > 0, expiresOn, today),
+      status: folderStatus(files.length > 0, expiresOn, today, !countsForProgress(key)),
     };
   };
 

@@ -2,7 +2,7 @@
  * Catálogo de pastas do Departamento Pessoal.
  *
  * As pastas obrigatórias são CONSTANTE, não linha de banco: toda pessoa ativa
- * tem exatamente as mesmas, e gravar as 11 por colaborador seria replicar
+ * tem exatamente as mesmas, e gravar as doze por colaborador seria replicar
  * esta lista em cada cadastro — além de deixar duas verdades sobre quais
  * pastas existem. As pastas extra ("Adicionar mais pastas") são as únicas
  * persistidas, em `User.personnelFolders`.
@@ -10,11 +10,33 @@
  * A `key` é o que vai para `PersonnelFile.folder` e NUNCA muda: mudar a chave
  * órfãna os arquivos já arquivados. O `label` é só rótulo e pode ser reescrito
  * à vontade.
+ *
+ * Esta lista substituiu a primeira, de onze pastas temáticas, em 26/10/2026.
+ * Três chaves foram mantidas de propósito — `ctps`, `comprovante-residencia` e
+ * `dados-bancarios` designam o mesmo documento de antes, então os arquivos já
+ * enviados continuam na pasta certa. As chaves que sumiram (`docs-pessoais`,
+ * `eleitor-reservista`, `escolaridade`, `aso`, `atestados-medicos`,
+ * `perfil-comportamental`, `avaliacoes-desempenho`) não são apagadas em lugar
+ * nenhum: arquivo cuja pasta saiu do catálogo aparece em "Outras pastas" (ver
+ * `getPersonnelFolders`), porque documento de colaborador não some de tela.
  */
 
 export interface PersonnelCategory {
   key: string;
   label: string;
+  /**
+   * Fora do cálculo de progresso: não conta para "Completo" nem entra em
+   * "Pendentes". Nem todo colaborador tem filho menor de 14 anos, e cobrar
+   * dele uma certidão que não existe deixaria o painel permanentemente
+   * vermelho para uma falta que não é falta.
+   */
+  optional?: boolean;
+  /**
+   * Validade em dias a partir do ENVIO, quando o documento vence por natureza.
+   * O exame médico admissional vale um ano; a data é calculada no upload, em
+   * vez de pedida ao DHO, porque ela não é escolha — é a regra do documento.
+   */
+  validityDays?: number;
 }
 
 export interface PersonnelGroup {
@@ -26,32 +48,29 @@ export interface PersonnelGroup {
 
 export const PERSONNEL_GROUPS: readonly PersonnelGroup[] = [
   {
-    key: "admissionais",
-    label: "Admissionais e contratuais",
+    key: "documentos",
+    label: "Documentação do colaborador",
     categories: [
-      { key: "docs-pessoais", label: "Documentos pessoais (RG, CPF, CNH, Passaporte)" },
-      { key: "comprovante-residencia", label: "Comprovante de residência" },
-      { key: "ctps", label: "Carteira de Trabalho (CTPS)" },
-      { key: "eleitor-reservista", label: "Título de eleitor e certificado de reservista" },
-      { key: "escolaridade", label: "Comprovante de escolaridade" },
-      { key: "certidoes", label: "Certidões (casamento, nascimento de dependentes)" },
-      { key: "dados-bancarios", label: "Dados bancários para folha" },
-    ],
-  },
-  {
-    key: "saude",
-    label: "Saúde e segurança do trabalho",
-    categories: [
-      { key: "aso", label: "ASO (admissional, periódico, demissional, retorno)" },
-      { key: "atestados-medicos", label: "Atestados médicos e licenças" },
-    ],
-  },
-  {
-    key: "desempenho",
-    label: "Desempenho e comportamento",
-    categories: [
-      { key: "perfil-comportamental", label: "Perfil comportamental (DISC)" },
-      { key: "avaliacoes-desempenho", label: "Avaliações de desempenho e feedback" },
+      { key: "foto-3x4", label: "Fotos 3x4" },
+      { key: "ctps", label: "Carteira de Trabalho" },
+      {
+        key: "exame-medico-admissional",
+        label: "Exame Médico Admissional",
+        validityDays: 365,
+      },
+      { key: "rg", label: "RG" },
+      { key: "cpf", label: "CPF" },
+      { key: "comprovante-residencia", label: "Comprovante de Residência" },
+      { key: "titulo-eleitor", label: "Título de Eleitor" },
+      { key: "nis-pis", label: "Cartão NIS/PIS" },
+      { key: "certidao-nascimento-casamento", label: "Certidão de Nascimento ou Casamento" },
+      {
+        key: "certidao-filho-menor",
+        label: "Certidão de Nascimento do Filho Menor de 14 anos",
+        optional: true,
+      },
+      { key: "certidao-servico-militar", label: "Certidão de Serviço Militar" },
+      { key: "dados-bancarios", label: "Dados Bancários", optional: true },
     ],
   },
 ] as const;
@@ -63,10 +82,29 @@ export const PERSONNEL_GROUPS: readonly PersonnelGroup[] = [
 export const OTHERS_GROUP_KEY = "outras";
 export const OTHERS_GROUP_LABEL = "Outras pastas";
 
-/** As chaves obrigatórias, achatadas — toda pasta que existe para todo mundo. */
+/** As chaves do catálogo, achatadas — toda pasta que existe para todo mundo. */
 export const PERSONNEL_CATEGORY_KEYS: readonly string[] = PERSONNEL_GROUPS.flatMap((g) =>
   g.categories.map((c) => c.key),
 );
+
+/** A categoria do catálogo, ou `null` quando a chave é de pasta extra. */
+export function catalogCategory(key: string): PersonnelCategory | null {
+  for (const group of PERSONNEL_GROUPS) {
+    const found = group.categories.find((c) => c.key === key);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * A pasta conta para o progresso?
+ *
+ * Pasta extra conta: foi o DHO que a criou para esta pessoa, então ele a
+ * quer preenchida. Só as do catálogo marcadas `optional` ficam de fora.
+ */
+export function countsForProgress(key: string): boolean {
+  return catalogCategory(key)?.optional !== true;
+}
 
 /** Rótulo de uma pasta fixa; `null` quando a chave não é do catálogo. */
 export function categoryLabel(key: string): string | null {
