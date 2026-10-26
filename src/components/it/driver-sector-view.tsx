@@ -92,6 +92,7 @@ export function DriverSectorView({ content, evaluations, welcome }: DriverSector
               onViewChange={setView}
             />
             <DocumentGrid
+              slug="motoristas"
               documents={content.documents.filter((doc) =>
                 doc.name.toLowerCase().includes(query.trim().toLowerCase()),
               )}

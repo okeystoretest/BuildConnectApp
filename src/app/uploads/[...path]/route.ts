@@ -32,6 +32,13 @@ import type { Role } from "@/types";
  * baixando o acervo inteiro até o token vencer — oito horas depois.
  */
 
+/**
+ * Categorias que só a gestão do DHO abre, e que nunca ficam em cache.
+ * Conjunto único: o portão e o cabeçalho de cache têm de concordar, e duas
+ * listas separadas divergem na primeira categoria nova.
+ */
+const SENSITIVE_CATEGORIES = new Set(["denuncias", "pessoal"]);
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -90,13 +97,25 @@ export async function GET(
   const user = await getCurrentUser();
   if (!user) return new Response("Não autenticado", { status: 401 });
 
-  // Evidências da Central de Denúncias seguem a mesma régua da tela que as
-  // exibe: só quem administra o DHO abre o anexo. Papel e lotação saem do
-  // BANCO, e não do cookie: admin rebaixado, ou gestor movido para fora do
-  // DHO, perde o anexo na requisição seguinte.
   const { path: segments } = await params;
   const category = segments?.[0];
-  if (category === "denuncias" && !(await canAdministerDho(user.id, user.role as Role))) {
+  /*
+   * Evidências da Central de Denúncias e documentação pessoal do colaborador
+   * (RG, CPF, CTPS, ASO, dado bancário): só quem administra o DHO abre o
+   * ARQUIVO. Papel e lotação saem do BANCO, e não do cookie — admin rebaixado,
+   * ou gestor movido para fora do DHO, perde o anexo na requisição seguinte.
+   *
+   * O Gestor com acesso à documentação da equipe NÃO passa por aqui: ele vê a
+   * página renderizada com marca d'água, em /api/documentos-pessoais. O
+   * original não lhe é entregue em nenhuma hipótese, e é esta linha que
+   * sustenta isso — não a ausência de um botão na tela.
+   *
+   * Sem esta checagem bastava ESTAR LOGADO para abrir qualquer documento de
+   * qualquer colaborador com o link na mão: a tela do Departamento Pessoal é
+   * restrita, mas o arquivo nunca foi, e link vaza por histórico, Referer e
+   * encaminhamento. Nome aleatório não é controle de acesso.
+   */
+  if (SENSITIVE_CATEGORIES.has(category ?? "") && !(await canAdministerDho(user.id, user.role as Role))) {
     return new Response("Sem permissão", { status: 403 });
   }
 
@@ -130,7 +149,15 @@ export async function GET(
     "Content-Type": type,
     "X-Content-Type-Options": "nosniff",
     "Content-Disposition": inline ? "inline" : "attachment",
-    "Cache-Control": "private, max-age=31536000, immutable",
+    // Nome aleatório e nunca reaproveitado: cache longo para o acervo comum.
+    //
+    // Documento pessoal e evidência de denúncia NÃO: um ano de cache deixa o
+    // arquivo no disco do navegador de quem o abriu, e de lá ele volta a abrir
+    // sem passar por portão nenhum — inclusive depois de a pessoa perder o
+    // acesso, ser movida de setor ou sair da empresa.
+    "Cache-Control": SENSITIVE_CATEGORIES.has(category ?? "")
+      ? "no-store"
+      : "private, max-age=31536000, immutable",
     "Accept-Ranges": "bytes",
   };
 

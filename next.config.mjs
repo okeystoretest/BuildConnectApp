@@ -54,7 +54,10 @@ const nextConfig = {
   // WebSocket vivo — coisas que o bundler do Next ou quebra na análise
   // estática, ou duplica a cada recompilação, deixando duas conexões
   // disputando a mesma sessão. Externo, é o Node que o carrega, uma vez.
-  serverExternalPackages: ["baileys"],
+  // `pdfjs-dist` e `@napi-rs/canvas` entram junto do baileys: o primeiro é ESM
+  // carregado por import dinâmico, o segundo é binário nativo (.node). Nenhum
+  // dos dois sobrevive à análise estática do bundler.
+  serverExternalPackages: ["baileys", "pdfjs-dist", "@napi-rs/canvas"],
   // Sem "X-Powered-By: Next.js" na resposta. Medido em produção, ele estava
   // sendo enviado: anuncia o framework para qualquer requisição e entrega de
   // graça a lista de CVEs que vale a pena tentar primeiro.

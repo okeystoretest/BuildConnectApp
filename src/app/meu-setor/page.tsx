@@ -65,13 +65,23 @@ export default async function MySectorPage({
 
   const data = await getSectorOverview({ sectorId });
 
+  /*
+   * O bloco de Documentos é do VISITANTE: Admin sempre, Gestor só com a
+   * permissão marcada no cadastro. Lido do banco a cada carga — desmarcar vale
+   * na próxima abertura da página, sem derrubar a sessão de ninguém.
+   *
+   * Esconder o bloco não é a proteção: a action e a rota de imagem conferem a
+   * mesma regra. Isto é só para não oferecer o que seria recusado.
+   */
+  const canSeeDocuments = isAdmin || user.canViewSectorDocs;
+
   return (
     <AppShell eyebrow="Menu" title="Meu Setor">
       <PageHeader
         title={`Meu Setor · ${data.sectorLabel}`}
         description="Avanço dos colaboradores nos treinamentos e o que eles acharam dos vídeos."
       />
-      <SectorOverviewView data={data} scopes={scopes} />
+      <SectorOverviewView data={data} scopes={scopes} canSeeDocuments={canSeeDocuments} />
     </AppShell>
   );
 }

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { dayMonthBR, daysAgoBR } from "@/lib/brasilia";
 import type { Ticket, TicketStatus } from "@/types/content";
+import { archiveCutoff } from "@/lib/archive-window";
 import { needsReconcile } from "@/lib/flow/mirror";
 import { reconcileTicket } from "@/lib/flow/sync";
 
@@ -49,7 +50,18 @@ export async function getMyTickets(userId: string): Promise<Ticket[]> {
   await Promise.all(stale.filter((t) => needsReconcile(t)).map((t) => reconcileTicket(t.id)));
 
   const rows = await prisma.ticket.findMany({
-    where: { requesterId: userId },
+    where: {
+      requesterId: userId,
+      // Resolvido sai do quadro 30 min depois de concluído — a mesma janela do
+      // quadro de TI (`archive-window`), para o solicitante e a equipe verem o
+      // card desaparecer na mesma hora. Concluído SEM carimbo (dado legado)
+      // fica: sumiria sem nunca ter passado pela janela.
+      OR: [
+        { status: { not: "CONCLUIDO" } },
+        { status: "CONCLUIDO", finishedAt: { gte: archiveCutoff() } },
+        { status: "CONCLUIDO", finishedAt: null },
+      ],
+    },
     orderBy: { createdAt: "desc" },
     include: {
       requester: { select: { fullName: true } },

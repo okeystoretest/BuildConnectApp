@@ -35,6 +35,17 @@ model User {
   passwordHash String
   role         Role   @default(COLABORADOR)
 
+  /// O Gestor alcança a documentação pessoal da própria equipe?
+  ///
+  /// Só faz sentido para GESTOR: o Admin alcança sempre, o Colaborador nunca.
+  /// Marcado por pessoa no cadastro, e não pelo papel, porque "ser gestor" não
+  /// implica ter de ver RG e dado bancário de quem lidera — quem decide isso é
+  /// quem cadastra.
+  ///
+  /// `false` por padrão, inclusive para quem já estava cadastrado: um campo de
+  /// acesso que nasce ligado abre a documentação de toda a empresa na migration.
+  canViewSectorDocs Boolean @default(false)
+
   // Só dígitos, sem máscara e sem código de país (ver lib/phone.ts). Opcional
   // no banco porque os usuários cadastrados antes desta coluna não têm número
   // — a obrigatoriedade vive na validação do cadastro, que é onde ela pode
@@ -124,6 +135,8 @@ model User {
   directNotifications      Notification[]         @relation("NotificationTarget")
   // Departamento Pessoal: a documentação pessoal arquivada deste colaborador.
   personnelFiles           PersonnelFile[]        @relation("PersonnelFileOwner")
+  // Vencimento das pastas deste colaborador (só as que vencem têm linha).
+  personnelExpiries        PersonnelFolderExpiry[] @relation("PersonnelExpiryOwner")
 
   // Pastas EXTRA do Departamento Pessoal, criadas à mão pelo Gestor do DHO
   // ("Adicionar mais pastas"). O catálogo obrigatório (admissionais, saúde,
@@ -474,6 +487,39 @@ model PersonnelFile {
   createdAt DateTime @default(now())
 
   @@index([ownerId, folder])
+}
+
+// Vencimento de uma pasta do Departamento Pessoal ("esse documento vence?").
+//
+// Só existe linha para pasta que VENCE: a esmagadora maioria (RG, CTPS, dados
+// bancários) não vence, e uma coluna anulável em cada pasta exigiria uma linha
+// por pasta de cada colaborador — as pastas do catálogo não têm linha nenhuma,
+// são constante em `lib/personnel-catalog`. Sem linha aqui, a pasta não vence.
+//
+// A chave é (dono, pasta) e não um id: é a mesma chave que `PersonnelFile`
+// usa, serve às duas espécies de pasta (a do catálogo e a criada à mão) e
+// torna impossível uma pasta com dois vencimentos.
+//
+// `DATE` e não `TIMESTAMP`: vencimento é dia de calendário. Hora zero em UTC
+// comparada no fuso de Brasília cairia no dia anterior — ver
+// `lib/personnel-expiry`, que trabalha em "aaaa-mm-dd" e nunca em `Date`.
+model PersonnelFolderExpiry {
+  ownerId String
+  owner   User   @relation("PersonnelExpiryOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  // A chave do catálogo (`aso`) ou o nome da pasta extra, igual a
+  // `PersonnelFile.folder`.
+  folder String
+
+  expiresAt DateTime @db.Date
+
+  // O vencimento que o sino JÁ avisou. Igual a `expiresAt` = aviso dado; nulo
+  // = a vencer sem aviso. Guarda a data, e não um booleano, para que o upload
+  // de um documento novo (que grava outro `expiresAt`) rearme o aviso sem
+  // ninguém ter de lembrar de limpar a marca.
+  notifiedFor DateTime? @db.Date
+
+  @@id([ownerId, folder])
 }
 
 // Nome dado a um BLOCO de pastas do Departamento Pessoal ("Admissionais e

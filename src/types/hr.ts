@@ -1,4 +1,5 @@
 import type { ActivityCursor, ActivityItem } from "@/lib/activity-timeline";
+import type { FolderStatus } from "@/lib/personnel-expiry";
 import type { Role } from "@/types";
 
 export interface ContentBreakdown {
@@ -101,6 +102,11 @@ export interface ManagedUser {
   avatarPath?: string;
   /** Telefone já com máscara. Ausente nos cadastrados antes do campo existir. */
   phone?: string;
+  /**
+   * O Gestor alcança a documentação pessoal da equipe dele? Sempre `false`
+   * para os outros papéis — ver `sectorDocsFlag` em `user-actions`.
+   */
+  canViewSectorDocs: boolean;
 }
 
 // ── Departamento Pessoal ──────────────────────────────────────
@@ -124,6 +130,12 @@ export interface PersonnelFolder {
   label: string;
   fixed: boolean;
   files: readonly PersonnelFile[];
+  /**
+   * Dia do vencimento em "aaaa-mm-dd", ou `null` quando a pasta não vence.
+   * Dia e não `Date`: ver `lib/personnel-expiry`.
+   */
+  expiresOn: string | null;
+  status: FolderStatus;
 }
 
 /** Grupo do catálogo (ou "Outras pastas", das criadas à mão). */
@@ -148,4 +160,15 @@ export interface PersonnelPerson {
   fileCount: number;
   /** Toda pasta da pessoa — catálogo e extras — já tem pelo menos um arquivo. */
   complete: boolean;
+  /**
+   * O pior estado entre as pastas dela — o que o painel conta e o card pinta.
+   * Um estado só por pessoa: é assim que os contadores fecham com o total.
+   */
+  status: FolderStatus;
+  /** Quantas pastas ainda sem nenhum arquivo. */
+  pendingFolders: number;
+  /** Quantas pastas com documento fora da validade. */
+  expiredFolders: number;
+  /** Quantas pastas a vencer dentro da janela de aviso. */
+  warningFolders: number;
 }

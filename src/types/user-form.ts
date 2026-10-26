@@ -11,6 +11,8 @@ export interface UserFormState {
   sector: string;
   unit: string;
   subsectors: readonly string[];
+  /** Só vale para GESTOR; o servidor zera para os demais papéis. */
+  canViewSectorDocs: boolean;
 }
 
 export type UserFormErrors = Partial<Record<keyof UserFormState, string>>;

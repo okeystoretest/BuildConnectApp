@@ -37,6 +37,12 @@ export interface FileUploadModalProps {
   /** Chamado após um envio bem-sucedido, antes do `router.refresh()`. */
   onUploaded?: () => void;
   onClose: () => void;
+  /**
+   * Campos que só este chamador tem, abaixo do seletor de arquivo (ex.: o
+   * vencimento do documento, no Departamento Pessoal). O valor entra no envio
+   * por `extraFields` — quem desenha o campo é quem guarda o estado dele.
+   */
+  children?: React.ReactNode;
 }
 
 export function FileUploadModal({
@@ -48,6 +54,7 @@ export function FileUploadModal({
   extraFields,
   onUploaded,
   onClose,
+  children,
 }: FileUploadModalProps) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -138,6 +145,8 @@ export function FileUploadModal({
               setFile(e.target.files?.[0] ?? null);
             }}
           />
+
+          {children}
 
           {error && <p className="text-xs text-danger">{error}</p>}
 

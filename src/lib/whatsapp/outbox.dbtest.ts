@@ -74,12 +74,38 @@ test("enfileirar encadeia os horários: o primeiro sai agora, cada seguinte um s
   const ids = await Promise.all(
     Array.from({ length: 3 }, (_, i) => makeUser(`1198765432${i}`)),
   );
+  /*
+   * Uma âncora que este teste CONTROLA, antes de enfileirar.
+   *
+   * `enqueue` ancora no fim da fila e gasta UM sorteio nessa conta. Se a
+   * âncora dependesse do que por acaso houvesse no banco, o número de sorteios
+   * consumidos mudaria com ele — e o sorteio que faltasse saía `undefined`,
+   * virava `NaN` e gravava data inválida.
+   *
+   * PENDENTE, e não ENVIADO: `tail._max.sendAfter` tem prioridade sobre a
+   * última enviada, então esta linha vence qualquer carimbo que exista na
+   * tabela. De um quarto destinatário, fora de `ids`, para não entrar no
+   * resultado. No passado, porque o `Math.max` devolve `AGORA` de qualquer
+   * forma — que é o que o teste afirma ("o primeiro sai agora").
+   */
+  const ancora = await makeUser("11987654329");
+  await prisma.whatsappMessage.create({
+    data: {
+      userId: ancora,
+      kind: "FORMULARIO",
+      status: "PENDENTE",
+      sendAfter: new Date(AGORA.getTime() - 86_400_000),
+    },
+  });
+
   let vez = 0;
-  const sorteios = [30_000, 45_000];
+  // O primeiro é da âncora e não entra nas contas; os outros dois encadeiam.
+  const sorteios = [10_000, 30_000, 45_000];
   await enqueue(ids, "FORMULARIO", { now: AGORA, delayMs: () => sorteios[vez++]! });
 
   const linhas = await prisma.whatsappMessage.findMany({
-    where: { userId: { in: ids } },
+    // A âncora fica de fora: ela é cenário, não resultado.
+    where: { userId: { in: ids }, status: "PENDENTE" },
     orderBy: { sendAfter: "asc" },
     select: { userId: true, sendAfter: true },
   });
@@ -99,6 +125,35 @@ test("um lote novo entra DEPOIS do fim da fila, não em paralelo a ela", async (
 
   const linha = await prisma.whatsappMessage.findFirst({ where: { userId: b } });
   assert.equal(linha!.sendAfter.getTime() - AGORA.getTime(), 60_000);
+});
+
+test("carimbo de envio no futuro não ancora a fila", async () => {
+  const [a, b] = await Promise.all([makeUser("11987654321"), makeUser("11987654322")]);
+  /*
+   * Dado corrompido de verdade: apareceu no banco de desenvolvimento quando um
+   * teste drenou uma mensagem REAL e a carimbou com o relógio fictício, anos à
+   * frente. Ancorar nisso joga toda mensagem nova para depois daquela data — a
+   * fila para de sair e nada falha, nada avisa.
+   */
+  await prisma.whatsappMessage.create({
+    data: {
+      userId: a,
+      kind: "FORMULARIO",
+      status: "ENVIADO",
+      sendAfter: AGORA,
+      sentAt: new Date(AGORA.getTime() + 365 * 86_400_000),
+    },
+  });
+
+  await enqueue([b], "AVALIACAO", { now: AGORA, delayMs: () => 60_000 });
+  const linha = await prisma.whatsappMessage.findFirst({
+    where: { userId: b, status: "PENDENTE" },
+  });
+  assert.equal(
+    linha!.sendAfter.getTime() - AGORA.getTime(),
+    0,
+    "sai agora, e não um ano depois do carimbo impossível",
+  );
 });
 
 test("com a fila vazia, o lote novo respeita a última ENVIADA", async () => {

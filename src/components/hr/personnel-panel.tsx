@@ -2,10 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import {
+  AlertTriangle,
   ArrowLeft,
+  CalendarClock,
   Check,
+  CheckCircle2,
   Download,
   Eye,
+  FileWarning,
   FolderPlus,
   Loader2,
   Pencil,
@@ -15,6 +19,12 @@ import {
   Upload,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  EXPIRY_WARNING_DAYS,
+  dayLabel,
+  folderStatusLabel,
+  type FolderStatus,
+} from "@/lib/personnel-expiry";
 import { Avatar } from "@/components/ui/avatar";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
@@ -36,6 +46,56 @@ const KIND_STYLE = {
   XLSX: "bg-primary/15 text-primary",
   PPTX: "bg-warning/15 text-warning",
 } as const;
+
+/**
+ * Como cada estado se veste — num lugar só, porque o mesmo estado pinta o
+ * ladrilho da pasta, o card do colaborador e o contador do painel, e três
+ * tabelas de cor divergiriam na primeira mudança.
+ *
+ * `pendente` e `vencido` são ambos vermelhos: as duas coisas são falta de
+ * documento válido no dossiê, e distinguir por tom faria o leitor decorar
+ * qual vermelho é qual. O que os separa é a PALAVRA — "Pendente" e "Vencido".
+ */
+const STATUS: Record<
+  FolderStatus,
+  { label: string; tile: string; text: string; mark: string; plus: string; icon: React.ReactNode }
+> = {
+  pendente: {
+    label: "Pendentes",
+    tile: "border-danger/45 bg-danger/[0.06] hover:border-danger/70",
+    text: "font-medium text-danger",
+    mark: "border-danger/50 bg-danger/5",
+    plus: "bg-danger/15 text-danger hover:bg-danger/25",
+    icon: <FileWarning className="h-4 w-4" />,
+  },
+  vencido: {
+    label: "Vencidos",
+    tile: "border-danger/45 bg-danger/[0.06] hover:border-danger/70",
+    text: "font-medium text-danger",
+    mark: "border-danger bg-danger/15 text-danger",
+    plus: "bg-danger/15 text-danger hover:bg-danger/25",
+    icon: <AlertTriangle className="h-4 w-4" />,
+  },
+  cuidado: {
+    label: "Cuidado",
+    tile: "border-warning/50 bg-warning/[0.07] hover:border-warning/75",
+    text: "font-medium text-warning",
+    mark: "border-warning bg-warning/15 text-warning",
+    plus: "bg-warning/15 text-warning hover:bg-warning/25",
+    icon: <CalendarClock className="h-4 w-4" />,
+  },
+  ok: {
+    label: "Em dia",
+    tile: "border-border bg-surface hover:border-border-strong",
+    text: "text-muted",
+    mark: "border-primary bg-primary text-primary-foreground shadow-sm shadow-primary/30",
+    plus: "bg-surface-2 text-muted hover:bg-surface-3 hover:text-foreground",
+    icon: <CheckCircle2 className="h-4 w-4" />,
+  },
+};
+
+/** A ordem em que os contadores aparecem: do mais urgente ao mais tranquilo. */
+const DASHBOARD_ORDER: readonly FolderStatus[] = ["pendente", "vencido", "cuidado", "ok"];
 
 /**
  * Paleta das pílulas de setor: os tokens `sector-*`, que existem só para dizer
@@ -110,6 +170,7 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
   const [query, setQuery] = useState("");
   const [view, setView] = useState<ViewMode>("grid");
   const [sector, setSector] = useState<string | null>(null);
+  const [status, setStatus] = useState<FolderStatus | null>(null);
   const [open, setOpen] = useState<PersonnelPerson | null>(null);
 
   // Os setores que de fato aparecem na lista, em ordem alfabética. Pílula de
@@ -123,10 +184,23 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
       .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
   }, [roster]);
 
+  // O painel conta o recorte do SETOR, não o da busca: os números têm de
+  // fechar com a lista logo abaixo, e recontar a cada tecla digitada faria os
+  // contadores tremerem enquanto se procura alguém.
+  const inSector = useMemo(
+    () => roster.filter((p) => sector === null || p.sector === sector),
+    [roster, sector],
+  );
+  const counts = useMemo(() => {
+    const out: Record<FolderStatus, number> = { pendente: 0, vencido: 0, cuidado: 0, ok: 0 };
+    for (const p of inSector) out[p.status] += 1;
+    return out;
+  }, [inSector]);
+
   const term = query.trim().toLowerCase();
-  const filtered = roster.filter(
+  const filtered = inSector.filter(
     (p) =>
-      (sector === null || p.sector === sector) &&
+      (status === null || p.status === status) &&
       (!term ||
         p.name.toLowerCase().includes(term) ||
         p.username.toLowerCase().includes(term) ||
@@ -141,6 +215,57 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
 
   return (
     <div className="space-y-4">
+      {/* O painel do setor: o quadro inteiro em quatro números, e cada número
+          é o filtro da lista abaixo. Clicar no contador aceso desliga o
+          filtro — sem isso a única saída seria recarregar a aba. */}
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {DASHBOARD_ORDER.map((key) => {
+          const tone = STATUS[key];
+          const active = status === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setStatus(active ? null : key)}
+              aria-pressed={active}
+              className={cn(
+                "focus-ring flex items-center gap-3 rounded-xl border p-4 text-left transition-colors",
+                active ? "border-foreground bg-surface-2" : tone.tile,
+              )}
+            >
+              <span
+                className={cn(
+                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-surface-2",
+                  tone.text,
+                )}
+              >
+                {tone.icon}
+              </span>
+              <span className="min-w-0">
+                <span
+                  className={cn(
+                    "block text-2xl font-bold leading-none tracking-tight tabular-nums",
+                    tone.text,
+                  )}
+                >
+                  {counts[key]}
+                </span>
+                <span className="mt-1 block truncate text-xs text-foreground">{tone.label}</span>
+                <span className="block truncate text-[11px] text-muted">
+                  {key === "pendente"
+                    ? "Falta documento na pasta"
+                    : key === "vencido"
+                      ? "Documento fora da validade"
+                      : key === "cuidado"
+                        ? `Vence em até ${EXPIRY_WARNING_DAYS} dias`
+                        : "Dossiê completo e válido"}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       <ContentToolbar
         query={query}
         onQueryChange={setQuery}
@@ -148,6 +273,19 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
         view={view}
         onViewChange={setView}
       />
+
+      {status !== null && (
+        <p className="text-xs text-muted">
+          Mostrando {filtered.length} de {inSector.length} — {STATUS[status].label.toLowerCase()}.{" "}
+          <button
+            type="button"
+            onClick={() => setStatus(null)}
+            className="focus-ring rounded font-medium text-foreground underline underline-offset-2"
+          >
+            Ver todos
+          </button>
+        </p>
+      )}
 
       {/* Uma pílula só não filtra nada: com um setor, todo mundo é dele. */}
       {sectors.length > 1 && (
@@ -205,22 +343,17 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
           )}
         >
           {filtered.map((person) => {
-            // Nada entregue é pendência (vermelho); entregue pela metade é
-            // amarelo; com todas as pastas atendidas o card volta ao neutro —
-            // só quem ainda deve alguma coisa chama atenção.
-            const empty = person.fileCount === 0;
+            // A cor do card é o pior estado do dossiê — a mesma tabela do
+            // ladrilho e do contador. Só quem deve alguma coisa chama atenção.
+            const tone = STATUS[person.status];
             return (
               <li key={person.id}>
                 <button
                   type="button"
                   onClick={() => setOpen(person)}
                   className={cn(
-                    "focus-ring flex w-full items-center gap-3 rounded-xl border bg-surface p-4 text-left transition-colors",
-                    person.complete
-                      ? "border-border hover:border-border-strong"
-                      : empty
-                        ? "border-danger/40 bg-danger/[0.04] hover:border-danger/60"
-                        : "border-warning/40 bg-warning/[0.04] hover:border-warning/60",
+                    "focus-ring flex w-full items-center gap-3 rounded-xl border p-4 text-left transition-colors",
+                    tone.tile,
                   )}
                 >
                   <Avatar
@@ -237,19 +370,22 @@ export function PersonnelPanel({ roster }: { roster: readonly PersonnelPerson[] 
                       {person.sector}
                     </span>
                   </span>
-                  {/* A contagem já diz em texto o que a cor diz — a cor nunca
-                      é a única pista do estado. */}
-                  <span
-                    className={cn(
-                      "shrink-0 text-xs",
-                      person.complete
-                        ? "text-muted"
-                        : empty
-                          ? "font-medium text-danger"
-                          : "font-medium text-warning",
-                    )}
-                  >
-                    {person.fileCount} {person.fileCount === 1 ? "arquivo" : "arquivos"}
+                  {/* O estado escrito, e não só pintado: a cor nunca é a
+                      única pista. A contagem de arquivos fica abaixo, porque
+                      o que se procura aqui é quem está devendo. */}
+                  <span className="shrink-0 text-right">
+                    <span className={cn("block text-xs", tone.text)}>
+                      {person.status === "pendente"
+                        ? `${person.pendingFolders} ${person.pendingFolders === 1 ? "pasta vazia" : "pastas vazias"}`
+                        : person.status === "vencido"
+                          ? `${person.expiredFolders} ${person.expiredFolders === 1 ? "documento vencido" : "documentos vencidos"}`
+                          : person.status === "cuidado"
+                            ? `${person.warningFolders} ${person.warningFolders === 1 ? "documento a vencer" : "documentos a vencer"}`
+                            : "Em dia"}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] tabular-nums text-muted">
+                      {person.fileCount} {person.fileCount === 1 ? "arquivo" : "arquivos"}
+                    </span>
                   </span>
                 </button>
               </li>
@@ -274,7 +410,11 @@ function PersonFolders({
   const [openKey, setOpenKey] = useState<string | null>(null);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [renaming, setRenaming] = useState<PersonnelFolderGroup | null>(null);
-  const [uploadTo, setUploadTo] = useState<{ key: string; label: string } | null>(null);
+  const [uploadTo, setUploadTo] = useState<{
+    key: string;
+    label: string;
+    expiresOn: string | null;
+  } | null>(null);
   const [busy, startTransition] = useTransition();
 
   const load = useCallback(() => {
@@ -330,8 +470,6 @@ function PersonFolders({
         </div>
       ) : (
         <>
-          <Completeness groups={groups} />
-
           {groups.map((group) => (
             <section key={group.label} className="space-y-2">
               {/* A régua à direita do rótulo separa os grupos sem gastar uma
@@ -355,26 +493,19 @@ function PersonFolders({
                 {group.folders.map((folder) => {
                   // Pasta vazia = documentação pendente, e pendência tem de
                   // saltar da tela: é para isso que a pasta vazia aparece.
-                  const pending = folder.files.length === 0;
+                  // Com documento, quem manda na cor é o vencimento.
+                  const tone = STATUS[folder.status];
+                  const delivered = folder.files.length > 0;
                   return (
                     <li key={folder.key} className="relative">
                       <button
                         type="button"
                         onClick={() => setOpenKey(folder.key)}
                         className={cn(
-                          "focus-ring flex h-full w-full flex-col gap-2 rounded-xl border p-3 pr-10 text-left transition-colors",
-                          pending
-                            ? "border-danger/45 bg-danger/[0.06] hover:border-danger/70"
-                            : "border-border bg-surface hover:border-border-strong",
+                          "focus-ring flex h-full w-full flex-col gap-2 rounded-xl border p-3 pr-16 text-left transition-colors",
+                          tone.tile,
                         )}
                       >
-                        <span
-                          aria-hidden="true"
-                          className={cn(
-                            "h-1.5 w-1.5 rounded-full",
-                            pending ? "bg-danger" : "bg-primary",
-                          )}
-                        />
                         {/* Sem corte: o ladrilho é largo o bastante para o
                             rótulo inteiro quebrar em linhas. O `min-h` segura
                             duas — os rótulos vão de "ASO" a uma frase, e
@@ -382,36 +513,59 @@ function PersonFolders({
                         <span className="min-h-[2.8em] text-[13px] font-medium leading-snug text-foreground">
                           {folder.label}
                         </span>
-                        {/* O rótulo também é vermelho: cor de borda sozinha não
+                        {/* O rótulo também é colorido: cor de borda sozinha não
                             chega a quem não distingue vermelho. */}
-                        <span
-                          className={cn(
-                            "text-[11px] tabular-nums",
-                            pending ? "font-medium text-danger" : "text-muted",
-                          )}
-                        >
-                          {pending
-                            ? "Pendente"
-                            : `${folder.files.length} ${folder.files.length === 1 ? "arquivo" : "arquivos"}`}
+                        <span className={cn("text-[11px] tabular-nums", tone.text)}>
+                          {folderStatusLabel(folder.status, folder.expiresOn, folder.files.length)}
                         </span>
+                        {folder.status === "ok" && folder.expiresOn && (
+                          <span className="text-[11px] tabular-nums text-muted">
+                            Vence em {dayLabel(folder.expiresOn)}
+                          </span>
+                        )}
                       </button>
 
-                      {/* Irmão do ladrilho, não filho: botão dentro de botão é
-                          HTML inválido. Vai direto ao envio, sem passar pela
-                          gaveta — fechar pendência é a razão da tela existir. */}
-                      <button
-                        type="button"
-                        onClick={() => setUploadTo({ key: folder.key, label: folder.label })}
-                        aria-label={`Enviar documento para ${folder.label}`}
-                        className={cn(
-                          "focus-ring absolute right-2.5 top-2.5 flex h-6 w-6 items-center justify-center rounded-md transition-colors",
-                          pending
-                            ? "bg-danger/15 text-danger hover:bg-danger/25"
-                            : "bg-surface-2 text-muted hover:bg-surface-3 hover:text-foreground",
-                        )}
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                      </button>
+                      {/* Irmãos do ladrilho, não filhos: botão dentro de botão
+                          é HTML inválido. `pointer-events-none` no invólucro
+                          deixa o clique atravessar o checkbox e abrir a pasta —
+                          um canto morto seria pior do que um canto inútil. */}
+                      <span className="pointer-events-none absolute right-2.5 top-2.5 flex items-center gap-1.5">
+                        {/* O checkbox é DERIVADO: marcado porque a pasta tem
+                            arquivo. Não é clicável de propósito — marcar à mão
+                            criaria uma segunda verdade e deixaria dar por
+                            entregue uma pasta vazia, numa tela que existe para
+                            dizer o que falta. O estado já está escrito acima,
+                            então aqui ele é reforço. */}
+                        <span
+                          aria-hidden="true"
+                          className={cn(
+                            "flex h-5 w-5 shrink-0 items-center justify-center rounded border-2 transition-colors",
+                            tone.mark,
+                          )}
+                        >
+                          {delivered && <Check className="h-3 w-3" strokeWidth={3} />}
+                        </span>
+
+                        {/* Vai direto ao envio, sem passar pela gaveta —
+                            fechar pendência é a razão da tela existir. */}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setUploadTo({
+                              key: folder.key,
+                              label: folder.label,
+                              expiresOn: folder.expiresOn,
+                            })
+                          }
+                          aria-label={`Enviar documento para ${folder.label}`}
+                          className={cn(
+                            "focus-ring pointer-events-auto flex h-6 w-6 items-center justify-center rounded-md transition-colors",
+                            tone.plus,
+                          )}
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                        </button>
+                      </span>
                     </li>
                   );
                 })}
@@ -426,7 +580,13 @@ function PersonFolders({
           folder={openFolder}
           person={person}
           onClose={() => setOpenKey(null)}
-          onUpload={() => setUploadTo({ key: openFolder.key, label: openFolder.label })}
+          onUpload={() =>
+            setUploadTo({
+              key: openFolder.key,
+              label: openFolder.label,
+              expiresOn: openFolder.expiresOn,
+            })
+          }
           onChanged={load}
         />
       )}
@@ -450,13 +610,9 @@ function PersonFolders({
           e os campos que dizem de quem e de qual pasta é o documento. `slug`
           vai vazio: aqui o destino é a pessoa, não o subsetor. */}
       {uploadTo && (
-        <FileUploadModal
-          open
-          slug=""
-          title="Arquivar documento"
-          description={`${person.name} · ${uploadTo.label}`}
-          uploadKind="dp-documento"
-          extraFields={{ ownerId: person.id, folder: uploadTo.key }}
+        <UploadDocument
+          person={person}
+          folder={uploadTo}
           onClose={() => setUploadTo(null)}
           onUploaded={load}
         />
@@ -466,79 +622,60 @@ function PersonFolders({
 }
 
 /**
- * Quanto do dossiê já foi entregue, em número e em imagem.
+ * Envio de documento, com o vencimento do que está entrando.
  *
- * Um segmento por pasta, na ordem da tela: o painel responde "o que falta
- * desta pessoa" antes de qualquer rótulo ser lido. A contagem ao lado diz o
- * mesmo em texto — a barra é reforço, nunca a única pista.
+ * O mesmo modal de envio das demais telas — só muda a porta (`uploadKind`), os
+ * campos que dizem de quem e de qual pasta é o documento, e a data. `slug` vai
+ * vazio: aqui o destino é a pessoa, não o subsetor.
+ *
+ * A data vem no envio, e não num segundo passo depois, porque é o documento
+ * NOVO que tem validade nova: o ASO que chega hoje vence em outra data que o
+ * de dois anos atrás, e é este arquivo que a define.
+ *
+ * Pasta que já vence tem o campo preenchido com a data em vigor e EXIGE uma
+ * data (o servidor recusa o envio sem ela) — sem isso o documento novo
+ * herdaria o vencimento do antigo e a pasta seguiria vermelha com um ASO em
+ * dia dentro. Pasta que não vence pode ganhar vencimento aqui: é por este
+ * campo que uma pasta do catálogo, que ninguém "cria", passa a vencer.
  */
-function Completeness({ groups }: { groups: readonly PersonnelFolderGroup[] }) {
-  const folders = groups.flatMap((g) => g.folders);
-  const done = folders.filter((f) => f.files.length > 0).length;
-  const pending = folders.length - done;
+function UploadDocument({
+  person,
+  folder,
+  onClose,
+  onUploaded,
+}: {
+  person: PersonnelPerson;
+  folder: { key: string; label: string; expiresOn: string | null };
+  onClose: () => void;
+  onUploaded: () => void;
+}) {
+  const [day, setDay] = useState(folder.expiresOn ?? "");
+  const required = folder.expiresOn !== null;
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-        <p className="text-sm font-semibold tabular-nums text-foreground">
-          {done} de {folders.length} {folders.length === 1 ? "pasta entregue" : "pastas entregues"}
-        </p>
-        <p
-          className={cn(
-            "text-xs tabular-nums",
-            pending > 0 ? "font-medium text-danger" : "text-primary",
-          )}
-        >
-          {pending > 0
-            ? `${pending} ${pending === 1 ? "pendente" : "pendentes"}`
-            : "Documentação completa"}
-        </p>
+    <FileUploadModal
+      open
+      slug=""
+      title="Arquivar documento"
+      description={`${person.name} · ${folder.label}`}
+      uploadKind="dp-documento"
+      extraFields={{ ownerId: person.id, folder: folder.key, expiresAt: day }}
+      onClose={onClose}
+      onUploaded={onUploaded}
+    >
+      <div>
+        <label htmlFor="dp-upload-expira" className="block text-xs font-medium text-muted">
+          {required ? "Novo vencimento do documento" : "Vencimento do documento (opcional)"}
+        </label>
+        <input
+          id="dp-upload-expira"
+          type="date"
+          value={day}
+          onChange={(e) => setDay(e.target.value)}
+          className="focus-ring mt-1.5 h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-foreground"
+        />
       </div>
-
-      {/* Trilha horizontal: uma parada por pasta, na ordem do catálogo. Rola
-          de lado no celular em vez de espremer onze paradas na largura da
-          tela — parada ilegível não informa nada. */}
-      <ol className="scrollbar-slim -mx-1 mt-3 flex items-start overflow-x-auto px-1 pb-1">
-        {folders.map((folder, i) => {
-          const done = folder.files.length > 0;
-          return (
-            <li key={folder.key} className="flex shrink-0 items-start">
-              {/* O fio é NEUTRO de propósito: ele costura a trilha, não mede
-                  avanço. As pastas não têm ordem obrigatória, e um fio que
-                  "enche" prometeria uma sequência que não existe. */}
-              {i > 0 && <span aria-hidden="true" className="mt-3 h-px w-6 bg-border" />}
-
-              <div className="flex w-[8.5rem] flex-col items-center gap-2 text-center">
-                <span
-                  className={cn(
-                    "flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 transition-colors",
-                    done
-                      ? "border-primary bg-primary text-primary-foreground shadow-sm shadow-primary/30"
-                      : "border-danger/50 bg-danger/5",
-                  )}
-                >
-                  {done && <Check className="h-3.5 w-3.5" strokeWidth={3} />}
-                </span>
-                {/* O nome da parada é o NOME DA PASTA, igual ao do ladrilho
-                    abaixo — dois nomes para a mesma pasta fariam o leitor
-                    procurar duas vezes. A parada é larga o bastante para ele
-                    quebrar em linhas, sem corte e sem reticências. */}
-                <span
-                  className={cn(
-                    "text-[11px] leading-tight",
-                    done ? "text-muted" : "font-medium text-danger",
-                  )}
-                >
-                  {folder.label}
-                </span>
-                {/* O estado não pode existir só na cor e no desenho. */}
-                <span className="sr-only">{done ? "entregue" : "pendente"}</span>
-              </div>
-            </li>
-          );
-        })}
-      </ol>
-    </div>
+    </FileUploadModal>
   );
 }
 
@@ -837,12 +974,16 @@ function NewFolderModal({
   onCreated: () => void;
 }) {
   const [name, setName] = useState("");
+  const [expires, setExpires] = useState(false);
+  const [day, setDay] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, startTransition] = useTransition();
 
   function close() {
     if (busy) return;
     setName("");
+    setExpires(false);
+    setDay("");
     setError(null);
     onClose();
   }
@@ -852,9 +993,14 @@ function NewFolderModal({
       const fd = new FormData();
       fd.set("ownerId", ownerId);
       fd.set("name", name);
+      // "Não" manda vazio: a resposta é a pergunta respondida, não a data
+      // digitada e depois escondida ao trocar o rádio para "Não".
+      fd.set("expiresAt", expires ? day : "");
       const res = await createPersonnelFolder(fd);
       if (res.ok) {
         setName("");
+        setExpires(false);
+        setDay("");
         setError(null);
         onClose();
         onCreated();
@@ -898,6 +1044,59 @@ function NewFolderModal({
           placeholder="Ex.: Advertências"
           className="focus-ring mt-1.5 h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-foreground placeholder:text-muted/70"
         />
+
+        {/* Rádio, e não um interruptor: a pergunta tem duas respostas e as
+            duas precisam estar visíveis. Um interruptor desligado não se
+            distingue de uma pergunta não respondida. */}
+        <fieldset className="mt-4">
+          <legend className="text-xs font-medium text-muted">Esse documento vence?</legend>
+          <div className="mt-1.5 flex gap-4">
+            {[
+              { value: false, label: "Não" },
+              { value: true, label: "Sim" },
+            ].map((option) => (
+              <label
+                key={option.label}
+                className="flex cursor-pointer items-center gap-2 text-sm text-foreground"
+              >
+                <input
+                  type="radio"
+                  name="dp-folder-expires"
+                  checked={expires === option.value}
+                  onChange={() => {
+                    setError(null);
+                    setExpires(option.value);
+                  }}
+                  className="focus-ring h-4 w-4 accent-primary"
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        {expires && (
+          <div className="mt-3">
+            <label htmlFor="dp-folder-expira" className="block text-xs font-medium text-muted">
+              Data de vencimento
+            </label>
+            <input
+              id="dp-folder-expira"
+              type="date"
+              value={day}
+              onChange={(e) => {
+                setError(null);
+                setDay(e.target.value);
+              }}
+              className="focus-ring mt-1.5 h-10 w-full rounded-lg border border-border bg-surface-2 px-3 text-sm text-foreground"
+            />
+            <p className="mt-1.5 text-[11px] text-muted">
+              A pasta fica amarela {EXPIRY_WARNING_DAYS} dias antes e vermelha ao vencer. Enviar um
+              documento novo com a data nova zera o aviso.
+            </p>
+          </div>
+        )}
+
         {error && <p className="mt-2 text-xs text-danger">{error}</p>}
       </div>
     </Modal>

@@ -49,7 +49,25 @@ before(async () => {
   tiSlug = `ti-${stamp()}${MARK}`;
   await prisma.subsector.create({ data: { slug: tiSlug, label: "TI (teste)", icon: "Box", sectorId } });
 });
-beforeEach(limpar);
+beforeEach(async () => {
+  await limpar();
+  /*
+   * A MESMA guarda do `outbox.dbtest`, que faltava aqui.
+   *
+   * `drainOutbox` envia TUDO que venceu, de quem quer que seja — e o relógio
+   * deste arquivo está em 2030. Uma mensagem pendente de FORA dos testes é
+   * varrida junto e carimbada com essa data; como `enqueue` se ancora na
+   * última enviada, a fila inteira do banco passa a nascer depois de 2030 e
+   * para de sair, sem erro nenhum à vista.
+   *
+   * Não foi hipótese: aconteceu três vezes neste banco de desenvolvimento,
+   * com mensagens reais de `admin#BC` e `teste#BC`. Recusar a rodada é melhor
+   * do que apagar o que não é nosso — a mensagem alheia continua lá, e quem
+   * roda os testes decide o que fazer com ela.
+   */
+  const alheias = await prisma.whatsappMessage.count({ where: { status: "PENDENTE" } });
+  assert.equal(alheias, 0, "há mensagens pendentes de fora dos testes; esvazie a fila antes");
+});
 after(async () => {
   await limpar();
   await prisma.sector.deleteMany({ where: { id: sectorId } });

@@ -128,3 +128,44 @@ export async function canAdministerDho(userId: string, role: Role): Promise<bool
   return isDhoMember(userId);
 }
 
+
+/**
+ * Quem alcança a documentação pessoal de UM colaborador.
+ *
+ * Três portas de larguras diferentes, de propósito:
+ *  - quem administra o DHO alcança qualquer pessoa — é o dono da ferramenta,
+ *    e é o único que recebe o ARQUIVO (ver a rota /uploads);
+ *  - o GESTOR alcança quem está lotado no MESMO setor que ele, e só se o
+ *    cadastro dele tiver a permissão marcada. Ele vê a página renderizada com
+ *    marca d'água, nunca o arquivo;
+ *  - o resto, ninguém. O Colaborador não entra nem na própria pasta: a
+ *    documentação é mantida pelo DHO, e a tela que a exibe é de gestão.
+ *
+ * Ser gestor NÃO basta: `canViewSectorDocs` é por pessoa, porque liderar uma
+ * equipe não implica ter de ver o RG e o dado bancário de quem se lidera —
+ * quem decide isso é quem cadastra.
+ *
+ * Papel, lotação e permissão saem do BANCO, nunca do cookie: o cookie é a
+ * fotografia do login, e desmarcar a permissão precisa valer na requisição
+ * seguinte, não no próximo login.
+ */
+export async function canReadPersonnelOf(
+  viewerId: string,
+  role: Role,
+  ownerId: string,
+): Promise<boolean> {
+  if (await canAdministerDho(viewerId, role)) return true;
+  if (role !== "GESTOR") return false;
+
+  const [viewer, owner] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: viewerId },
+      select: { sectorId: true, canViewSectorDocs: true },
+    }),
+    prisma.user.findUnique({ where: { id: ownerId }, select: { sectorId: true } }),
+  ]);
+  if (!viewer?.canViewSectorDocs) return false;
+  // Gestor sem lotação não "compartilha setor" com quem também não tem: dois
+  // nulos iguais liberariam a pasta de todo mundo sem setor.
+  return Boolean(viewer.sectorId) && viewer.sectorId === owner?.sectorId;
+}

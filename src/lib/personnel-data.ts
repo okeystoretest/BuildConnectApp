@@ -7,6 +7,12 @@ import {
   PERSONNEL_GROUPS,
   categoryLabel,
 } from "@/lib/personnel-catalog";
+import {
+  folderStatus,
+  isoDay,
+  personStatus,
+  todayBR,
+} from "@/lib/personnel-expiry";
 import type {
   PersonnelFile,
   PersonnelFolderGroup,
@@ -54,6 +60,11 @@ export async function getPersonnelRoster(): Promise<PersonnelPerson[]> {
     filledByOwner.set(f.ownerId, set);
   }
 
+  // Os vencimentos do quadro inteiro numa consulta, pelo mesmo motivo do
+  // `groupBy` acima. São poucas linhas: só pasta que vence tem uma.
+  const expiryByOwner = await expiriesByOwner();
+  const today = todayBR();
+
   return rows.map((u: {
     id: string;
     fullName: string;
@@ -79,6 +90,14 @@ export async function getPersonnelRoster(): Promise<PersonnelPerson[]> {
       ),
     );
 
+    // O estado de cada pasta exigida, mais o das pastas que têm arquivo mas
+    // já saíram da exigência: um ASO vencido continua vencido depois de a
+    // pasta ser removida do catálogo, e o painel não pode calar isso.
+    const expiries = expiryByOwner.get(u.id) ?? new Map<string, string>();
+    const statuses = [...new Set([...required, ...has])].map((folder) =>
+      folderStatus(has.has(folder), expiries.get(folder) ?? null, today),
+    );
+
     return {
       id: u.id,
       name: u.fullName,
@@ -89,8 +108,28 @@ export async function getPersonnelRoster(): Promise<PersonnelPerson[]> {
       avatarPath: u.avatarPath ?? undefined,
       fileCount: u._count.personnelFiles,
       complete: [...required].every((folder) => has.has(folder)),
+      status: personStatus(statuses),
+      pendingFolders: statuses.filter((s) => s === "pendente").length,
+      expiredFolders: statuses.filter((s) => s === "vencido").length,
+      warningFolders: statuses.filter((s) => s === "cuidado").length,
     };
   });
+}
+
+/** O vencimento de cada pasta, por dono, em "aaaa-mm-dd". */
+async function expiriesByOwner(ownerId?: string): Promise<Map<string, Map<string, string>>> {
+  const rows = await prisma.personnelFolderExpiry.findMany({
+    where: ownerId ? { ownerId } : undefined,
+    select: { ownerId: true, folder: true, expiresAt: true },
+  });
+
+  const byOwner = new Map<string, Map<string, string>>();
+  for (const r of rows as { ownerId: string; folder: string; expiresAt: Date }[]) {
+    const folders = byOwner.get(r.ownerId) ?? new Map<string, string>();
+    folders.set(r.folder, isoDay(r.expiresAt));
+    byOwner.set(r.ownerId, folders);
+  }
+  return byOwner;
 }
 
 /**
@@ -150,17 +189,27 @@ export async function getPersonnelFolders(
   );
   const groupLabel = (key: string, fallback: string) => renamed.get(key) ?? fallback;
 
+  // Vencimento e estado, montados num lugar só: as pastas nascem em dois
+  // trechos (catálogo e extras) e um deles esqueceria de calcular o estado.
+  const expiries = (await expiriesByOwner(ownerId)).get(ownerId) ?? new Map<string, string>();
+  const today = todayBR();
+  const folder = (key: string, label: string, fixed: boolean) => {
+    const files = byFolder.get(key) ?? [];
+    const expiresOn = expiries.get(key) ?? null;
+    return {
+      key,
+      label,
+      fixed,
+      files,
+      expiresOn,
+      status: folderStatus(files.length > 0, expiresOn, today),
+    };
+  };
+
   const groups: PersonnelFolderGroup[] = PERSONNEL_GROUPS.map((g) => ({
     key: g.key,
     label: groupLabel(g.key, g.label),
-    folders: g.categories
-      .filter((c) => visible(c.key))
-      .map((c) => ({
-        key: c.key,
-        label: c.label,
-        fixed: true,
-        files: byFolder.get(c.key) ?? [],
-      })),
+    folders: g.categories.filter((c) => visible(c.key)).map((c) => folder(c.key, c.label, true)),
   })).filter((g) => g.folders.length > 0);
 
   // Pastas extra. Entram também as pastas de arquivos cuja chave não é mais do
@@ -175,12 +224,9 @@ export async function getPersonnelFolders(
     groups.push({
       key: OTHERS_GROUP_KEY,
       label: groupLabel(OTHERS_GROUP_KEY, OTHERS_GROUP_LABEL),
-      folders: [...extraNames].sort((a, b) => a.localeCompare(b, "pt-BR")).map((name) => ({
-        key: name,
-        label: name,
-        fixed: false,
-        files: byFolder.get(name) ?? [],
-      })),
+      folders: [...extraNames]
+        .sort((a, b) => a.localeCompare(b, "pt-BR"))
+        .map((name) => folder(name, name, false)),
     });
   }
 

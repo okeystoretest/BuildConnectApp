@@ -82,7 +82,20 @@ export async function enqueue(
     prisma.whatsappMessage.aggregate({ where: { status: "PENDENTE" }, _max: { sendAfter: true } }),
     prisma.whatsappMessage.aggregate({ where: { status: "ENVIADO" }, _max: { sentAt: true } }),
   ]);
-  const anchor = tail._max.sendAfter ?? lastSent._max.sentAt;
+  /*
+   * Carimbo de envio NO FUTURO é dado corrompido, e a fila não se ancora nele.
+   *
+   * Uma mensagem ENVIADO não pode ter sido enviada depois de agora. Quando
+   * isso aparece — foi o que aconteceu no banco de desenvolvimento, uma
+   * mensagem real drenada por um teste e carimbada com o relógio fictício de
+   * 2030 —, a âncora joga TODA mensagem nova para depois daquela data e a fila
+   * morre em silêncio: nada falha, nada avisa, simplesmente não sai mais nada.
+   *
+   * `sendAfter` da fila pendente não leva teto nenhum: ali estar no futuro é o
+   * propósito do campo.
+   */
+  const sentAt = lastSent._max.sentAt;
+  const anchor = tail._max.sendAfter ?? (sentAt && sentAt <= now ? sentAt : null);
 
   let cursor = anchor ? Math.max(now.getTime(), anchor.getTime() + delay()) : now.getTime();
   const data = unique.map((userId, index) => {

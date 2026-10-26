@@ -19,7 +19,7 @@ export async function getManagedUsers(): Promise<ManagedUser[]> {
 
   return rows.map((u: {
     id: string; fullName: string; username: string; role: string;
-    avatarPath: string | null; phone: string | null;
+    avatarPath: string | null; phone: string | null; canViewSectorDocs: boolean;
     sector: { label: string } | null;
     subsectors: { subsector: { label: string } }[];
   }) => ({
@@ -33,5 +33,6 @@ export async function getManagedUsers(): Promise<ManagedUser[]> {
     avatarPath: u.avatarPath ?? undefined,
     // Guardado em dígitos; a máscara é só para ler.
     phone: u.phone ? formatPhone(u.phone) : undefined,
+    canViewSectorDocs: u.canViewSectorDocs,
   }));
 }

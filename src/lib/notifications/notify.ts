@@ -2,6 +2,15 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { activeUserIdsInSector } from "./membership";
 import { ROLE_LABEL } from "@/lib/permissions";
+import { DHO_SLUG } from "@/lib/auth/access";
+import { categoryLabel } from "@/lib/personnel-catalog";
+import {
+  EXPIRY_WARNING_DAYS,
+  dayLabel,
+  folderStatus,
+  isoDay,
+  todayBR,
+} from "@/lib/personnel-expiry";
 import type { Role } from "@/types";
 
 /**
@@ -240,4 +249,119 @@ export async function notifyNewEmployeeInApp(input: NewEmployeeInput): Promise<v
       })),
     });
   });
+}
+
+/**
+ * Pastas do Departamento Pessoal a VENCER, para quem administra o DHO.
+ *
+ * Varredura, e não gatilho: nada acontece no dia em que um ASO entra na
+ * janela de 30 dias — o tempo passa e é isso. Roda na rota de cron já
+ * existente (`api/cron/evaluations`), que é disparada de fora.
+ *
+ * Um alvo individual por destinatário, e não `audience` de setor, porque o
+ * destinatário certo é exatamente quem a aba admite: o ADMIN e o GESTOR
+ * lotado no DHO. Audiência de subsetor entregaria também ao COLABORADOR do
+ * DHO, que não abre esta aba, e dependeria de o subsetor `rh` existir.
+ *
+ * Avisa uma vez por vencimento: `notifiedFor` guarda a data avisada, então o
+ * documento novo (que grava outro `expiresAt`) rearma o aviso sozinho. Só a
+ * janela de CUIDADO avisa — o vencido já está vermelho na tela, e repetir o
+ * aviso todo dia faria o sino ser ignorado.
+ *
+ * Devolve quantos avisos saíram.
+ */
+export async function notifyPersonnelExpiring(): Promise<number> {
+  let sent = 0;
+  await silently("vencimento de documento", async () => {
+    const today = todayBR();
+    // A janela em datas, para o banco filtrar: do dia de hoje ao último dia
+    // de aviso. O vencido fica fora de propósito.
+    const from = new Date(`${today}T00:00:00Z`);
+    const until = new Date(from.getTime() + EXPIRY_WARNING_DAYS * 86_400_000);
+
+    const rows = await prisma.personnelFolderExpiry.findMany({
+      where: { expiresAt: { gte: from, lte: until } },
+      select: {
+        ownerId: true,
+        folder: true,
+        expiresAt: true,
+        notifiedFor: true,
+        owner: { select: { fullName: true, active: true } },
+      },
+    });
+
+    // Quem já foi avisado DESTA data sai; cadastro inativo também — pasta de
+    // inativo não aparece na tela, e um aviso levaria a uma tela sem ela.
+    const candidates = rows.filter(
+      (r) =>
+        r.owner.active &&
+        (r.notifiedFor === null || isoDay(r.notifiedFor) !== isoDay(r.expiresAt)),
+    );
+    if (candidates.length === 0) return;
+
+    // Pasta VAZIA não vence: não há documento para renovar, e a tela a chama
+    // de "Pendente". Avisar que ela está perto de vencer contradiria o que o
+    // ladrilho diz. O estado sai da mesma função da tela, para os dois nunca
+    // discordarem.
+    const filled = await prisma.personnelFile.groupBy({
+      by: ["ownerId", "folder"],
+      where: { ownerId: { in: [...new Set(candidates.map((r) => r.ownerId))] } },
+    });
+    const hasFile = new Set(
+      (filled as { ownerId: string; folder: string }[]).map((f) => `${f.ownerId}\u0000${f.folder}`),
+    );
+    const pending = candidates.filter(
+      (r) =>
+        folderStatus(hasFile.has(`${r.ownerId}\u0000${r.folder}`), isoDay(r.expiresAt), today) ===
+        "cuidado",
+    );
+    if (pending.length === 0) return;
+
+    const recipients = await prisma.user.findMany({
+      where: {
+        active: true,
+        OR: [
+          { role: "ADMIN" },
+          {
+            role: "GESTOR",
+            OR: [
+              { sector: { slug: DHO_SLUG } },
+              { subsectors: { some: { subsector: { slug: DHO_SLUG } } } },
+            ],
+          },
+        ],
+      },
+      select: { id: true },
+    });
+    if (recipients.length === 0) return;
+
+    await prisma.notification.createMany({
+      data: pending.flatMap((r) => {
+        const folder = categoryLabel(r.folder) ?? r.folder;
+        const vence = dayLabel(isoDay(r.expiresAt));
+        return recipients.map(({ id }) => ({
+          kind: "SISTEMA" as const,
+          title: "Documento perto do vencimento",
+          body: `${r.owner.fullName}: ${folder} vence em ${vence}. Peça o documento novo e arquive na pasta.`,
+          href: "/setores/rh",
+          audience: [],
+          targetUserId: id,
+        }));
+      }),
+    });
+
+    // A marca vai DEPOIS dos avisos: falhar aqui repete o aviso amanhã, e
+    // marcar antes de um erro na criação faria o vencimento passar calado.
+    await Promise.all(
+      pending.map((r) =>
+        prisma.personnelFolderExpiry.update({
+          where: { ownerId_folder: { ownerId: r.ownerId, folder: r.folder } },
+          data: { notifiedFor: r.expiresAt },
+        }),
+      ),
+    );
+    sent = pending.length;
+  });
+
+  return sent;
 }

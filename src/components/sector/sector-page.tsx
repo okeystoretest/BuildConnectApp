@@ -370,6 +370,7 @@ export function SectorPage({
               onViewChange={setView}
             />
             <DocumentGrid
+              slug={sector.slug}
               documents={sector.documents.filter((doc) =>
                 doc.name.toLowerCase().includes(query.trim().toLowerCase()),
               )}

@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { sweepAvailability } from "@/lib/evaluation-schedule";
 import { drainOutbox, scheduleOutboxTick } from "@/lib/whatsapp/outbox";
 import { sweepStaleComprehensions } from "@/lib/video-comprehension-data";
+import { notifyPersonnelExpiring } from "@/lib/notifications/notify";
 
 /**
  * Varredura de liberação de ciclos, protegida por token.
@@ -51,6 +52,10 @@ export async function GET(request: Request) {
       return 0;
     });
 
+    // Documentação pessoal perto de vencer. Mesma razão das duas acima: não há
+    // gatilho possível — o que muda é a data de hoje.
+    const vencimentos = await notifyPersonnelExpiring();
+
     // Drena a fila do WhatsApp na mesma passada. Vem DEPOIS da varredura de
     // propósito: o que ela acabou de liberar já sai nesta rodada, em vez de
     // esperar o agendador acordar.
@@ -66,7 +71,7 @@ export async function GET(request: Request) {
     });
     scheduleOutboxTick();
 
-    return NextResponse.json({ ok: true, released, comprehension, whatsapp });
+    return NextResponse.json({ ok: true, released, comprehension, vencimentos, whatsapp });
   } catch (e) {
     console.error("[cron/evaluations] falha:", e);
     return NextResponse.json({ ok: false, error: "Falha na varredura." }, { status: 500 });

@@ -201,7 +201,7 @@ export function ItSectorView({
           </div>
         )}
 
-        {active === "documentos" && <DocumentGrid documents={content.documents} />}
+        {active === "documentos" && <DocumentGrid slug="ti" documents={content.documents} />}
 
         {active === "avaliacoes" &&
           (evaluations ? (

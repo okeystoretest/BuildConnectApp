@@ -124,7 +124,7 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
   const videoIds = subsectors.flatMap((s) => s.videos.map((v) => v.id));
   const totalItems = videoIds.length + subsectors.reduce((n, s) => n + s.documents.length, 0);
 
-  const [done, graded, ratings, performance, typeScales] = await Promise.all([
+  const [done, graded, ratings, performance, typeScales, personnelFiles] = await Promise.all([
     prisma.contentProgress.findMany({
       where: {
         userId: { in: memberIds },
@@ -195,7 +195,24 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
         sections: { select: { _count: { select: { questions: true } } } },
       },
     }),
+    /*
+     * Quantos documentos pessoais cada um já tem arquivado. Só a CONTAGEM: o
+     * card mostra um número e o modal busca as pastas sob demanda
+     * (`fetchPersonnelFolders`). Trazer os arquivos aqui seria carregar a
+     * documentação do setor inteiro para exibir um botão.
+     */
+    prisma.personnelFile.groupBy({
+      by: ["ownerId"],
+      where: { ownerId: { in: memberIds } },
+      _count: { _all: true },
+    }),
   ]);
+
+  const personnelCount = new Map(
+    (personnelFiles as { ownerId: string; _count: { _all: number } }[]).map(
+      (r) => [r.ownerId, r._count._all] as const,
+    ),
+  );
 
   const doneByUser = new Map<string, number>();
   // O que cada pessoa já concluiu, por id de conteúdo. É a outra metade da
@@ -293,6 +310,7 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
       pendingList,
       evaluations: evaluationsByUser.get(m.id) ?? [],
       performance: performanceByUser.get(m.id) ?? [],
+      personnelFiles: personnelCount.get(m.id) ?? 0,
     };
   });
 

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth/require-user";
-import { canAdministerDho } from "@/lib/auth/access";
+import { canAdministerDho, canReadPersonnelOf } from "@/lib/auth/access";
 import { docKind, storeFile, removeFile, FileStorageError } from "@/lib/storage/files";
 import { toAbsolutePath } from "@/lib/storage/config";
 import {
@@ -15,6 +15,8 @@ import {
   normalizeFolderName,
 } from "@/lib/personnel-catalog";
 import { getPersonnelFolders } from "@/lib/personnel-data";
+import { withoutFilePaths } from "@/lib/personnel-visibility";
+import { parseDay } from "@/lib/personnel-expiry";
 import type { PersonnelFolderGroup } from "@/types/hr";
 import type { Role } from "@/types";
 
@@ -48,6 +50,32 @@ async function requireDhoManager() {
   return { user, error: null };
 }
 
+/**
+ * Grava o vencimento de uma pasta e REARMA o aviso do sino.
+ *
+ * `notifiedFor: null` é o ponto desta função: a marca de "já avisei" guarda a
+ * data avisada, e sem zerá-la um documento novo com vencimento novo entraria
+ * na janela de aviso sem ninguém ser avisado.
+ *
+ * A data vem como "aaaa-mm-dd" e vira meia-noite UTC — a coluna é `DATE`, e é
+ * o calendário UTC que a lê de volta (ver `lib/personnel-expiry`).
+ */
+async function setFolderExpiry(ownerId: string, folder: string, day: string) {
+  const expiresAt = new Date(`${day}T00:00:00Z`);
+  await prisma.personnelFolderExpiry.upsert({
+    where: { ownerId_folder: { ownerId, folder } },
+    update: { expiresAt, notifiedFor: null },
+    create: { ownerId, folder, expiresAt },
+  });
+}
+
+/** O dia do campo de vencimento: `null` vazio, `false` quando não é data. */
+function expiryField(formData: FormData): string | null | false {
+  const raw = String(formData.get("expiresAt") ?? "").trim();
+  if (!raw) return null;
+  return parseDay(raw) ?? false;
+}
+
 /** Colaborador ATIVO; inativo não recebe nem entrega documentação. */
 async function activeOwner(ownerId: string) {
   if (!ownerId) return null;
@@ -67,16 +95,40 @@ async function activeOwner(ownerId: string) {
  * Sob demanda, e não tudo na página: são 11 pastas fixas por pessoa ativa, e
  * carregar a documentação de todo o quadro para mostrar uma pasta seria pagar
  * o arquivo inteiro da empresa em cada abertura da aba.
+ *
+ * Serve duas telas com réguas diferentes — o Departamento Pessoal (DHO) e o
+ * card do "Meu Setor" (Gestor, só a própria equipe) —, por isso o portão é
+ * `canReadPersonnelOf` e não `requireDhoManager`: o `ownerId` vem do cliente,
+ * e é aqui que se decide de quem o Gestor pode abrir a pasta.
+ *
+ * `canDownload` volta junto para a tela não precisar de uma segunda chamada
+ * só para saber se desenha o botão de baixar — que é do DHO e do Admin, os
+ * únicos a quem o arquivo original é entregue.
  */
-export async function fetchPersonnelFolders(
-  ownerId: string,
-): Promise<{ ok: boolean; groups?: PersonnelFolderGroup[]; error?: string }> {
-  const { user, error } = await requireDhoManager();
-  if (!user) return { ok: false, error: error ?? undefined };
+export async function fetchPersonnelFolders(ownerId: string): Promise<{
+  ok: boolean;
+  groups?: PersonnelFolderGroup[];
+  canDownload?: boolean;
+  error?: string;
+}> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Sessão expirada. Faça login novamente." };
+
+  const role = user.role as Role;
+  if (!ownerId || !(await canReadPersonnelOf(user.id, role, ownerId))) {
+    return { ok: false, error: "Documentação fora do seu alcance." };
+  }
 
   const groups = await getPersonnelFolders(ownerId);
   if (!groups) return { ok: false, error: "Colaborador não encontrado." };
-  return { ok: true, groups };
+
+  // Quem não baixa não recebe o caminho do arquivo. Ver `withoutFilePaths`.
+  const canDownload = await canAdministerDho(user.id, role);
+  return {
+    ok: true,
+    groups: canDownload ? groups : withoutFilePaths(groups),
+    canDownload,
+  };
 }
 
 // ──────────────────────────────────────────────
@@ -106,6 +158,22 @@ export async function uploadPersonnelFile(formData: FormData): Promise<ActionRes
     owner.personnelFolders.includes(folder);
   if (!known) return { ok: false, error: "Pasta não encontrada." };
 
+  // Vencimento ANTES de gravar o arquivo em disco: recusar depois deixaria o
+  // arquivo guardado e o envio com erro na tela.
+  //
+  // Pasta que vence EXIGE a data nova. É isso que "o reajuste ocorre mediante
+  // o upload" significa: sem data nova, o documento novo herdaria o
+  // vencimento do antigo e a pasta seguiria vermelha com um ASO em dia dentro.
+  const day = expiryField(formData);
+  if (day === false) return { ok: false, error: "Data de vencimento inválida." };
+  const expires = await prisma.personnelFolderExpiry.findUnique({
+    where: { ownerId_folder: { ownerId: owner.id, folder } },
+    select: { folder: true },
+  });
+  if (expires && !day) {
+    return { ok: false, error: "Informe o novo vencimento deste documento." };
+  }
+
   const name = String(formData.get("name") ?? "").trim() || file.name;
 
   let stored;
@@ -134,6 +202,11 @@ export async function uploadPersonnelFile(formData: FormData): Promise<ActionRes
     return { ok: false, error: "Falha ao salvar o documento." };
   }
 
+  // Depois do arquivo: o vencimento descreve o documento que acabou de entrar,
+  // e gravá-lo antes deixaria a data nova valendo para o documento antigo se
+  // o envio falhasse.
+  if (day) await setFolderExpiry(owner.id, folder, day);
+
   // Sem `notifyNewContent`: documentação pessoal não é conteúdo a divulgar.
   revalidatePath("/setores/rh");
   return { ok: true };
@@ -150,6 +223,9 @@ export async function createPersonnelFolder(formData: FormData): Promise<ActionR
   const ownerId = String(formData.get("ownerId") ?? "");
   const name = normalizeFolderName(String(formData.get("name") ?? ""));
   if (!name) return { ok: false, error: "Informe o nome da pasta." };
+
+  const day = expiryField(formData);
+  if (day === false) return { ok: false, error: "Informe a data de vencimento." };
 
   const owner = await activeOwner(ownerId);
   if (!owner) return { ok: false, error: "Colaborador não encontrado." };
@@ -170,18 +246,23 @@ export async function createPersonnelFolder(formData: FormData): Promise<ActionR
         ),
       },
     });
-    revalidatePath("/setores/rh");
-    return { ok: true };
+  } else {
+    if (owner.personnelFolders.some((f: string) => f.toLowerCase() === name.toLowerCase())) {
+      return { ok: false, error: "Esse colaborador já tem uma pasta com esse nome." };
+    }
+
+    await prisma.user.update({
+      where: { id: owner.id },
+      data: { personnelFolders: { push: name } },
+    });
   }
 
-  if (owner.personnelFolders.some((f: string) => f.toLowerCase() === name.toLowerCase())) {
-    return { ok: false, error: "Esse colaborador já tem uma pasta com esse nome." };
-  }
-
-  await prisma.user.update({
-    where: { id: owner.id },
-    data: { personnelFolders: { push: name } },
-  });
+  // "Esse documento vence?" — a resposta vale a partir de agora, inclusive
+  // quando é "não" numa pasta recriada: a linha antiga não pode sobreviver à
+  // resposta nova e pintar de amarelo uma pasta que não vence mais.
+  const folder = catalogKey ?? name;
+  if (day) await setFolderExpiry(owner.id, folder, day);
+  else await prisma.personnelFolderExpiry.deleteMany({ where: { ownerId: owner.id, folder } });
 
   revalidatePath("/setores/rh");
   return { ok: true };
@@ -268,6 +349,9 @@ export async function deletePersonnelFolder(formData: FormData): Promise<ActionR
 
   await prisma.$transaction([
     prisma.personnelFile.deleteMany({ where: { ownerId: owner.id, folder } }),
+    // O vencimento vai com a pasta: deixá-lo para trás faria a pasta recriada
+    // nascer com a data do documento que acabou de ser apagado.
+    prisma.personnelFolderExpiry.deleteMany({ where: { ownerId: owner.id, folder } }),
     prisma.user.update({
       where: { id: owner.id },
       data: fromCatalog

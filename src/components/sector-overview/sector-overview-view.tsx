@@ -27,9 +27,15 @@ function fold(text: string): string {
 export function SectorOverviewView({
   data,
   scopes,
+  canSeeDocuments,
 }: {
   data: SectorOverview;
   scopes: readonly OverviewScope[];
+  /**
+   * Quem está olhando alcança a documentação pessoal da equipe? Decidido na
+   * página, a partir do cadastro de quem abriu — o card só obedece.
+   */
+  canSeeDocuments: boolean;
 }) {
   const [tab, setTab] = useState("colaboradores");
   const [query, setQuery] = useState("");
@@ -97,7 +103,13 @@ export function SectorOverviewView({
         </div>
 
         <TabPanel tabId={tab} className="mt-5">
-          {tab === "colaboradores" && <MembersGrid members={members} filtered={Boolean(needle)} />}
+          {tab === "colaboradores" && (
+            <MembersGrid
+              members={members}
+              filtered={Boolean(needle)}
+              canSeeDocuments={canSeeDocuments}
+            />
+          )}
           {tab === "qualidade" && <VideoQualityGrid videos={videos} filtered={Boolean(needle)} />}
         </TabPanel>
       </Card>

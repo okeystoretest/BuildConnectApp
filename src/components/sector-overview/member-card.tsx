@@ -4,7 +4,10 @@ import { useState } from "react";
 import {
   CalendarDays,
   ClipboardList,
+  Download,
+  Eye,
   FileText,
+  FolderOpen,
   PlayCircle,
   Star,
   TriangleAlert,
@@ -22,6 +25,10 @@ import {
   type MemberStatus,
   type PendingContentGroup,
 } from "@/lib/sector-overview";
+import { fetchPersonnelFolders } from "@/lib/personnel-actions";
+import { PersonnelDocumentViewer } from "./personnel-document-viewer";
+import { folderStatusLabel } from "@/lib/personnel-expiry";
+import type { PersonnelFolderGroup } from "@/types/hr";
 
 /**
  * Média ausente vira travessão. Exibir 0,0 marcaria como péssimo quem apenas
@@ -85,6 +92,8 @@ function CardAction({
   emptyLabel,
   tone,
   onClick,
+  className,
+  openWhenEmpty = false,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -92,21 +101,31 @@ function CardAction({
   emptyLabel: string;
   tone: "warning" | "primary";
   onClick: () => void;
+  className?: string;
+  /**
+   * Abre mesmo com contagem zero. É o caso de Documentos: zero arquivo não é
+   * "nada para ver" — é a lista de pastas vazias, que é exatamente o que o
+   * gestor foi procurar.
+   */
+  openWhenEmpty?: boolean;
 }) {
   const empty = count === 0;
+  const disabled = empty && !openWhenEmpty;
   return (
     <button
       type="button"
       onClick={onClick}
-      disabled={empty}
-      aria-haspopup={empty ? undefined : "dialog"}
+      disabled={disabled}
+      aria-haspopup={disabled ? undefined : "dialog"}
       className={cn(
         "focus-ring flex min-w-0 flex-col items-start rounded-lg border px-3 py-2 text-left transition-colors",
         empty
-          ? "cursor-default border-border bg-surface-2"
+          ? "border-border bg-surface-2"
           : tone === "warning"
             ? "border-warning/40 bg-warning/10 hover:border-warning/60 hover:bg-warning/20"
             : "border-primary/40 bg-primary/10 hover:border-primary/60 hover:bg-primary/20",
+        disabled ? "cursor-default" : empty && "hover:border-border-strong hover:bg-surface-3",
+        className,
       )}
     >
       <span
@@ -170,10 +189,152 @@ function PendingGroupList({ group }: { group: PendingContentGroup }) {
   );
 }
 
-export function MemberCard({ member }: { member: MemberOverview }) {
+const FILE_KIND_STYLE: Record<string, string> = {
+  PDF: "bg-danger/15 text-danger",
+  DOCX: "bg-info/15 text-info",
+  XLSX: "bg-primary/15 text-primary",
+  PPTX: "bg-warning/15 text-warning",
+};
+
+/**
+ * As pastas do Departamento Pessoal de um colaborador, dentro do modal.
+ *
+ * Pasta vazia aparece, e não é omitida: o que falta é justamente o que o
+ * gestor precisa ver — uma lista só do que existe esconderia o ASO que nunca
+ * chegou.
+ */
+function PersonnelFolderList({
+  groups,
+  canDownload,
+  onOpen,
+}: {
+  groups: readonly PersonnelFolderGroup[];
+  canDownload: boolean;
+  onOpen: (file: { id: string; name: string }) => void;
+}) {
+  return (
+    <>
+      {groups.map((group) => (
+        <section key={group.key}>
+          <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted">
+            {group.label}
+          </h4>
+          <ul className="space-y-3">
+            {group.folders.map((folder) => (
+              <li key={folder.key}>
+                <p className="flex items-baseline justify-between gap-3">
+                  <span className="min-w-0 break-words text-sm text-foreground">
+                    {folder.label}
+                  </span>
+                  {/* A palavra, não a cor: "Pendente" e "Vencido" são ambos
+                      falta de documento, e o tom não diz qual é qual. */}
+                  <span
+                    className={cn(
+                      "shrink-0 text-[11px] tabular-nums",
+                      folder.status === "pendente" || folder.status === "vencido"
+                        ? "text-danger"
+                        : folder.status === "cuidado"
+                          ? "text-warning"
+                          : "text-muted",
+                    )}
+                  >
+                    {folderStatusLabel(folder.status, folder.expiresOn, folder.files.length)}
+                  </span>
+                </p>
+
+                {folder.files.length > 0 && (
+                  <ul className="mt-1.5 space-y-1.5">
+                    {folder.files.map((file) => (
+                      <li
+                        key={file.id}
+                        className="flex items-center gap-2 rounded-lg bg-surface-2 p-2"
+                      >
+                        <span
+                          className={cn(
+                            "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[9px] font-bold",
+                            FILE_KIND_STYLE[file.kind],
+                          )}
+                        >
+                          {file.kind}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-xs text-foreground">
+                            {file.name}
+                          </span>
+                          <span className="block text-[11px] tabular-nums text-muted">
+                            {file.size}
+                          </span>
+                        </span>
+                        {/* Abre DENTRO da plataforma, como imagem com marca
+                            d'água — nunca um link para o arquivo. Office não
+                            rasteriza, e o visualizador responde isso. */}
+                        <button
+                          type="button"
+                          onClick={() => onOpen({ id: file.id, name: file.name })}
+                          aria-label={`Visualizar ${file.name}`}
+                          className="focus-ring flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-surface-3 text-foreground transition-colors hover:bg-surface"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                        </button>
+                        {canDownload && (
+                          <a
+                            href={file.filePath}
+                            download
+                            aria-label={`Baixar ${file.name}`}
+                            className="focus-ring flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary transition-colors hover:bg-primary/25"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                          </a>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </>
+  );
+}
+
+export function MemberCard({
+  member,
+  canSeeDocuments,
+}: {
+  member: MemberOverview;
+  /**
+   * Quem OLHA alcança a documentação da equipe? Admin sempre; Gestor só com a
+   * permissão marcada no cadastro. Vem da página porque é do VISITANTE, não do
+   * colaborador do card — e o servidor confere de novo em cada leitura.
+   */
+  canSeeDocuments: boolean;
+}) {
   const [pendingModal, setPendingModal] = useState(false);
   const [evaluationsModal, setEvaluationsModal] = useState(false);
+  const [documentsModal, setDocumentsModal] = useState(false);
+  // As pastas chegam só quando o modal abre — ver `fetchPersonnelFolders`.
+  // `null` é "ainda não buscado"; o erro é texto porque o servidor é quem
+  // decide se este gestor alcança esta pessoa, e a recusa é para ser lida.
+  const [folders, setFolders] = useState<readonly PersonnelFolderGroup[] | null>(null);
+  const [canDownload, setCanDownload] = useState(false);
+  const [foldersError, setFoldersError] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<{ id: string; name: string } | null>(null);
   const status = STATUS[memberStatus(member.doneItems, member.totalItems)];
+
+  function openDocuments() {
+    setDocumentsModal(true);
+    if (folders || foldersError) return; // já buscado: o acervo não muda à toa.
+    void fetchPersonnelFolders(member.userId).then((res) => {
+      if (res.ok && res.groups) {
+        setFolders(res.groups);
+        setCanDownload(Boolean(res.canDownload));
+      } else {
+        setFoldersError(res.error ?? "Falha ao carregar a documentação.");
+      }
+    });
+  }
 
   const pendingGroups = groupPending(member.pendingList);
   // Um número só no botão: para o gestor as duas listas são "o que já foi
@@ -255,6 +416,20 @@ export function MemberCard({ member }: { member: MemberOverview }) {
             tone="primary"
             onClick={() => setEvaluationsModal(true)}
           />
+          {/* Documentos ocupa a linha inteira: numa grade de três, "Pendências"
+              e "Avaliações" quebram em duas linhas e desalinham os números. */}
+          {canSeeDocuments && (
+          <CardAction
+            icon={<FolderOpen className="h-3 w-3" />}
+            label="Documentos"
+            count={member.personnelFiles}
+            emptyLabel="Nenhum arquivado"
+            tone="primary"
+            onClick={openDocuments}
+            className="col-span-2"
+            openWhenEmpty
+          />
+          )}
         </div>
       </div>
 
@@ -281,6 +456,52 @@ export function MemberCard({ member }: { member: MemberOverview }) {
           )}
         </div>
       </Modal>
+
+      {/* Documentos: as pastas do Departamento Pessoal da pessoa. O arquivo em
+          si é alcançado pela mesma régua no servidor — ver `canReadPersonnelOf`
+          e a rota /uploads. Baixar é só do DHO e do Admin. */}
+      <Modal
+        open={documentsModal}
+        onClose={() => setDocumentsModal(false)}
+        title="Documentos"
+        description={`${member.name} · ${member.personnelFiles} ${
+          member.personnelFiles === 1 ? "documento arquivado" : "documentos arquivados"
+        }`}
+        className="max-w-lg"
+        footer={
+          <div className="flex justify-end">
+            <Button variant="secondary" onClick={() => setDocumentsModal(false)}>
+              Fechar
+            </Button>
+          </div>
+        }
+      >
+        <div className="scrollbar-slim max-h-[60vh] space-y-6 overflow-y-auto p-6">
+          {foldersError ? (
+            <p className="text-sm text-danger">{foldersError}</p>
+          ) : folders === null ? (
+            <p className="text-sm text-muted">Carregando a documentação…</p>
+          ) : folders.length === 0 ? (
+            <p className="text-sm text-muted">Nenhuma pasta criada para este colaborador.</p>
+          ) : (
+            <>
+              <PersonnelFolderList
+                groups={folders}
+                canDownload={canDownload}
+                onOpen={setViewing}
+              />
+              {!canDownload && (
+                <p className="border-t border-border pt-4 text-[11px] text-muted">
+                  O documento abre aqui dentro, como imagem com marca d&apos;água no seu
+                  nome. O arquivo original é do Departamento Pessoal.
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      </Modal>
+
+      <PersonnelDocumentViewer file={viewing} onClose={() => setViewing(null)} />
 
       {/* Avaliações: notas de compreensão de vídeo e avaliações de desempenho. */}
       <Modal

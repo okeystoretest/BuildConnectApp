@@ -294,3 +294,70 @@ test("colaborador inativo sai da lista e das pastas, sem perder arquivo", async 
 
   await prisma.user.update({ where: { id: ownerId }, data: { active: true } });
 });
+
+/**
+ * Vencimento: o estado da pasta deixa de ser "tem arquivo?" e passa a ser
+ * "tem arquivo VÁLIDO?". É o que pode quebrar calado — a coluna é `DATE`, e
+ * meia-noite UTC lida no fuso de Brasília cai no dia anterior.
+ */
+test("o vencimento pinta a pasta e o card, e o dia é lido sem escorregar", async () => {
+  const solo = await prisma.user.create({
+    data: {
+      username: `dp-venc-${stamp()}${MARK}`,
+      fullName: `Vencimento ${MARK}`,
+      passwordHash: "x",
+      role: "COLABORADOR",
+    },
+    select: { id: true },
+  });
+
+  await prisma.personnelFile.createMany({
+    data: PERSONNEL_CATEGORY_KEYS.map((folder) => ({
+      ownerId: solo.id,
+      folder,
+      name: `${folder} ${MARK}.pdf`,
+      kind: "PDF" as const,
+      sizeBytes: 10,
+      filePath: `/uploads/pessoal/2026/10/${folder}.pdf`,
+    })),
+  });
+
+  const card = async () => (await getPersonnelRoster()).find((p) => p.id === solo.id);
+  const aso = async () =>
+    (await getPersonnelFolders(solo.id))?.flatMap((g) => g.folders).find((f) => f.key === "aso");
+
+  assert.equal((await card())?.status, "ok", "dossiê completo e sem vencimento = ok");
+  assert.equal((await aso())?.expiresOn, null);
+
+  const inDays = (n: number) => {
+    const d = new Date(Date.now() + n * 86_400_000);
+    return d.toISOString().slice(0, 10);
+  };
+
+  // Dentro da janela de aviso: amarelo.
+  const soon = inDays(10);
+  await prisma.personnelFolderExpiry.create({
+    data: { ownerId: solo.id, folder: "aso", expiresAt: new Date(`${soon}T00:00:00Z`) },
+  });
+  assert.equal((await aso())?.expiresOn, soon, "o dia gravado é o dia lido de volta");
+  assert.equal((await aso())?.status, "cuidado");
+  assert.equal((await card())?.status, "cuidado");
+  assert.equal((await card())?.warningFolders, 1);
+
+  // Já passou: vermelho.
+  await prisma.personnelFolderExpiry.update({
+    where: { ownerId_folder: { ownerId: solo.id, folder: "aso" } },
+    data: { expiresAt: new Date(`${inDays(-1)}T00:00:00Z`) },
+  });
+  assert.equal((await aso())?.status, "vencido");
+  assert.equal((await card())?.status, "vencido");
+  assert.equal((await card())?.expiredFolders, 1);
+
+  // Pasta vazia é pendente mesmo vencendo — e pendente ganha de vencido no card.
+  await prisma.personnelFile.deleteMany({ where: { ownerId: solo.id, folder: "ctps" } });
+  assert.equal((await aso())?.status, "vencido", "a CTPS vazia não muda o ASO");
+  assert.equal((await card())?.status, "pendente");
+
+  await prisma.personnelFile.deleteMany({ where: { ownerId: solo.id } });
+  await prisma.user.delete({ where: { id: solo.id } });
+});

@@ -40,7 +40,12 @@ export function MyTicketsKanban({ tickets, onSelect }: MyTicketsKanbanProps) {
               <span className="text-xs text-muted">{columnTickets.length}</span>
             </header>
 
-            <div className="scrollbar-slim flex-1 space-y-3 overflow-y-auto [max-height:calc(100vh-18rem)]">
+            {/* Três cards e o resto rola. O teto é em pixels porque card de
+                chamado não tem altura fixa (título de uma ou duas linhas, aviso
+                de sincronia opcional) — shortcut: com títulos longos aparecem
+                ~2,5 cards em vez de 3; medir a altura real pediria JS por card.
+                O `min()` mantém o teto antigo de viewport para tela baixa. */}
+            <div className="scrollbar-slim flex-1 space-y-3 overflow-y-auto [max-height:min(31.5rem,calc(100vh-18rem))]">
               {columnTickets.length === 0 ? (
                 <p className="rounded-lg border border-dashed border-border py-8 text-center text-xs text-muted">
                   Nenhum chamado

@@ -46,6 +46,7 @@ function emptyState(): UserFormState {
     sector: "",
     unit: "",
     subsectors: [],
+    canViewSectorDocs: false,
   };
 }
 
@@ -73,6 +74,7 @@ function stateFromUser(user: ManagedUser): UserFormState {
     unit: "",
     subsectors:
       user.subsectors === "—" ? [] : user.subsectors.split(",").map((s) => s.trim()).filter(Boolean),
+    canViewSectorDocs: user.canViewSectorDocs,
   };
 }
 
@@ -193,6 +195,9 @@ export function UserFormModal({ open, onClose, initial, onSaved }: UserFormModal
     fd.set("sector", form.sector);
     fd.set("unit", form.unit);
     for (const sub of form.subsectors) fd.append("subsectors", sub);
+    // Só marcado viaja, como todo checkbox em formulário. Ausente é `false`,
+    // e o servidor ainda zera o campo para quem não é Gestor.
+    if (form.role === "GESTOR" && form.canViewSectorDocs) fd.set("canViewSectorDocs", "on");
     if (form.photo instanceof File) fd.set("photo", form.photo);
 
     startSubmit(async () => {
@@ -344,6 +349,32 @@ export function UserFormModal({ open, onClose, initial, onSaved }: UserFormModal
             />
             {errors.role && <p className="mt-1.5 text-xs text-danger">{errors.role}</p>}
           </div>
+
+          {/* Só para Gestor: o Admin alcança sempre, o Colaborador nunca —
+              para os dois a pergunta não teria resposta que mudasse algo. A
+              marca fica no estado ao trocar de papel, e é o envio que a
+              descarta; assim voltar para Gestor não apaga o que foi marcado
+              por engano de clique. */}
+          {form.role === "GESTOR" && (
+            <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-surface-2 p-4">
+              <input
+                type="checkbox"
+                checked={form.canViewSectorDocs}
+                onChange={(e) => patch({ canViewSectorDocs: e.target.checked })}
+                className="mt-0.5 h-4 w-4 accent-accent"
+              />
+              <span>
+                <span className="block text-sm font-medium text-foreground">
+                  Deve possuir acesso aos documentos dos colaboradores do setor?
+                </span>
+                <span className="mt-1 block text-xs leading-relaxed text-muted">
+                  Em &quot;Meu Setor&quot;, abre as pastas do Departamento Pessoal da equipe
+                  dele. O documento é exibido como imagem com marca d&apos;água — baixar o
+                  arquivo continua só com o DHO e o Admin.
+                </span>
+              </span>
+            </label>
+          )}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div>

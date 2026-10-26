@@ -506,6 +506,49 @@ export async function uploadSectorDocument(formData: FormData): Promise<ActionRe
   }
 }
 
+/**
+ * Exclui o documento: registro (o progresso cai em cascata) e, depois, o
+ * arquivo. Mesma ordem do vídeo: registro sem arquivo é um card quebrado;
+ * arquivo sem registro é só espaço em disco.
+ *
+ * O `subsectorId` entra no `findFirst` de propósito: sem ele um id de
+ * documento de OUTRO setor seria aceito, e o Admin apagaria pelo setor errado.
+ */
+export async function deleteSectorDocument(input: {
+  slug: string;
+  id: string;
+}): Promise<ActionResult> {
+  const { user, error } = await requireAdmin();
+  if (!user) return { ok: false, error: error ?? undefined };
+
+  const parsed = z.object({ slug: z.string().min(1), id: z.string().min(1) }).safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Dados inválidos." };
+  const { slug, id } = parsed.data;
+
+  const subsectorId = await subsectorIdFromSlug(slug);
+  if (!subsectorId) return { ok: false, error: "Setor não encontrado." };
+
+  const document = await prisma.document.findFirst({
+    where: { id, subsectorId },
+    select: { filePath: true },
+  });
+  if (!document) return { ok: false, error: "Documento não encontrado." };
+
+  try {
+    await prisma.document.delete({ where: { id } });
+  } catch (e) {
+    console.error("[deleteSectorDocument] db:", e);
+    return { ok: false, error: "Falha ao excluir o documento." };
+  }
+
+  // `null` = caminho fora da raiz de upload. Não é arquivo nosso para apagar.
+  const absolute = toAbsolutePath(document.filePath);
+  if (absolute) await removeFile(absolute);
+
+  revalidatePath(`/setores/${slug}`);
+  return { ok: true };
+}
+
 // ──────────────────────────────────────────────
 // Aplicativos (atalhos de plataforma)
 // ──────────────────────────────────────────────

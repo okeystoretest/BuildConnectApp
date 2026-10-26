@@ -1,7 +1,11 @@
 "use client";
 
+import { useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Download, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { deleteSectorDocument } from "@/lib/sector-actions";
+import { useToast } from "@/providers/toast-provider";
 import { EditableMediaActions } from "./editable-media-actions";
 import type { DocumentItem, FileKind } from "@/types/sector";
 
@@ -13,12 +17,34 @@ const KIND_STYLE: Record<FileKind, string> = {
   PNG: "bg-accent/15 text-accent",
 };
 
-export function DocumentGrid({ documents }: { documents: readonly DocumentItem[] }) {
+export function DocumentGrid({
+  documents,
+  slug,
+}: {
+  documents: readonly DocumentItem[];
+  slug: string;
+}) {
+  const router = useRouter();
+  const toast = useToast();
+  const [, startDelete] = useTransition();
+
+  function remove(doc: DocumentItem) {
+    startDelete(async () => {
+      const res = await deleteSectorDocument({ slug, id: doc.id });
+      if (res.ok) {
+        toast.success("Documento excluído.");
+        router.refresh();
+      } else {
+        toast.error(res.error ?? "Falha ao excluir o documento.");
+      }
+    });
+  }
+
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {documents.map((doc) => (
         <article key={doc.id} className="relative rounded-xl border border-border bg-surface p-4">
-          <EditableMediaActions title={doc.name} tags={doc.tags} />
+          <EditableMediaActions title={doc.name} tags={doc.tags} onDelete={() => remove(doc)} />
 
           <div className="flex items-start gap-3">
             <span

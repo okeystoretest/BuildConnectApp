@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth/require-user";
 import { canAdministerDho } from "@/lib/auth/access";
+import { sectorDocsFlag } from "@/lib/personnel-visibility";
 import { hashPassword } from "@/lib/auth/password";
 import { generatePassword } from "@/lib/auth/generate-password";
 import type { Role } from "@/types";
@@ -108,7 +109,19 @@ const baseSchema = z.object({
   sector: z.string().trim().min(1, "Selecione o setor."),
   unit: z.string().trim().min(1, "Selecione a unidade."),
   subsectors: z.array(z.string()).default([]),
+  /*
+   * O Gestor alcança a documentação pessoal da equipe dele?
+   *
+   * Só o checkbox marcado manda o campo, então ausente é `false` — o padrão
+   * seguro. E `false` é FORÇADO para quem não é Gestor logo abaixo: rebaixar
+   * alguém a Colaborador tem de retirar o acesso junto, senão a permissão
+   * ficaria dormente, pronta para reviver na próxima promoção.
+   */
+  canViewSectorDocs: z
+    .union([z.literal("on"), z.literal("true"), z.null(), z.undefined()])
+    .transform((v) => v === "on" || v === "true"),
 });
+
 
 // ──────────────────────────────────────────────
 // Criar usuário
@@ -126,6 +139,7 @@ export async function createUser(formData: FormData): Promise<UserActionResult> 
     sector: formData.get("sector"),
     unit: formData.get("unit"),
     subsectors: formData.getAll("subsectors").map(String),
+    canViewSectorDocs: formData.get("canViewSectorDocs"),
   };
 
   const parsed = baseSchema.safeParse(raw);
@@ -174,6 +188,7 @@ export async function createUser(formData: FormData): Promise<UserActionResult> 
           fullName: data.fullName,
           passwordHash,
           role: data.role,
+          canViewSectorDocs: sectorDocsFlag(data.role, data.canViewSectorDocs),
           phone: data.phone,
           sectorId,
           unitId,
@@ -251,6 +266,7 @@ export async function updateUser(formData: FormData): Promise<UserActionResult> 
     sector: formData.get("sector"),
     unit: formData.get("unit"),
     subsectors: formData.getAll("subsectors").map(String),
+    canViewSectorDocs: formData.get("canViewSectorDocs"),
   };
   const parsed = baseSchema.safeParse(raw);
   if (!parsed.success) {
@@ -312,6 +328,10 @@ export async function updateUser(formData: FormData): Promise<UserActionResult> 
           username: data.username,
           fullName: data.fullName,
           role: data.role,
+          // Desmarcar vale na requisição SEGUINTE, sem revogar sessão: o
+          // portão lê esta coluna do banco a cada acesso (canReadPersonnelOf),
+          // e não do cookie. Tirar o acesso não precisa derrubar o login.
+          canViewSectorDocs: sectorDocsFlag(data.role, data.canViewSectorDocs),
           phone: data.phone,
           sectorId,
           unitId,

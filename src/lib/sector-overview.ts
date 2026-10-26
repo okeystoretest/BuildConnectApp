@@ -131,6 +131,11 @@ export interface MemberOverview {
   evaluations: MemberEvaluation[];
   /** Avaliações de desempenho respondidas, da mais recente para a mais antiga. */
   performance: MemberPerformanceEvaluation[];
+  /**
+   * Quantos documentos pessoais já arquivados no Departamento Pessoal. Só a
+   * contagem: as pastas vêm sob demanda quando o modal abre.
+   */
+  personnelFiles: number;
 }
 
 /** Em que ponto do conteúdo a pessoa está. */
