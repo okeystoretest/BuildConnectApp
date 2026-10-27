@@ -131,10 +131,17 @@ async function rasterizePdfPage(
     isEvalSupported: false,
     useSystemFonts: false,
     // Fontes padrão do próprio pacote, para PDF que não embute a fonte.
-    standardFontDataUrl: path.join(
-      path.dirname(require.resolve("pdfjs-dist/package.json")),
-      "standard_fonts/",
-    ),
+    //
+    // Caminho montado a partir do CWD, e NÃO com `require.resolve`: o webpack
+    // do Next reescreve `require.resolve` para o ID NUMÉRICO do módulo, e o
+    // `path.dirname` recebia 15754 em vez de um caminho — estourando
+    // ERR_INVALID_ARG_TYPE em todo PDF. O teste unitário não pegava porque o
+    // tsx compila para CJS, onde `require.resolve` é a função de verdade.
+    //
+    // shortcut: assume node_modules ao lado do CWD, que vale no `next dev` e
+    // na imagem (WORKDIR /app); rever se o deploy passar a rodar de outro
+    // diretório.
+    standardFontDataUrl: path.join(process.cwd(), "node_modules/pdfjs-dist/standard_fonts/"),
   }).promise;
 
   try {
