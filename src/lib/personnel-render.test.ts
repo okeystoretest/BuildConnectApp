@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import sharp from "sharp";
-import { isRenderable, parsePageParam, renderWatermarked } from "./personnel-render";
+import {
+  isRenderable,
+  parsePageParam,
+  renderWatermarked,
+  watermarkLines,
+} from "./personnel-render";
 
 /**
  * PDF de duas páginas escrito à mão.
@@ -28,6 +33,13 @@ function twoPagePdf(): Buffer {
   return Buffer.from(`%PDF-1.4\n${body}trailer<</Root 1 0 R/Size ${objects.length + 1}>>\n%%EOF\n`);
 }
 
+/** Uma imagem mínima no formato pedido, para provar o decodificador. */
+function amostra(formato: "png" | "jpeg" | "webp" | "tiff" | "gif"): Promise<Buffer> {
+  return sharp({ create: { width: 60, height: 40, channels: 3, background: "#cccccc" } })
+    .toFormat(formato)
+    .toBuffer();
+}
+
 async function writeTemp(name: string, data: Buffer): Promise<string> {
   const dir = await mkdtemp(path.join(tmpdir(), "bc-render-"));
   const file = path.join(dir, name);
@@ -38,8 +50,14 @@ async function writeTemp(name: string, data: Buffer): Promise<string> {
 test("isRenderable aceita PDF e imagem, recusa Office", () => {
   assert.equal(isRenderable("/uploads/pessoal/2026/10/aso.pdf"), true);
   assert.equal(isRenderable("/uploads/pessoal/2026/10/rg.PNG"), true);
+  assert.equal(isRenderable("/uploads/pessoal/2026/10/rg.jpg"), true);
+  // Digitalização de scanner, que é como boa parte dos documentos chega.
+  assert.equal(isRenderable("/uploads/pessoal/2026/10/ctps.tiff"), true);
+  // Office não rasteriza sem uma suíte de escritório no servidor: o visor
+  // recusa, e o DHO baixa o arquivo. Ninguém fica sem acesso.
   assert.equal(isRenderable("/uploads/pessoal/2026/10/ctps.docx"), false);
   assert.equal(isRenderable("/uploads/pessoal/2026/10/folha.xlsx"), false);
+  assert.equal(isRenderable("/uploads/pessoal/2026/10/treino.pptx"), false);
 });
 
 test("PDF vira imagem com marca d'água, e conta as páginas", async () => {
@@ -70,17 +88,21 @@ test("página fora da faixa cai na primeira, em vez de estourar", async () => {
   assert.equal(nona.image.toString("base64"), primeira.image.toString("base64"));
 });
 
-test("imagem é servida como uma página só", async () => {
-  const png = await sharp({
-    create: { width: 60, height: 40, channels: 3, background: "#cccccc" },
-  })
-    .png()
-    .toBuffer();
-  const file = await writeTemp("rg.png", png);
-
-  const out = await renderWatermarked(file, 1, "Marcos Lucas");
-  assert.equal(out.pages, 1);
-  assert.equal((await sharp(out.image).metadata()).format, "webp");
+test("imagem é servida como uma página só, em qualquer formato aceito", async () => {
+  // Um por formato que o envio aceita: habilitar no upload sem o decodificador
+  // correspondente arquivaria documento que o visor não abre.
+  for (const [nome, buffer] of [
+    ["rg.png", await amostra("png")],
+    ["cpf.jpg", await amostra("jpeg")],
+    ["residencia.webp", await amostra("webp")],
+    ["ctps.tiff", await amostra("tiff")],
+    ["certidao.gif", await amostra("gif")],
+  ] as const) {
+    const file = await writeTemp(nome, buffer);
+    const out = await renderWatermarked(file, 1, "Marcos Lucas");
+    assert.equal(out.pages, 1, nome);
+    assert.equal((await sharp(out.image).metadata()).format, "webp", nome);
+  }
 });
 
 test("nome com caractere de XML não quebra a marca d'água", async () => {
@@ -101,4 +123,13 @@ test("parsePageParam aceita só inteiro positivo; o resto cai na primeira págin
   // Fracionário não é página: 1.5 arredondaria para um lado qualquer.
   assert.equal(parsePageParam("1.5"), 1);
   assert.equal(parsePageParam("Infinity"), 1);
+});
+
+test("a marca d'água diz quem olhou e que a cópia não é autorizada", () => {
+  const [quem, aviso] = watermarkLines("Marcos Lucas", "27/10/2026");
+  assert.equal(quem, "Visualizado por: Marcos Lucas");
+  assert.equal(aviso, "CÓPIA NÃO AUTORIZADA · 27/10/2026");
+  // As duas linhas importam: o nome responde quem tirou, o aviso fala com
+  // quem recebeu a cópia depois. Perder qualquer uma esvazia a marca.
+  assert.equal(watermarkLines("x", "y").length, 2);
 });

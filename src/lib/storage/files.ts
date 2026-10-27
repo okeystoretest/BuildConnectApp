@@ -43,6 +43,23 @@ const RULES: Record<
       "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       "application/vnd.ms-powerpoint",
       "image/png",
+      // Documento pessoal chega como FOTO ou DIGITALIZAÇÃO, não como PNG:
+      // celular entrega JPEG, scanner entrega TIFF, e navegador moderno salva
+      // em WEBP. Sem estes, o RG fotografado era recusado por "formato
+      // inválido" e a pasta ficava vazia por culpa do aparelho.
+      //
+      // Todos são decodificados pelo `sharp`, que é quem rasteriza a página no
+      // visor — aceitar um formato que ele não lê arquivaria um documento que
+      // ninguém consegue abrir.
+      //
+      // HEIC fica de fora apesar de o sharp LER: o suporte depende de codec
+      // que nem toda instalação traz, e eu não consigo provar aqui o que a
+      // imagem de produção faz. Na dúvida, o iPhone já converte para JPEG ao
+      // enviar pela web. SVG fica de fora por SEGURANÇA — ver RULE_EXTENSIONS.
+      "image/jpeg",
+      "image/webp",
+      "image/tiff",
+      "image/gif",
     ]),
     // .pptx/.ppt chegam sem MIME do Explorador do Windows em algumas
     // instalações — mesmo mecanismo do fallback de .mkv em vídeo.
@@ -75,7 +92,10 @@ const RULES: Record<
  */
 const RULE_EXTENSIONS: Record<keyof typeof RULES, ReadonlySet<string>> = {
   video: new Set([".mp4", ".webm", ".mov", ".mkv"]),
-  document: new Set([".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".png"]),
+  document: new Set([
+    ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+    ".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".gif",
+  ]),
   pdf: new Set([".pdf"]),
   transcript: new Set([".txt", ".vtt", ".srt", ".md"]),
 };

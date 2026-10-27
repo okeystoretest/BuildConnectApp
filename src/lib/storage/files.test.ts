@@ -58,3 +58,39 @@ test("documento .pptx sem MIME é aceito pela extensão", async () => {
   assert.match(stored.publicPath, /\.pptx$/);
   assert.equal(stored.sizeBytes, 2);
 });
+
+test("foto e digitalização de documento são aceitas", async () => {
+  // Celular entrega JPEG, scanner entrega TIFF. Sem eles o RG fotografado era
+  // recusado por "formato inválido", e a pasta ficava vazia por culpa do
+  // aparelho, não do colaborador.
+  for (const [nome, mime] of [
+    ["rg.jpg", "image/jpeg"],
+    ["cpf.jpeg", "image/jpeg"],
+    ["residencia.webp", "image/webp"],
+    ["ctps.tiff", "image/tiff"],
+    ["aso.tif", "image/tiff"],
+  ] as const) {
+    const file = new File([new Uint8Array([1, 2])], nome, { type: mime });
+    const stored = await files.storeFile(file, "document", "pessoal");
+    assert.ok(stored.publicPath.endsWith(path.extname(nome)), stored.publicPath);
+  }
+});
+
+test("imagem que o visor não abriria continua recusada", async () => {
+  // HEIC: o sharp LÊ o formato nesta instalação, mas o suporte depende de
+  // codec que nem toda imagem de produção traz — e documento arquivado que
+  // não abre é pior que envio recusado. O iPhone converte para JPEG ao enviar
+  // pela web, então o caso prático está coberto. SVG é recusa de SEGURANÇA:
+  // executa script se for servido na origem da aplicação.
+  for (const [nome, mime] of [
+    ["foto.heic", "image/heic"],
+    ["payload.svg", "image/png"],
+  ] as const) {
+    const file = new File([new Uint8Array([1])], nome, { type: mime });
+    await assert.rejects(
+      () => files.storeFile(file, "document", "pessoal"),
+      (e: unknown) => e instanceof files.FileStorageError,
+      `${nome} deveria ser recusado`,
+    );
+  }
+});

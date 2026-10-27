@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import sharp from "sharp";
+import { dateLabelBR } from "@/lib/brasilia";
 import { DOMMatrix, DOMPoint, ImageData, Path2D, createCanvas } from "@napi-rs/canvas";
 
 /**
@@ -51,7 +52,9 @@ export function parsePageParam(raw: string | null): number {
 
 /** Formatos que sabemos transformar em imagem. O resto não tem visualizador. */
 export function isRenderable(filePath: string): boolean {
-  return [".pdf", ".png", ".jpg", ".jpeg", ".webp"].includes(
+  // A mesma lista que o envio aceita entre imagens, mais o PDF. Se as duas
+  // divergirem, o DHO arquiva um documento que o visor recusa a abrir.
+  return [".pdf", ".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff", ".gif"].includes(
     path.extname(filePath).toLowerCase(),
   );
 }
@@ -67,25 +70,47 @@ function escapeXml(value: string): string {
 }
 
 /**
- * A marca d'água: o nome repetido na diagonal, por cima de toda a página.
+ * O que a marca d'água diz.
  *
- * Repetida e inclinada de propósito — uma única linha num canto sai de um
+ * Duas linhas, e as duas importam: o nome responde "quem tirou daqui", e o
+ * aviso responde "esta cópia não deveria estar na sua mão" para quem a receber
+ * depois — que é justamente quem não estava presente quando ela saiu.
+ *
+ * Em função separada porque é TEXTO DE REGRA, não layout: se a frase mudar,
+ * muda aqui, e o teste prende a redação.
+ */
+export function watermarkLines(viewer: string, day: string): [string, string] {
+  return [`Visualizado por: ${viewer}`, `CÓPIA NÃO AUTORIZADA · ${day}`];
+}
+
+/**
+ * A marca d'água: as duas linhas repetidas na diagonal, por toda a página.
+ *
+ * Repetida e inclinada de propósito — uma única marca num canto sai de um
  * recorte, e o recorte é exatamente o que se faz antes de encaminhar.
  */
-function watermarkSvg(width: number, height: number, label: string): Buffer {
-  const text = escapeXml(label);
-  const step = 320;
-  const rows: string[] = [];
-  for (let y = -height; y < height * 2; y += step) {
-    for (let x = -width; x < width * 2; x += step * 2) {
-      rows.push(
-        `<text x="${x}" y="${y}" font-family="sans-serif" font-size="30" ` +
-          `fill="#1f2937" fill-opacity="0.2" transform="rotate(-30 ${x} ${y})">${text}</text>`,
+function watermarkSvg(width: number, height: number, lines: readonly string[]): Buffer {
+  // Passo maior que o da marca de uma linha só: o texto agora é mais largo e
+  // mais alto, e manter o passo antigo faria uma marca encostar na vizinha.
+  const stepY = 300;
+  const stepX = 560;
+  const marks: string[] = [];
+  for (let y = -height; y < height * 2; y += stepY) {
+    for (let x = -width; x < width * 2; x += stepX) {
+      const texto = lines
+        .map(
+          (linha, i) =>
+            `<tspan x="${x}" dy="${i === 0 ? 0 : 30}">${escapeXml(linha)}</tspan>`,
+        )
+        .join("");
+      marks.push(
+        `<text y="${y}" font-family="sans-serif" font-size="24" font-weight="600" ` +
+          `fill="#1f2937" fill-opacity="0.2" transform="rotate(-30 ${x} ${y})">${texto}</text>`,
       );
     }
   }
   return Buffer.from(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${rows.join("")}</svg>`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${marks.join("")}</svg>`,
   );
 }
 
@@ -146,11 +171,14 @@ async function rasterizePdfPage(
  *
  * `pages` é 1 para imagem — um JPG não tem página 2, e a tela usa o número
  * para decidir se desenha a navegação.
+ *
+ * Recebe o NOME de quem olha, e não a frase pronta: a redação da marca é regra
+ * deste módulo (ver `watermarkLines`), não de quem chama.
  */
 export async function renderWatermarked(
   absolutePath: string,
   page: number,
-  watermarkLabel: string,
+  viewerName: string,
 ): Promise<{ image: Buffer; pages: number }> {
   const extension = path.extname(absolutePath).toLowerCase();
   const file = await readFile(absolutePath);
@@ -165,7 +193,13 @@ export async function renderWatermarked(
   const height = meta.height ?? TARGET_WIDTH;
 
   const image = await sharp(png)
-    .composite([{ input: watermarkSvg(width, height, watermarkLabel), top: 0, left: 0 }])
+    .composite([
+      {
+        input: watermarkSvg(width, height, watermarkLines(viewerName, dateLabelBR(new Date()))),
+        top: 0,
+        left: 0,
+      },
+    ])
     .webp({ quality: 82 })
     .toBuffer();
 

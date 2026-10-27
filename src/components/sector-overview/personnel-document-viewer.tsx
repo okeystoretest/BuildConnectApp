@@ -98,7 +98,10 @@ export function PersonnelDocumentViewer({ file, onClose }: PersonnelDocumentView
       role="dialog"
       aria-modal="true"
       aria-label={file.name}
-      className="fixed inset-0 z-[70] flex flex-col bg-background/97"
+      // 95 e não 97: a escala de opacidade do Tailwind não tem 97, e a classe
+      // simplesmente não é gerada — o visor ficava transparente e o modal
+      // atrás dele aparecia por cima do documento.
+      className="fixed inset-0 z-[70] flex flex-col bg-background/95"
     >
       <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
         <p className="min-w-0 truncate text-sm font-medium text-foreground">{file.name}</p>

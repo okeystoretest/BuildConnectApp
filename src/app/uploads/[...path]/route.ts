@@ -51,6 +51,8 @@ const CONTENT_TYPE: Record<string, string> = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".gif": "image/gif",
+  ".tif": "image/tiff",
+  ".tiff": "image/tiff",
   ".pdf": "application/pdf",
   ".txt": "text/plain; charset=utf-8",
   ".md": "text/plain; charset=utf-8",

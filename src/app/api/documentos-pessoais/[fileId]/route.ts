@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth/require-user";
 import { canReadPersonnelOf } from "@/lib/auth/access";
-import { dateLabelBR } from "@/lib/brasilia";
 import { isRenderable, parsePageParam, renderWatermarked } from "@/lib/personnel-render";
 import { toAbsolutePath } from "@/lib/storage/config";
 import type { Role } from "@/types";
@@ -52,7 +51,7 @@ export async function GET(
     const { image, pages } = await renderWatermarked(
       absolute,
       page,
-      `${user.fullName} · ${dateLabelBR(new Date())}`,
+      user.fullName,
     );
     return new Response(new Uint8Array(image), {
       headers: {
