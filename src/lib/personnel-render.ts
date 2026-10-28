@@ -1,8 +1,9 @@
-import { readFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import sharp from "sharp";
 import { dateLabelBR } from "@/lib/brasilia";
-import { DOMMatrix, DOMPoint, ImageData, Path2D, createCanvas } from "@napi-rs/canvas";
 
 /**
  * Renderização protegida de documento pessoal.
@@ -21,21 +22,36 @@ import { DOMMatrix, DOMPoint, ImageData, Path2D, createCanvas } from "@napi-rs/c
  */
 
 /*
- * O pdfjs desenha contra os tipos do DOM, que em Node não existem. Sem estes
- * globais ele cai num Path2D próprio, e o canvas nativo recusa o objeto —
- * "não é um CanvasFillRule válido", no meio do desenho da primeira letra.
+ * O PDF é rasterizado pelo `pdftoppm`, do poppler, em PROCESSO SEPARADO.
  *
- * Atribuído no carregamento do módulo, e não dentro da função: tem de estar de
- * pé ANTES do import do pdfjs, que lê os globais ao inicializar.
+ * Antes era pdfjs mais o canvas nativo do Skia, dentro deste processo. Esse
+ * caminho corrompia o heap ao reduzir a imagem de uma página A4 digitalizada a
+ * 300 dpi — `free(): invalid size`, ou SIGSEGV direto. O arquivo não era
+ * malformado: era um relatório comum, e TODO documento daquele formato
+ * derrubava o servidor. Não havia exceção para capturar, porque não sobrava
+ * Node vivo para capturá-la: o `catch` da rota nunca rodava, e o log não
+ * registrava nada.
+ *
+ * Um visor que abre arquivo enviado por qualquer colaborador não pode ser uma
+ * forma de derrubar a aplicação para todo mundo. Em processo separado, o pior
+ * caso é o filho morrer: a promessa rejeita, a rota responde 500 e o Next
+ * segue de pé.
+ *
+ * O poppler é requisito do SISTEMA, não do npm — `poppler-utils` no
+ * `Dockerfile`, e instalado à parte na máquina de quem desenvolve.
  */
-const DOM_SHIMS = { Path2D, DOMMatrix, DOMPoint, ImageData } as const;
-for (const [name, value] of Object.entries(DOM_SHIMS)) {
-  const target = globalThis as unknown as Record<string, unknown>;
-  target[name] ??= value;
-}
 
 /** Largura da imagem servida. 1400px lê documento A4 escaneado sem esforço. */
 const TARGET_WIDTH = 1400;
+
+/**
+ * Teto de tempo por chamada ao poppler.
+ *
+ * Existe para a página que o poppler não consegue terminar: sem ele, a
+ * requisição fica pendurada e o visor roda para sempre. 30s é folgado para uma
+ * página — as medidas reais ficam na casa de um segundo.
+ */
+const POPPLER_TIMEOUT_MS = 30_000;
 
 /**
  * O número de página que a URL pediu, ou 1.
@@ -114,62 +130,102 @@ function watermarkSvg(width: number, height: number, lines: readonly string[]): 
   );
 }
 
+/**
+ * Roda um binário do poppler e devolve o que ele escreveu na saída padrão.
+ *
+ * Morte do filho (sinal, tempo-limite, binário ausente) vira rejeição, nunca
+ * queda do processo que chamou. É a razão de ser deste arquivo.
+ */
+function poppler(binario: string, args: readonly string[]): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const filho = spawn(binario, [...args], {
+      timeout: POPPLER_TIMEOUT_MS,
+      windowsHide: true,
+    });
+    const saida: Buffer[] = [];
+    const erro: Buffer[] = [];
+    filho.stdout.on("data", (parte: Buffer) => saida.push(parte));
+    filho.stderr.on("data", (parte: Buffer) => erro.push(parte));
+
+    filho.on("error", (e: NodeJS.ErrnoException) =>
+      reject(
+        e.code === "ENOENT"
+          ? new Error(
+              `${binario} não encontrado — instale o poppler (pacote poppler-utils)`,
+            )
+          : e,
+      ),
+    );
+
+    filho.on("close", (code, signal) => {
+      const texto = Buffer.concat(erro).toString().trim();
+      // Só o código de saída decide. O poppler escreve avisos de fonte na
+      // saída de erro mesmo quando a página sai inteira ("No display font
+      // for 'Symbol'"), e tratá-los como falha recusaria documento bom.
+      if (code === 0) return resolve(Buffer.concat(saida));
+      reject(
+        new Error(
+          `${binario} falhou (código ${code}, sinal ${signal})${texto ? `: ${texto}` : ""}`,
+        ),
+      );
+    });
+  });
+}
+
+/** Quantas páginas o documento tem, segundo o `pdfinfo`. */
+async function pdfPageCount(file: string): Promise<number> {
+  const info = (await poppler("pdfinfo", [file])).toString();
+  // A saída é sempre em inglês, independente do locale do contêiner.
+  const encontrado = /^Pages:\s+(\d+)$/m.exec(info);
+  if (!encontrado) throw new Error("pdfinfo não informou o total de páginas");
+  return Number(encontrado[1]);
+}
+
 /** Uma página de PDF em PNG, mais o total de páginas do documento. */
 async function rasterizePdfPage(
-  data: Buffer,
+  file: string,
   page: number,
 ): Promise<{ png: Buffer; pages: number }> {
-  // Build `legacy`: é o que roda em Node (sem DOM). Import dinâmico porque o
-  // pacote é ESM e este módulo é carregado por rota compilada em CJS.
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pages = await pdfPageCount(file);
+  // Página fora da faixa cai na primeira: o número vem da URL.
+  const index = page >= 1 && page <= pages ? page : 1;
 
-  const doc = await pdfjs.getDocument({
-    // Cópia: o pdfjs assume posse do buffer e o deixa inutilizável depois.
-    data: new Uint8Array(data),
-    // Documento de colaborador é dado, não programa: sem eval e sem fonte do
-    // sistema, que num container nem existe.
-    isEvalSupported: false,
-    useSystemFonts: false,
-    // Fontes padrão do próprio pacote, para PDF que não embute a fonte.
-    //
-    // Caminho montado a partir do CWD, e NÃO com `require.resolve`: o webpack
-    // do Next reescreve `require.resolve` para o ID NUMÉRICO do módulo, e o
-    // `path.dirname` recebia 15754 em vez de um caminho — estourando
-    // ERR_INVALID_ARG_TYPE em todo PDF. O teste unitário não pegava porque o
-    // tsx compila para CJS, onde `require.resolve` é a função de verdade.
-    //
-    // shortcut: assume node_modules ao lado do CWD, que vale no `next dev` e
-    // na imagem (WORKDIR /app); rever se o deploy passar a rodar de outro
-    // diretório.
-    standardFontDataUrl: path.join(process.cwd(), "node_modules/pdfjs-dist/standard_fonts/"),
-  }).promise;
+  /*
+   * A página sai em arquivo, não na saída padrão.
+   *
+   * `-` como destino NÃO é portável: na build do poppler para Windows ele
+   * cria um arquivo chamado "-.png" e a saída padrão volta vazia. O destino
+   * em disco se comporta igual em toda build.
+   *
+   * Enquanto existe, esse arquivo é uma cópia SEM marca d'água — por isso a
+   * pasta é criada por `mkdtemp` (permissão só do dono) e apagada no
+   * `finally`, inclusive quando a rasterização falha.
+   */
+  const dir = await mkdtemp(path.join(tmpdir(), "bc-pdf-"));
+  // Com `-singlefile` o nome final é exatamente a raiz mais ".png", sem o
+  // sufixo de número de página que o poppler acrescentaria.
+  const raiz = path.join(dir, "pagina");
 
   try {
-    const pages = doc.numPages;
-    // Página fora da faixa cai na primeira: o número vem da URL.
-    const index = page >= 1 && page <= pages ? page : 1;
-    const pdfPage = await doc.getPage(index);
+    await poppler("pdftoppm", [
+      "-png",
+      "-singlefile",
+      "-f",
+      String(index),
+      "-l",
+      String(index),
+      // Altura por proporção: `-scale-to-y -1` é como o poppler diz "deduza".
+      "-scale-to-x",
+      String(TARGET_WIDTH),
+      "-scale-to-y",
+      "-1",
+      file,
+      raiz,
+    ]);
 
-    const base = pdfPage.getViewport({ scale: 1 });
-    const viewport = pdfPage.getViewport({ scale: TARGET_WIDTH / base.width });
-    const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
-    const context = canvas.getContext("2d");
-    // Fundo branco: PDF não tem fundo, e sem isto o PNG sai transparente —
-    // que num visualizador escuro deixa o documento ilegível.
-    context.fillStyle = "#ffffff";
-    context.fillRect(0, 0, canvas.width, canvas.height);
-
-    await pdfPage.render({
-      // O canvas do napi-rs implementa a mesma API do DOM; os tipos é que não
-      // se conhecem.
-      canvasContext: context as unknown as CanvasRenderingContext2D,
-      viewport,
-    }).promise;
-
-    return { png: canvas.toBuffer("image/png"), pages };
+    return { png: await readFile(`${raiz}.png`), pages };
   } finally {
-    // Libera o worker do pdfjs; sem isto o processo acumula um por requisição.
-    await doc.destroy();
+    await rm(dir, { recursive: true, force: true });
   }
 }
 
@@ -188,12 +244,14 @@ export async function renderWatermarked(
   viewerName: string,
 ): Promise<{ image: Buffer; pages: number }> {
   const extension = path.extname(absolutePath).toLowerCase();
-  const file = await readFile(absolutePath);
 
   const { png, pages } =
     extension === ".pdf"
-      ? await rasterizePdfPage(file, page)
-      : { png: await sharp(file).resize({ width: TARGET_WIDTH }).png().toBuffer(), pages: 1 };
+      ? await rasterizePdfPage(absolutePath, page)
+      : {
+          png: await sharp(absolutePath).resize({ width: TARGET_WIDTH }).png().toBuffer(),
+          pages: 1,
+        };
 
   const meta = await sharp(png).metadata();
   const width = meta.width ?? TARGET_WIDTH;

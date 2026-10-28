@@ -23,6 +23,28 @@ export interface PersonnelDocumentViewerProps {
   onClose: () => void;
 }
 
+/**
+ * A falha, dita de um jeito que distingue os casos.
+ *
+ * Uma frase só para tudo escondia dois problemas de naturezas opostas: "você
+ * não tem acesso a este documento" e "o servidor não conseguiu preparar a
+ * imagem". São donos diferentes — um é o cadastro, outro é o servidor — e
+ * sem separá-los qualquer investigação começa pelo lado errado.
+ *
+ * Separar não vaza nada: a rota já devolve 403 IGUAL para "não existe" e para
+ * "não é seu", de propósito, e isso continua valendo. Quem recebe o 403
+ * aprende que não pode ver — não aprende se o arquivo existe.
+ */
+function mensagemDeFalha(status: number): string {
+  if (status === 415) {
+    return "Este formato não tem visualizador. Só o Departamento Pessoal abre o arquivo.";
+  }
+  if (status === 401 || status === 403) {
+    return "Você não tem permissão para ver este documento.";
+  }
+  return "Não foi possível abrir o documento. O servidor não conseguiu preparar a imagem.";
+}
+
 export function PersonnelDocumentViewer({ file, onClose }: PersonnelDocumentViewerProps) {
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
@@ -48,11 +70,7 @@ export function PersonnelDocumentViewer({ file, onClose }: PersonnelDocumentView
       try {
         const res = await fetch(`/api/documentos-pessoais/${file.id}?pagina=${page}`);
         if (!res.ok) {
-          setError(
-            res.status === 415
-              ? "Este formato não tem visualizador. Só o Departamento Pessoal abre o arquivo."
-              : "Não foi possível abrir o documento.",
-          );
+          setError(mensagemDeFalha(res.status));
           return;
         }
         setPages(Number(res.headers.get("X-Total-Pages") ?? "1") || 1);

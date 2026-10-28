@@ -12,8 +12,13 @@
 FROM node:20-bookworm-slim
 
 # openssl é requisito do engine do Prisma.
+#
+# poppler-utils traz `pdftoppm` e `pdfinfo`, que rasterizam o PDF do visor de
+# documentos pessoais (ver src/lib/personnel-render.ts). São binários do
+# SISTEMA de propósito: rodam em processo separado, e um PDF que os derrube
+# mata o filho em vez do servidor. Sem este pacote, todo PDF responde 500.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && apt-get install -y --no-install-recommends openssl ca-certificates poppler-utils \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

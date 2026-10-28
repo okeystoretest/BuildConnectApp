@@ -15,9 +15,12 @@ import {
  * PDF de duas páginas escrito à mão.
  *
  * Montado aqui, e não lido de um arquivo de apoio: o teste precisa de um PDF
- * de verdade para provar que a cadeia inteira funciona (pdfjs rasteriza, o
- * sharp compõe), e um binário no repositório é um arquivo que ninguém sabe
+ * de verdade para provar que a cadeia inteira funciona (o poppler rasteriza,
+ * o sharp compõe), e um binário no repositório é um arquivo que ninguém sabe
  * por que existe nem como foi gerado.
+ *
+ * Os testes de PDF daqui exigem o poppler instalado na máquina — é requisito
+ * do sistema, não do npm. Sem ele, falham dizendo isso.
  */
 function twoPagePdf(): Buffer {
   const objects = [
@@ -79,6 +82,19 @@ test("PDF vira imagem com marca d'água, e conta as páginas", async () => {
   // a resposta não pode ser cacheada entre usuários.
   const outro = await renderWatermarked(file, 1, "Outra Pessoa");
   assert.notEqual(first.image.toString("base64"), outro.image.toString("base64"));
+});
+
+test("PDF ilegível rejeita, em vez de derrubar o processo", async () => {
+  // A razão de o rasterizador rodar em processo separado. O arquivo vem de
+  // upload: antes, um PDF que o canvas nativo não digeria matava o servidor
+  // inteiro com SIGSEGV, e o `catch` da rota nunca chegava a rodar. Rejeitar é
+  // o comportamento que a rota sabe transformar em 500.
+  const file = await writeTemp("quebrado.pdf", Buffer.from("%PDF-1.4\nisto não é um PDF\n"));
+  await assert.rejects(() => renderWatermarked(file, 1, "Marcos Lucas"));
+
+  // E o processo continua vivo para responder à próxima requisição.
+  const imagem = await writeTemp("rg.png", await amostra("png"));
+  assert.equal((await renderWatermarked(imagem, 1, "Marcos Lucas")).pages, 1);
 });
 
 test("página fora da faixa cai na primeira, em vez de estourar", async () => {

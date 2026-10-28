@@ -22,7 +22,6 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
-    "@napi-rs/canvas": "^1.0.13",
     "@prisma/client": "6.19.3",
     "baileys": "6.7.24",
     "bcryptjs": "2.4.3",
@@ -30,7 +29,6 @@
     "leaflet": "^1.9.4",
     "lucide-react": "^0.454.0",
     "next": "^15.5.25",
-    "pdfjs-dist": "^4.10.38",
     "qrcode": "1.5.4",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
