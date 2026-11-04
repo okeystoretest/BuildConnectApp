@@ -83,14 +83,16 @@ export async function assignTicket(input: {
     }
 
     // Se atribui para outro, confirma que o alvo existe e está ativo.
+    let targetName = user.fullName;
     if (!isSelf) {
       const target = await prisma.user.findUnique({
         where: { id: targetId },
-        select: { active: true },
+        select: { active: true, fullName: true },
       });
       if (!target || !target.active) {
         return { ok: false, error: "Responsável inválido." };
       }
+      targetName = target.fullName;
     }
 
     // assignedById é quem executou a ação, não o alvo. Na auto-atribuição os
@@ -98,7 +100,20 @@ export async function assignTicket(input: {
     // chamado visível para quem o distribuiu (ver `lib/ticket-visibility`).
     await prisma.ticket.update({
       where: { id: ticketId },
-      data: { assigneeId: targetId, assignedById: user.id, status: "ATRIBUIDO" },
+      data: {
+        assigneeId: targetId,
+        assignedById: user.id,
+        status: "ATRIBUIDO",
+        // Na mesma escrita: a atribuição sobrescreve o responsável anterior, e
+        // o evento é o único lugar onde ele continua existindo.
+        events: {
+          create: {
+            status: "ATRIBUIDO",
+            actorName: user.fullName,
+            assigneeName: targetName,
+          },
+        },
+      },
     });
 
     revalidatePath("/setores/motoristas");
@@ -145,7 +160,12 @@ export async function unassignTicket(input: { ticketId: string }): Promise<Actio
     // continuaria "parte" de um chamado que ninguém assumiu.
     await prisma.ticket.update({
       where: { id: ticketId },
-      data: { assigneeId: null, assignedById: null, status: "PENDENTE" },
+      data: {
+        assigneeId: null,
+        assignedById: null,
+        status: "PENDENTE",
+        events: { create: { status: "PENDENTE", actorName: user.fullName } },
+      },
     });
 
     revalidatePath("/setores/motoristas");

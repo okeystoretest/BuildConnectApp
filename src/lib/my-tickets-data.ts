@@ -4,6 +4,11 @@ import type { Ticket, TicketStatus } from "@/types/content";
 import { archiveCutoff } from "@/lib/archive-window";
 import { needsReconcile } from "@/lib/flow/mirror";
 import { reconcileTicket } from "@/lib/flow/sync";
+import {
+  buildTicketTimeline,
+  mirrorTimelineEvents,
+  type MyTicketHistoryItem,
+} from "@/lib/tickets/timeline";
 
 /**
  * Chamados do próprio usuário para a tela "Meus Chamados".
@@ -33,6 +38,47 @@ function openedLabel(date: Date): string {
   if (diffDays <= 0) return "aberto hoje";
   if (diffDays === 1) return "aberto ontem";
   return `aberto ${dayMonthBR(date)}`;
+}
+
+/**
+ * Chamados CONCLUÍDOS do próprio usuário, com a linha do tempo de cada um —
+ * a lista do botão "Histórico".
+ *
+ * Inclui os que ainda estão no quadro (dentro da janela de 30 min): o
+ * histórico do solicitante é "tudo que já concluí", não "o que saiu do quadro".
+ * CANCELADO fica fora, como no quadro.
+ *
+ * Consulta sob demanda (abertura do modal), não na carga da página.
+ */
+export async function getMyTicketHistory(userId: string): Promise<MyTicketHistoryItem[]> {
+  const rows = await prisma.ticket.findMany({
+    where: { requesterId: userId, status: "CONCLUIDO" },
+    orderBy: [{ finishedAt: "desc" }, { createdAt: "desc" }],
+    // shortcut: 100 mais recentes sem paginação, como o histórico do quadro de
+    // TI; paginar quando alguém chegar perto disso.
+    take: 100,
+    include: {
+      requester: { select: { fullName: true } },
+      assignee: { select: { fullName: true } },
+      events: { orderBy: { occurredAt: "asc" } },
+    },
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    code: row.code,
+    title: row.title,
+    sector: DESTINATION_LABEL[row.destination] ?? row.destination,
+    category: row.category ?? undefined,
+    timeline: buildTicketTimeline({
+      createdAt: row.createdAt,
+      requesterName: row.requester.fullName,
+      events:
+        row.destination === "MOTORISTAS"
+          ? mirrorTimelineEvents({ ...row, assigneeName: row.assignee?.fullName ?? null })
+          : row.events,
+    }),
+  }));
 }
 
 export async function getMyTickets(userId: string): Promise<Ticket[]> {

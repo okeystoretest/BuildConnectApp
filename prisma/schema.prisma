@@ -1009,6 +1009,7 @@ model Ticket {
   externalAssigneeName String?
 
   images TicketImage[]
+  events TicketEvent[]
   trip   Trip?
 
   createdAt DateTime @default(now())
@@ -1022,6 +1023,33 @@ model Ticket {
 }
 
 // Imagens do chamado. Sempre caminho para arquivo .webp tratado por sharp.
+/// Cada mudança de status de um chamado, para a linha do tempo do histórico.
+///
+/// Aqui só entra o que NÃO pode ser derivado (ver `ActivityEvent`): a abertura
+/// tem `Ticket.createdAt` e é lida de lá, mas atribuição e troca de responsável
+/// sobrescrevem `assigneeId` — sem esta tabela, quem tratou o chamado antes do
+/// último responsável não existe em lugar nenhum.
+///
+/// Os nomes ficam congelados em texto, não em relação: o histórico de um
+/// chamado concluído precisa continuar legível depois que o analista sai da
+/// empresa e o usuário é excluído.
+model TicketEvent {
+  id       String @id @default(cuid())
+  ticketId String
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  /// Status para o qual o chamado passou nesta transição.
+  status TicketStatus
+  /// Quem executou a ação.
+  actorName String
+  /// Responsável que ficou com o chamado, quando a transição define um.
+  assigneeName String?
+
+  occurredAt DateTime @default(now())
+
+  @@index([ticketId, occurredAt])
+}
+
 model TicketImage {
   id       String @id @default(cuid())
   ticketId String

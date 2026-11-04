@@ -45,7 +45,12 @@ export async function updateTicketStatus(input: {
   try {
     const current = await prisma.ticket.findUnique({
       where: { id: ticketId },
-      select: { startedAt: true, assigneeId: true, destination: true },
+      select: {
+        startedAt: true,
+        assigneeId: true,
+        destination: true,
+        assignee: { select: { fullName: true } },
+      },
     });
     if (!current) return { ok: false, error: "Chamado não encontrado." };
 
@@ -95,7 +100,24 @@ export async function updateTicketStatus(input: {
       data.finishedAt = null;
     }
 
-    await prisma.ticket.update({ where: { id: ticketId }, data });
+    // O evento vai na MESMA escrita da transição: é ele que guarda quem moveu
+    // o chamado e quem estava com ele, dados que a linha do histórico exibe e
+    // que a própria tabela Ticket perde na mudança seguinte.
+    await prisma.ticket.update({
+      where: { id: ticketId },
+      data: {
+        ...data,
+        events: {
+          create: {
+            status,
+            actorName: user.fullName,
+            assigneeName: data.assigneeId
+              ? user.fullName
+              : (current.assignee?.fullName ?? null),
+          },
+        },
+      },
+    });
     revalidatePath("/setores/ti");
     revalidatePath("/setores/motoristas");
     return { ok: true };

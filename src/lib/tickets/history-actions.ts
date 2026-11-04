@@ -3,8 +3,10 @@
 import { getCurrentUser } from "@/lib/auth/require-user";
 import { resolveAccessibleSlugs, canAccessSlug } from "@/lib/auth/access";
 import { getItTicketsHistory } from "@/lib/it-data-db";
+import { getMyTicketHistory } from "@/lib/my-tickets-data";
 import type { Role } from "@/types";
 import type { ItTicket } from "@/types/it";
+import type { MyTicketHistoryItem } from "@/lib/tickets/timeline";
 
 export interface TicketHistoryResult {
   ok: boolean;
@@ -43,6 +45,35 @@ export async function listTicketHistory(
     return { ok: true, tickets };
   } catch (error) {
     console.error("[listTicketHistory] falha:", error);
+    return { ok: false, tickets: [], error: "Não foi possível carregar o histórico." };
+  }
+}
+
+export interface MyTicketHistoryResult {
+  ok: boolean;
+  tickets: MyTicketHistoryItem[];
+  error?: string;
+}
+
+/**
+ * Histórico do SOLICITANTE: os chamados concluídos que ele próprio abriu, cada
+ * um com a linha do tempo completa.
+ *
+ * Não há RBAC de quadro aqui — e não deveria haver: a consulta é fechada em
+ * `requesterId = user.id`, então ninguém lê chamado de outra pessoa nem
+ * precisa de acesso ao setor para reler o próprio.
+ */
+export async function listMyTicketHistory(): Promise<MyTicketHistoryResult> {
+  const user = await getCurrentUser();
+  if (!user) {
+    return { ok: false, tickets: [], error: "Sessão expirada. Faça login novamente." };
+  }
+
+  try {
+    const tickets = await getMyTicketHistory(user.id);
+    return { ok: true, tickets };
+  } catch (error) {
+    console.error("[listMyTicketHistory] falha:", error);
     return { ok: false, tickets: [], error: "Não foi possível carregar o histórico." };
   }
 }
