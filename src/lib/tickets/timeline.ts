@@ -1,4 +1,5 @@
 import { dateLabelBR, timeLabelBR } from "@/lib/brasilia";
+import type { TicketTimelineEntry } from "@/types/content";
 
 /**
  * A linha do tempo de UM chamado: abertura + cada mudança de status.
@@ -26,30 +27,10 @@ export interface TicketEventRow {
   occurredAt: Date;
 }
 
-export interface TicketTimelineEntry {
-  key: string;
-  /** O fato: "Chamado aberto", "Atribuído a Ana Souza"… */
-  label: string;
-  /** Quem executou, quando acrescenta algo ao rótulo. */
-  by?: string;
-  /** "04/11/2026 às 14:32" — data E hora, no calendário de Brasília. */
-  atLabel: string;
-}
-
 export interface TicketTimelineSource {
   createdAt: Date;
   requesterName: string;
   events: readonly TicketEventRow[];
-}
-
-/** Um chamado concluído na lista do botão "Histórico" de Meus Chamados. */
-export interface MyTicketHistoryItem {
-  id: string;
-  code: string;
-  title: string;
-  sector: string;
-  category?: string;
-  timeline: TicketTimelineEntry[];
 }
 
 /**

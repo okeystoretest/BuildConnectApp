@@ -4,11 +4,7 @@ import type { Ticket, TicketStatus } from "@/types/content";
 import { archiveCutoff } from "@/lib/archive-window";
 import { needsReconcile } from "@/lib/flow/mirror";
 import { reconcileTicket } from "@/lib/flow/sync";
-import {
-  buildTicketTimeline,
-  mirrorTimelineEvents,
-  type MyTicketHistoryItem,
-} from "@/lib/tickets/timeline";
+import { buildTicketTimeline, mirrorTimelineEvents } from "@/lib/tickets/timeline";
 
 /**
  * Chamados do próprio usuário para a tela "Meus Chamados".
@@ -40,6 +36,46 @@ function openedLabel(date: Date): string {
   return `aberto ${dayMonthBR(date)}`;
 }
 
+/** Os campos que as duas consultas desta tela leem do banco. */
+interface TicketRow {
+  id: string;
+  code: string;
+  title: string;
+  destination: string;
+  status: string;
+  category: string | null;
+  createdAt: Date;
+  flowId: string | null;
+  flowSyncError: string | null;
+  externalAssigneeName: string | null;
+  requester: { fullName: string };
+  assignee: { fullName: string } | null;
+}
+
+/** A linha do banco no formato que a UI consome. */
+function toTicket(row: TicketRow, status: TicketStatus): Ticket {
+  return {
+    id: row.id,
+    code: row.code,
+    title: row.title,
+    sector: DESTINATION_LABEL[row.destination] ?? row.destination,
+    status,
+    openedLabel: openedLabel(row.createdAt),
+    requestedBy: row.requester.fullName,
+    // Motorista do Flow (chamado de Motoristas) ou responsável local (TI).
+    assignee: row.externalAssigneeName ?? row.assignee?.fullName,
+    category: row.category ?? undefined,
+    flowSyncHint:
+      row.destination === "MOTORISTAS" && !row.flowId && row.flowSyncError
+        ? "Aguardando envio à Logística"
+        : undefined,
+    proofUrl:
+      row.destination === "MOTORISTAS" && row.flowId && row.status === "CONCLUIDO"
+        ? `/api/integracao/flow/comprovante/${row.id}`
+        : undefined,
+  };
+}
+
 /**
  * Chamados CONCLUÍDOS do próprio usuário, com a linha do tempo de cada um —
  * a lista do botão "Histórico".
@@ -50,7 +86,7 @@ function openedLabel(date: Date): string {
  *
  * Consulta sob demanda (abertura do modal), não na carga da página.
  */
-export async function getMyTicketHistory(userId: string): Promise<MyTicketHistoryItem[]> {
+export async function getMyTicketHistory(userId: string): Promise<Ticket[]> {
   const rows = await prisma.ticket.findMany({
     where: { requesterId: userId, status: "CONCLUIDO" },
     orderBy: [{ finishedAt: "desc" }, { createdAt: "desc" }],
@@ -64,12 +100,10 @@ export async function getMyTicketHistory(userId: string): Promise<MyTicketHistor
     },
   });
 
+  // Mesmo mapeamento do quadro: clicar no card do histórico abre o MESMO modal
+  // de detalhe, com os mesmos campos. A timeline é o que o histórico acrescenta.
   return rows.map((row) => ({
-    id: row.id,
-    code: row.code,
-    title: row.title,
-    sector: DESTINATION_LABEL[row.destination] ?? row.destination,
-    category: row.category ?? undefined,
+    ...toTicket(row, "RESOLVIDO"),
     timeline: buildTicketTimeline({
       createdAt: row.createdAt,
       requesterName: row.requester.fullName,
@@ -120,26 +154,7 @@ export async function getMyTickets(userId: string): Promise<Ticket[]> {
     const status = STATUS_MAP[row.status] ?? null;
     if (!status) continue; // CANCELADO (ou estado desconhecido) fica fora do quadro.
 
-    tickets.push({
-      id: row.id,
-      code: row.code,
-      title: row.title,
-      sector: DESTINATION_LABEL[row.destination] ?? row.destination,
-      status,
-      openedLabel: openedLabel(row.createdAt),
-      requestedBy: row.requester.fullName,
-      // Motorista do Flow (chamado de Motoristas) ou responsável local (TI).
-      assignee: row.externalAssigneeName ?? row.assignee?.fullName,
-      category: row.category ?? undefined,
-      flowSyncHint:
-        row.destination === "MOTORISTAS" && !row.flowId && row.flowSyncError
-          ? "Aguardando envio à Logística"
-          : undefined,
-      proofUrl:
-        row.destination === "MOTORISTAS" && row.flowId && row.status === "CONCLUIDO"
-          ? `/api/integracao/flow/comprovante/${row.id}`
-          : undefined,
-    });
+    tickets.push(toTicket(row, status));
   }
 
   return tickets;

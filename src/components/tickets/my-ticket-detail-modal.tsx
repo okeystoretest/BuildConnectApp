@@ -88,6 +88,25 @@ export function MyTicketDetailModal({ ticket, onClose }: MyTicketDetailModalProp
           )}
         </dl>
 
+        {ticket.timeline && ticket.timeline.length > 0 && (
+          <section className="mt-5">
+            <h3 className="mb-2.5 text-sm font-semibold text-foreground">Andamento</h3>
+            <ol className="space-y-2 border-l border-border pl-3.5">
+              {ticket.timeline.map((entry) => (
+                <li key={entry.key} className="relative text-[12px] leading-snug">
+                  <span
+                    aria-hidden
+                    className="absolute -left-[18px] top-1.5 h-1.5 w-1.5 rounded-full bg-border-strong"
+                  />
+                  <span className="text-foreground">{entry.label}</span>
+                  {entry.by && <span className="text-muted"> · por {entry.by}</span>}
+                  <span className="block text-[11px] text-muted">{entry.atLabel}</span>
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
+
         {isDriverTicket && (
           <section className="mt-5">
             <h3 className="mb-2.5 text-sm font-semibold text-foreground">

@@ -6,22 +6,25 @@ import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { listMyTicketHistory } from "@/lib/tickets/history-actions";
-import type { MyTicketHistoryItem } from "@/lib/tickets/timeline";
+import type { Ticket } from "@/types/content";
 
 export interface MyTicketHistoryModalProps {
   open: boolean;
   onClose: () => void;
+  /** Abre o detalhe do chamado escolhido (o histórico se fecha). */
+  onSelect: (ticket: Ticket) => void;
 }
 
 /**
- * Histórico do solicitante: seus chamados concluídos, cada um com a linha do
- * tempo (abertura, atribuição, andamento, encerramento) com data e hora.
+ * Histórico do solicitante: seus chamados concluídos. Clicar num card abre o
+ * MESMO modal de detalhe do quadro, que lá exibe a linha do tempo (abertura,
+ * atribuição, andamento, encerramento) com data e hora.
  *
  * A lista é buscada na ABERTURA do modal, não junto com a página: é consulta
  * ocasional e cresce com o tempo — carregá-la sempre pesaria em toda visita.
  */
-export function MyTicketHistoryModal({ open, onClose }: MyTicketHistoryModalProps) {
-  const [tickets, setTickets] = useState<MyTicketHistoryItem[]>([]);
+export function MyTicketHistoryModal({ open, onClose, onSelect }: MyTicketHistoryModalProps) {
+  const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -87,37 +90,31 @@ export function MyTicketHistoryModal({ open, onClose }: MyTicketHistoryModalProp
         )}
 
         {!loading && !error && tickets.length > 0 && (
-          <ul className="space-y-3">
+          <ul className="space-y-2">
             {tickets.map((ticket) => (
-              <li
-                key={ticket.id}
-                className="rounded-xl border border-border bg-surface p-3.5"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-mono text-[11px] text-muted">{ticket.code}</span>
-                  <span className="text-[11px] text-muted">
-                    {ticket.sector}
-                    {ticket.category ? ` · ${ticket.category}` : ""}
-                  </span>
-                </div>
+              <li key={ticket.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelect(ticket)}
+                  className="focus-ring w-full rounded-xl border border-border bg-surface p-3.5 text-left transition-colors hover:border-border-strong hover:bg-surface-2"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-mono text-[11px] text-muted">{ticket.code}</span>
+                    <span className="text-[11px] text-muted">
+                      {ticket.sector}
+                      {ticket.category ? ` · ${ticket.category}` : ""}
+                    </span>
+                  </div>
 
-                <p className="mt-1.5 text-sm font-semibold leading-snug text-foreground">
-                  {ticket.title}
-                </p>
+                  <p className="mt-1.5 text-sm font-semibold leading-snug text-foreground">
+                    {ticket.title}
+                  </p>
 
-                <ol className="mt-3 space-y-2 border-l border-border pl-3.5">
-                  {ticket.timeline.map((entry) => (
-                    <li key={entry.key} className="relative text-[12px] leading-snug">
-                      <span
-                        aria-hidden
-                        className="absolute -left-[18px] top-1.5 h-1.5 w-1.5 rounded-full bg-border-strong"
-                      />
-                      <span className="text-foreground">{entry.label}</span>
-                      {entry.by && <span className="text-muted"> · por {entry.by}</span>}
-                      <span className="block text-[11px] text-muted">{entry.atLabel}</span>
-                    </li>
-                  ))}
-                </ol>
+                  <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted">
+                    <span>Responsável: {ticket.assignee ?? "—"}</span>
+                    <span>{ticket.openedLabel}</span>
+                  </p>
+                </button>
               </li>
             ))}
           </ul>

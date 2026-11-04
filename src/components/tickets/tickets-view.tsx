@@ -59,7 +59,14 @@ export function TicketsView({ tickets }: TicketsViewProps) {
       </div>
 
       <MyTicketDetailModal ticket={selected} onClose={() => setSelected(null)} />
-      <MyTicketHistoryModal open={historyOpen} onClose={() => setHistoryOpen(false)} />
+      <MyTicketHistoryModal
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        onSelect={(ticket) => {
+          setSelected(ticket);
+          setHistoryOpen(false);
+        }}
+      />
     </AppShell>
   );
 }

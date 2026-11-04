@@ -6,7 +6,7 @@ import { getItTicketsHistory } from "@/lib/it-data-db";
 import { getMyTicketHistory } from "@/lib/my-tickets-data";
 import type { Role } from "@/types";
 import type { ItTicket } from "@/types/it";
-import type { MyTicketHistoryItem } from "@/lib/tickets/timeline";
+import type { Ticket } from "@/types/content";
 
 export interface TicketHistoryResult {
   ok: boolean;
@@ -51,7 +51,7 @@ export async function listTicketHistory(
 
 export interface MyTicketHistoryResult {
   ok: boolean;
-  tickets: MyTicketHistoryItem[];
+  tickets: Ticket[];
   error?: string;
 }
 
