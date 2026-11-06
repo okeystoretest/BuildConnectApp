@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { flowEnv } from "@/lib/flow/env";
 import { verifyFlowSignature } from "@/lib/flow/signature";
+// A conta de borda da janela mora numa lib para PODER ser conferida: um teste
+// que importasse este arquivo arrastaria o Prisma e o ambiente junto.
+import { dataDaQuery, emDias, fimDoDia } from "@/lib/flow/janela";
 
 /**
  * GET /api/integracao/flow/cronograma — o calendário de conteúdo do Marketing,
@@ -13,10 +16,17 @@ import { verifyFlowSignature } from "@/lib/flow/signature";
  * por setor à mão aqui criaria uma SEGUNDA definição de "é do Marketing" para
  * divergir da primeira na próxima mudança.
  *
- * O QUE NÃO SAI DAQUI, de propósito: `script`, `notes`, `owner` e `createdBy`.
- * O Flow mostra O QUE vai ao ar e QUANDO — roteiro é material de produção, e
- * dono/autor são pessoas identificadas que a tela de lá não tem motivo para
- * conhecer. Campo que não atravessa a fronteira não vaza.
+ * O QUE NÃO SAI DAQUI, de propósito: `script`, `scriptBy` e `createdBy`. O
+ * roteiro é material de produção, e quem o escreveu ou quem criou o registro
+ * são pessoas que a tela de lá não tem motivo para conhecer. Campo que não
+ * atravessa a fronteira não vaza.
+ *
+ * `notes` E O PRIMEIRO NOME DO `owner` ATRAVESSAM desde 06/11/2026 (pedido do
+ * dono). O cronograma do Flow virou calendário, e num calendário o título
+ * sozinho não basta: "MAIS LANÇAMENTOS" aparece três vezes na mesma semana. O
+ * `notes` é a linha que diz de qual. O responsável vai como PRIMEIRO NOME e
+ * nada mais — é o que o card mostra, e sobrenome, e-mail ou id seriam dado
+ * pessoal atravessando sem ninguém olhar para ele.
  *
  * ASSINATURA NO LUGAR DE TOKEN: a mesma do webhook do Flow, já compartilhada
  * pelos dois lados (FLOW_WEBHOOK_SECRET aqui = CONNECT_WEBHOOK_SECRET lá), então
@@ -36,17 +46,11 @@ const TETO = 200;
 const DIAS_ATRAS = 30;
 const DIAS_ADIANTE = 90;
 
-/** `YYYY-MM-DD` da query. Valor fora do formato é IGNORADO (vira o padrão), e
- *  não erro: a data chega da URL e um recorte inválido não deve derrubar a
- *  tela do outro lado. */
-function dataDaQuery(valor: string | null): Date | null {
-  if (!valor || !/^\d{4}-\d{2}-\d{2}$/.test(valor)) return null;
-  const d = new Date(`${valor}T00:00:00.000Z`);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
 
-function emDias(base: Date, dias: number): Date {
-  return new Date(base.getTime() + dias * 86_400_000);
+/** O primeiro nome, para o selo do card. Vazio ou so espacos vira nulo. */
+function primeiroNome(nome: string | null | undefined): string | null {
+  const primeiro = (nome ?? "").trim().split(/\s+/)[0];
+  return primeiro || null;
 }
 
 export async function GET(request: Request) {
@@ -71,7 +75,7 @@ export async function GET(request: Request) {
 
   const agora = new Date();
   const de = dataDaQuery(url.searchParams.get("de")) ?? emDias(agora, -DIAS_ATRAS);
-  const ate = dataDaQuery(url.searchParams.get("ate")) ?? emDias(agora, DIAS_ADIANTE);
+  const ate = fimDoDia(dataDaQuery(url.searchParams.get("ate")) ?? emDias(agora, DIAS_ADIANTE));
 
   const posts = await prisma.contentPost.findMany({
     where: { visibility: "SHARED", scheduledAt: { gte: de, lte: ate } },
@@ -86,6 +90,9 @@ export async function GET(request: Request) {
       formats: true,
       platforms: true,
       brand: true,
+      notes: true,
+      // So o nome; o id e o e-mail do responsavel nao atravessam.
+      owner: { select: { fullName: true } },
     },
   });
 
@@ -96,6 +103,9 @@ export async function GET(request: Request) {
     // precisa poder dizer "há mais" em vez de mostrar um calendário que parece
     // completo e não é.
     truncado: posts.length === TETO,
-    posts,
+    // O `owner` vira PRIMEIRO NOME AQUI, e nao na tela do Flow: o que
+    // atravessa a fronteira se decide deste lado dela. Mandar o objeto
+    // inteiro e deixar o outro lado "usar so o nome" e como nao ter filtro.
+    posts: posts.map(({ owner, ...p }) => ({ ...p, responsavel: primeiroNome(owner?.fullName) })),
   });
 }
