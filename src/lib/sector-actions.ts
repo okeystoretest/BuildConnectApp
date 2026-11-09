@@ -124,9 +124,35 @@ export async function markVideoEnded(input: { videoId: string }): Promise<Action
  *
  * O ANO não vem daqui: é o ano de `createdAt`, gravado pelo próprio banco.
  */
+function colecaoCampo(formData: FormData, nome: string): string | null {
+  return String(formData.get(nome) ?? "").trim().slice(0, 60) || null;
+}
+
 function colecaoFields(formData: FormData): { temporada: string | null; colecao: string | null } {
-  const campo = (nome: string) => String(formData.get(nome) ?? "").trim().slice(0, 60) || null;
-  return { temporada: campo("temporada"), colecao: campo("colecao") };
+  return {
+    temporada: colecaoCampo(formData, "temporada"),
+    colecao: colecaoCampo(formData, "colecao"),
+  };
+}
+
+/**
+ * O mesmo par, na EDIÇÃO — e a diferença não é cosmética.
+ *
+ * No envio, campo vazio é NULL. Na edição, campo AUSENTE tem de ser
+ * `undefined`, que o Prisma lê como "não mexa nesta coluna": o formulário de
+ * um setor padrão não manda temporada nem coleção, e tratar a ausência como
+ * vazio apagaria o que a vitrine gravou toda vez que alguém salvasse um
+ * título. Presente e vazio continua limpando, que é o que o usuário pediu ao
+ * apagar o campo.
+ */
+function colecaoUpdate(formData: FormData): {
+  temporada: string | null | undefined;
+  colecao: string | null | undefined;
+} {
+  return {
+    temporada: formData.has("temporada") ? colecaoCampo(formData, "temporada") : undefined,
+    colecao: formData.has("colecao") ? colecaoCampo(formData, "colecao") : undefined,
+  };
 }
 
 export async function uploadSectorPhoto(formData: FormData): Promise<ActionResult> {
@@ -170,6 +196,104 @@ export async function uploadSectorPhoto(formData: FormData): Promise<ActionResul
     console.error("[uploadSectorPhoto] db:", e);
     return { ok: false, error: "Falha ao salvar a foto." };
   }
+}
+
+/**
+ * Edição da foto: título e — é sempre vitrine — temporada e coleção.
+ *
+ * A foto nasceu sem edição nenhuma porque só tinha título. Com temporada e
+ * coleção ela passou a carregar cadastro, e um lote de quinze fotos com a
+ * temporada errada não pode depender do banco para ser corrigido.
+ *
+ * O ARQUIVO NÃO SE TROCA AQUI, pela mesma razão do documento: quem quer outra
+ * imagem envia outra e exclui esta.
+ */
+const photoUpdateSchema = z.object({
+  slug: z.string().min(1),
+  id: z.string().min(1),
+  title: z.string().trim().min(1, "O título não pode ficar vazio.").max(200),
+  temporada: z.string().trim().max(60).optional(),
+  colecao: z.string().trim().max(60).optional(),
+});
+
+export async function updateSectorPhoto(input: {
+  slug: string;
+  id: string;
+  title: string;
+  temporada?: string;
+  colecao?: string;
+}): Promise<ActionResult> {
+  const { user, error } = await requireUploader();
+  if (!user) return { ok: false, error: error ?? undefined };
+
+  const parsed = photoUpdateSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  }
+  const { slug, id, title, temporada, colecao } = parsed.data;
+
+  const subsectorId = await subsectorIdFromSlug(slug);
+  if (!subsectorId) return { ok: false, error: "Setor não encontrado." };
+
+  // O subsetor entra na busca: sem ele, um id de foto de OUTRO setor seria
+  // aceito e editado pelo setor errado.
+  const current = await prisma.photo.findFirst({ where: { id, subsectorId }, select: { id: true } });
+  if (!current) return { ok: false, error: "Foto não encontrada." };
+
+  try {
+    await prisma.photo.update({
+      where: { id },
+      data: {
+        title,
+        ...(temporada === undefined ? {} : { temporada: temporada || null }),
+        ...(colecao === undefined ? {} : { colecao: colecao || null }),
+      },
+    });
+  } catch (e) {
+    console.error("[updateSectorPhoto] db:", e);
+    return { ok: false, error: "Falha ao salvar a foto." };
+  }
+
+  revalidatePath(`/setores/${slug}`);
+  return { ok: true };
+}
+
+/**
+ * Exclui a foto: registro e, depois, o arquivo — a mesma ordem do vídeo e do
+ * documento. Registro sem arquivo é um card quebrado; arquivo sem registro é
+ * só espaço em disco.
+ */
+export async function deleteSectorPhoto(input: { slug: string; id: string }): Promise<ActionResult> {
+  const { user, error } = await requireAdmin();
+  if (!user) return { ok: false, error: error ?? undefined };
+
+  const parsed = z
+    .object({ slug: z.string().min(1), id: z.string().min(1) })
+    .safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Dados inválidos." };
+  const { slug, id } = parsed.data;
+
+  const subsectorId = await subsectorIdFromSlug(slug);
+  if (!subsectorId) return { ok: false, error: "Setor não encontrado." };
+
+  const photo = await prisma.photo.findFirst({
+    where: { id, subsectorId },
+    select: { filePath: true },
+  });
+  if (!photo) return { ok: false, error: "Foto não encontrada." };
+
+  try {
+    await prisma.photo.delete({ where: { id } });
+  } catch (e) {
+    console.error("[deleteSectorPhoto] db:", e);
+    return { ok: false, error: "Falha ao excluir a foto." };
+  }
+
+  const abs = toAbsolutePath(photo.filePath);
+  if (abs) await removeFile(abs);
+
+  revalidatePath(`/setores/${slug}`);
+  return { ok: true };
 }
 
 // ──────────────────────────────────────────────
@@ -377,7 +501,7 @@ export async function updateSectorVideo(formData: FormData): Promise<ActionResul
     await prisma.$transaction(async (tx) => {
       await tx.video.update({
         where: { id },
-        data: { title, tags, transcriptPath, transcriptText },
+        data: { title, tags, transcriptPath, transcriptText, ...colecaoUpdate(formData) },
       });
       if (!isAdmin) return;
       // Sincroniza os destinos: o que saiu da lista perde o acesso, o que
@@ -527,6 +651,69 @@ export async function uploadSectorDocument(formData: FormData): Promise<ActionRe
     console.error("[uploadSectorDocument] db:", e);
     return { ok: false, error: "Falha ao salvar o documento." };
   }
+}
+
+/**
+ * Edição do documento: nome e — na vitrine — temporada e coleção.
+ *
+ * O ARQUIVO NÃO SE TROCA AQUI. Trocar o binário por baixo de um registro que
+ * já tem progresso gravado (`ContentProgress`) significaria gente marcada como
+ * tendo lido um documento que nunca existiu; quem quer outro arquivo envia
+ * outro documento e exclui este.
+ *
+ * `undefined` preserva a coluna, pela mesma razão de `colecaoUpdate`: a tela
+ * de um setor padrão não manda os campos da vitrine, e tratar a ausência como
+ * vazio apagaria o que a vitrine gravou a cada renomeação.
+ */
+const documentUpdateSchema = z.object({
+  slug: z.string().min(1),
+  id: z.string().min(1),
+  name: z.string().trim().min(1, "O nome não pode ficar vazio.").max(200),
+  temporada: z.string().trim().max(60).optional(),
+  colecao: z.string().trim().max(60).optional(),
+});
+
+export async function updateSectorDocument(input: {
+  slug: string;
+  id: string;
+  name: string;
+  temporada?: string;
+  colecao?: string;
+}): Promise<ActionResult> {
+  const { user, error } = await requireUploader();
+  if (!user) return { ok: false, error: error ?? undefined };
+
+  const parsed = documentUpdateSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  }
+  const { slug, id, name, temporada, colecao } = parsed.data;
+
+  const subsectorId = await subsectorIdFromSlug(slug);
+  if (!subsectorId) return { ok: false, error: "Setor não encontrado." };
+
+  // O subsetor entra na busca de propósito: sem ele, um id de documento de
+  // OUTRO setor seria aceito e renomeado pelo setor errado (mesma guarda de
+  // `deleteSectorDocument`).
+  const current = await prisma.document.findFirst({ where: { id, subsectorId }, select: { id: true } });
+  if (!current) return { ok: false, error: "Documento não encontrado." };
+
+  try {
+    await prisma.document.update({
+      where: { id },
+      data: {
+        name,
+        ...(temporada === undefined ? {} : { temporada: temporada || null }),
+        ...(colecao === undefined ? {} : { colecao: colecao || null }),
+      },
+    });
+  } catch (e) {
+    console.error("[updateSectorDocument] db:", e);
+    return { ok: false, error: "Falha ao salvar o documento." };
+  }
+
+  revalidatePath(`/setores/${slug}`);
+  return { ok: true };
 }
 
 /**

@@ -124,7 +124,7 @@ function Thumbnail({ video, className }: { video: VideoItem; className?: string 
  * Salvar (título, tags, transcrição, compartilhamento) e excluir, ligados ao
  * servidor. Compartilhado pelo card e pela linha da lista.
  */
-function useVideoAdmin(slug: string, video: VideoItem, sharing: boolean) {
+function useVideoAdmin(slug: string, video: VideoItem, sharing: boolean, collection: boolean) {
   const router = useRouter();
   const toast = useToast();
   const upload = useUploadProgress();
@@ -147,6 +147,12 @@ function useVideoAdmin(slug: string, video: VideoItem, sharing: boolean) {
     fd.set("slug", slug);
     fd.set("id", video.id);
     fd.set("title", value.title);
+    // Só a vitrine manda estes dois. A AUSÊNCIA é significativa no servidor:
+    // ela é o que preserva o valor gravado quando a tela não tem os campos.
+    if (collection) {
+      fd.set("temporada", value.temporada ?? "");
+      fd.set("colecao", value.colecao ?? "");
+    }
     for (const tag of value.tags) fd.append("tags", tag);
     for (const sid of value.shareWith ?? []) fd.append("shareWith", sid);
     fd.set("transcriptMode", value.transcriptMode ?? "keep");
@@ -178,6 +184,9 @@ function useVideoAdmin(slug: string, video: VideoItem, sharing: boolean) {
   return {
     title: video.title,
     tags: video.tags,
+    temporada: video.temporada,
+    colecao: video.colecao,
+    collection: collection ? { ano: video.ano } : undefined,
     transcript: { hasCurrent: Boolean(video.transcriptText?.trim()) },
     sharing: sharingProps,
     saving: upload.busy,
@@ -203,6 +212,13 @@ export interface VideoCardProps {
    * (Coleção, Workshop) não passam — só rastreiam a conclusão.
    */
   comprehension?: boolean;
+  /**
+   * Vitrine: a edição oferece Temporada e Coleção, como o envio. Explícito, e
+   * não deduzido de `comprehension`: hoje só a vitrine dispensa a pergunta de
+   * compreensão, mas amarrar os dois faria uma aba futura sem pergunta ganhar
+   * campos de coleção sem ninguém pedir.
+   */
+  collection?: boolean;
   /**
    * Veio do aviso de reprovação: abre o player deste vídeo já reproduzindo.
    * Quem decide é a página do setor, lendo `?video=&assistir=1`.
@@ -233,10 +249,11 @@ export function VideoCard({
   video,
   suggestions,
   comprehension = false,
+  collection = false,
   autoOpen = false,
 }: VideoCardProps) {
   const player = usePlayer(autoOpen);
-  const { deleting, ...admin } = useVideoAdmin(slug, video, comprehension);
+  const { deleting, ...admin } = useVideoAdmin(slug, video, comprehension, collection);
 
   return (
     <>
@@ -300,10 +317,11 @@ export function VideoListRow({
   video,
   suggestions,
   comprehension = false,
+  collection = false,
   autoOpen = false,
 }: VideoCardProps) {
   const player = usePlayer(autoOpen);
-  const { deleting, ...admin } = useVideoAdmin(slug, video, comprehension);
+  const { deleting, ...admin } = useVideoAdmin(slug, video, comprehension, collection);
 
   return (
     <>

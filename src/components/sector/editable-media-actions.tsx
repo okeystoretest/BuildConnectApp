@@ -8,6 +8,11 @@ export interface EditableMediaActionsProps {
   title: string;
   tags?: readonly string[];
   suggestions?: readonly string[];
+  /** Vitrine: valores atuais de Temporada e Coleção, editáveis no modal. */
+  temporada?: string;
+  colecao?: string;
+  /** Presente só na vitrine: habilita Temporada/Coleção na edição. */
+  collection?: { ano?: number };
   /** Presente só para vídeos: habilita o campo de transcrição na edição. */
   transcript?: { hasCurrent: boolean };
   /** Presente só para Instruções em Vídeo: habilita "Compartilhar com" (ADMIN). */
@@ -32,6 +37,9 @@ export function EditableMediaActions({
   title,
   tags = [],
   suggestions = [],
+  temporada,
+  colecao,
+  collection,
   transcript,
   sharing,
   variant = "overlay",
@@ -60,8 +68,9 @@ export function EditableMediaActions({
       <MediaEditModal
         open={open}
         onClose={() => setOpen(false)}
-        initial={{ title, tags }}
+        initial={{ title, tags, temporada, colecao }}
         suggestions={suggestions}
+        collection={collection}
         transcript={transcript}
         sharing={sharing}
         saving={saving}

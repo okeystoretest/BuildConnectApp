@@ -55,12 +55,19 @@ export async function getSectorContent(
 
   // Aplicativos vêm do subsetor de ESCOPO: com herança configurada, Marketing
   // lista exatamente os mesmos atalhos de Vendas, sem cópia de registro.
-  const scope = await resolveAppScope(slug);
-  const linkRows = await prisma.externalLink.findMany({
-    where: { subsectorId: scope?.id ?? sub.id },
-    orderBy: { order: "asc" },
-    select: { id: true, label: true, url: true, iconPath: true },
-  });
+  //
+  // A VITRINE NÃO TEM APLICATIVOS (ver `sector-page`), então nem o escopo nem
+  // os atalhos são buscados: eram duas consultas por carregamento de página
+  // para alimentar uma barra que não é renderizada.
+  const vitrine = sub.kind === "VITRINE";
+  const scope = vitrine ? null : await resolveAppScope(slug);
+  const linkRows = vitrine
+    ? []
+    : await prisma.externalLink.findMany({
+        where: { subsectorId: scope?.id ?? sub.id },
+        orderBy: { order: "asc" },
+        select: { id: true, label: true, url: true, iconPath: true },
+      });
 
   // Estado do usuário: o que já concluiu (ou chegou ao fim) neste subsetor, e
   // as respostas de compreensão que já enviou. Os compartilhados entram aqui
@@ -164,8 +171,6 @@ export async function getSectorContent(
     (p: { id: string; title: string; filePath: string } & ColecaoRow) => ({
       id: p.id,
       title: p.title,
-      // Sem gradiente fictício: foto real vem por filePath.
-      swatch: "from-surface-2 to-surface",
       filePath: p.filePath,
       ...colecaoDe(p),
     }),
@@ -209,17 +214,15 @@ export async function getSectorContent(
   const total = sub.videos.length + sub.documents.length;
   const doneOwnVideos = sub.videos.filter((v) => doneVideo.has(v.id)).length;
   const done = doneOwnVideos + doneDoc.size;
-  const completion =
-    sub.kind === "VITRINE" ? null : total === 0 ? 0 : Math.round((done / total) * 100);
+  const completion = vitrine ? null : total === 0 ? 0 : Math.round((done / total) * 100);
 
   return {
     slug: sub.slug,
     name: sub.label,
     parent: sub.sector.label,
     kind: sub.kind,
-    description:
-      sub.kind === "VITRINE"
-        ? "Galeria, vídeos, workshops e material de apoio da vitrine."
+    description: vitrine
+      ? "Galeria, vídeos, workshops e material de apoio da vitrine."
         : "Conteúdos de integração e reciclagem da área.",
     completion,
     photos,

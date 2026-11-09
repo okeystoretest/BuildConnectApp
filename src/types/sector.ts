@@ -60,10 +60,12 @@ export interface VideoItem {
 export interface PhotoItem {
   id: string;
   title: string;
-  /** Gradiente de placeholder quando não há imagem real. */
-  swatch: string;
-  /** Caminho da imagem real (.webp). Quando presente, é renderizada. */
-  filePath?: string;
+  /**
+   * Caminho da imagem (.webp). Obrigatório, como no banco (`Photo.filePath`):
+   * foto sem arquivo não existe. O `swatch` de placeholder saiu junto — o
+   * ramo que o usava nunca podia executar.
+   */
+  filePath: string;
   /** Vitrine: temporada informada no envio (ver `lib/collection-filters`). */
   temporada?: string;
   /** Vitrine: coleção informada no envio. */

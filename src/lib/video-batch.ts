@@ -34,6 +34,8 @@ export interface BatchLabels {
   maxBytes: number;
   singular: string;
   plural: string;
+  /** Gênero do substantivo, para as frases concordarem ("a foto enviada"). */
+  fem?: boolean;
 }
 
 const VIDEO_LABELS: BatchLabels = {

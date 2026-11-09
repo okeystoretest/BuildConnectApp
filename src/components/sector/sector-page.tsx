@@ -18,7 +18,10 @@ import { DocumentGrid } from "./document-grid";
 import { AppShortcuts } from "./app-shortcuts";
 import { UploadAction } from "./upload-action";
 import { FileUploadModal } from "./file-upload-modal";
-import { MediaBatchUploadModal, type MediaUploadKind } from "./media-batch-upload-modal";
+import {
+  MediaBatchUploadModal,
+  type MediaUploadKind,
+} from "./media-batch-upload-modal";
 import { CollectionFilterBar } from "./collection-filter-bar";
 import { deriveFilters, matchesFilters } from "@/lib/video-filters";
 import {
@@ -55,7 +58,11 @@ const VITRINE_TABS: readonly TabDef[] = [
   // Documentos e apresentações da vitrine. Reusa o modelo Document: a vitrine
   // não tem aba Documentos, então não há ambiguidade — e o progresso já
   // ignora tudo que é VITRINE (ver lib/progress-scope).
-  { id: "material", label: "Material de Apoio", uploadLabel: "Enviar material" },
+  {
+    id: "material",
+    label: "Material de Apoio",
+    uploadLabel: "Enviar material",
+  },
 ];
 
 const INSTRUCOES_TAB: TabDef = {
@@ -84,7 +91,11 @@ const FUNIL_TAB: TabDef = { id: "funil-vendas", label: "Funil de Vendas" };
  * `?aba=sites` não quebram: a resolução da aba inicial, logo abaixo, cai na
  * primeira quando a pedida não existe.
  */
-const PADRAO_TABS: readonly TabDef[] = [INSTRUCOES_TAB, DOCUMENTOS_TAB, AVALIACOES_TAB];
+const PADRAO_TABS: readonly TabDef[] = [
+  INSTRUCOES_TAB,
+  DOCUMENTOS_TAB,
+  AVALIACOES_TAB,
+];
 
 /**
  * Ordem própria dos subsetores com Cronograma (Vendas e Marketing): a
@@ -159,7 +170,10 @@ export function SectorPage({
     // procurar uma no lugar da outra.
     const comFunil = salesFunnel
       ? [
-          ...source.slice(0, source.indexOf(CRONOGRAMA_TAB) + 1 || source.length),
+          ...source.slice(
+            0,
+            source.indexOf(CRONOGRAMA_TAB) + 1 || source.length,
+          ),
           FUNIL_TAB,
           ...source.slice(source.indexOf(CRONOGRAMA_TAB) + 1 || source.length),
         ]
@@ -207,8 +221,9 @@ export function SectorPage({
   const [page, setPage] = useState(1);
   const [mediaModal, setMediaModal] = useState<MediaUploadKind | null>(null);
   /** Temporada/Coleção/Ano da vitrine. Zerado a cada troca de aba. */
-  const [collectionFilter, setCollectionFilter] =
-    useState<CollectionFilter>(EMPTY_COLLECTION_FILTER);
+  const [collectionFilter, setCollectionFilter] = useState<CollectionFilter>(
+    EMPTY_COLLECTION_FILTER,
+  );
   /** Temporada e Coleção do envio de material de apoio (vitrine). */
   const [materialTemporada, setMaterialTemporada] = useState("");
   const [materialColecao, setMaterialColecao] = useState("");
@@ -257,7 +272,9 @@ export function SectorPage({
   const filteredPhotos = useMemo(() => {
     const q = query.trim().toLowerCase();
     return sector.photos.filter(
-      (p) => p.title.toLowerCase().includes(q) && matchesCollection(p, collectionFilter),
+      (p) =>
+        p.title.toLowerCase().includes(q) &&
+        matchesCollection(p, collectionFilter),
     );
   }, [sector.photos, query, collectionFilter]);
 
@@ -265,7 +282,8 @@ export function SectorPage({
     const q = query.trim().toLowerCase();
     return sector.documents.filter(
       (d) =>
-        d.name.toLowerCase().includes(q) && (!vitrine || matchesCollection(d, collectionFilter)),
+        d.name.toLowerCase().includes(q) &&
+        (!vitrine || matchesCollection(d, collectionFilter)),
     );
   }, [sector.documents, query, vitrine, collectionFilter]);
 
@@ -286,7 +304,9 @@ export function SectorPage({
 
   function toggleFilter(filter: string) {
     setActiveFilters((prev) =>
-      prev.includes(filter) ? prev.filter((f) => f !== filter) : [...prev, filter],
+      prev.includes(filter)
+        ? prev.filter((f) => f !== filter)
+        : [...prev, filter],
     );
     setPage(1);
   }
@@ -301,14 +321,26 @@ export function SectorPage({
 
   // As pílulas ficam sempre à vista (pedido de 18/09/2026): sem botão para
   // abri-las e sem restrição de papel. Sem tag em uso, não há nada a mostrar.
-  /** Os três seletores da vitrine, acima do conteúdo de qualquer aba dela. */
-  const collectionBar = vitrine ? (
-    <CollectionFilterBar
-      options={collectionOptions}
-      value={collectionFilter}
-      onChange={setCollectionFilter}
-    />
-  ) : null;
+  /**
+   * Os três seletores da vitrine, na MESMA linha da busca.
+   *
+   * O vazio é decidido aqui, não dentro da barra: ela vive como `children` da
+   * barra de busca, e um filho que renderiza `null` ainda é um filho — a busca
+   * empurraria o seletor de visualização para a direita por causa de um
+   * controle que não está na tela (aba sem conteúdo nenhum).
+   */
+  const temOpcoes =
+    collectionOptions.temporada.length > 0 ||
+    collectionOptions.colecao.length > 0 ||
+    collectionOptions.ano.length > 0;
+  const collectionBar =
+    vitrine && temOpcoes ? (
+      <CollectionFilterBar
+        options={collectionOptions}
+        value={collectionFilter}
+        onChange={setCollectionFilter}
+      />
+    ) : null;
 
   const filterBar =
     filterable && filters.length > 0 ? (
@@ -332,7 +364,9 @@ export function SectorPage({
         title={sector.name}
         description={sector.description}
         progress={
-          sector.completion === null ? undefined : { label: "Concluído", value: sector.completion }
+          sector.completion === null
+            ? undefined
+            : { label: "Concluído", value: sector.completion }
         }
       />
 
@@ -351,7 +385,10 @@ export function SectorPage({
           }}
         />
         {currentTab?.uploadLabel && (
-          <UploadAction label={currentTab.uploadLabel} onClick={() => openUpload(activeId)} />
+          <UploadAction
+            label={currentTab.uploadLabel}
+            onClick={() => openUpload(activeId)}
+          />
         )}
       </div>
 
@@ -379,22 +416,23 @@ export function SectorPage({
               query={query}
               onQueryChange={setQuery}
               placeholder="Buscar foto"
-              view={view}
-              onViewChange={setView}
-            />
-            {collectionBar}
+            >
+              {collectionBar}
+            </ContentToolbar>
             {filteredPhotos.length === 0 ? (
               <EmptyState
                 title="Nenhuma foto encontrada"
                 description="Ajuste a busca ou os filtros de temporada, coleção e ano."
               />
             ) : (
-              <PhotoGrid photos={filteredPhotos} />
+              <PhotoGrid photos={filteredPhotos} slug={sector.slug} />
             )}
           </div>
         )}
 
-        {(activeId === "videos" || activeId === "workshop" || activeId === "instrucoes-video") && (
+        {(activeId === "videos" ||
+          activeId === "workshop" ||
+          activeId === "instrucoes-video") && (
           <div className="space-y-4">
             <ContentToolbar
               query={query}
@@ -402,11 +440,14 @@ export function SectorPage({
                 setQuery(q);
                 setPage(1);
               }}
-              placeholder={activeId === "workshop" ? "Buscar workshop" : "Buscar vídeo"}
+              placeholder={
+                activeId === "workshop" ? "Buscar workshop" : "Buscar vídeo"
+              }
               view={view}
               onViewChange={setView}
-            />
-            {collectionBar}
+            >
+              {collectionBar}
+            </ContentToolbar>
             {filterBar}
 
             {filteredVideos.length === 0 ? (
@@ -423,6 +464,7 @@ export function SectorPage({
                     video={video}
                     suggestions={filters}
                     comprehension={instrucoes}
+                    collection={vitrine}
                     autoOpen={video.id === autoOpenId}
                   />
                 ))}
@@ -436,13 +478,16 @@ export function SectorPage({
                     video={video}
                     suggestions={filters}
                     comprehension={instrucoes}
+                    collection={vitrine}
                     autoOpen={video.id === autoOpenId}
                   />
                 ))}
               </div>
             )}
 
-            {instrucoes && <Pagination page={videoPage} onChange={setPage} noun="vídeos" />}
+            {instrucoes && (
+              <Pagination page={videoPage} onChange={setPage} noun="vídeos" />
+            )}
           </div>
         )}
 
@@ -451,12 +496,19 @@ export function SectorPage({
             <ContentToolbar
               query={query}
               onQueryChange={setQuery}
-              placeholder={activeId === "material" ? "Buscar material" : "Buscar documento"}
+              placeholder={
+                activeId === "material" ? "Buscar material" : "Buscar documento"
+              }
               view={view}
               onViewChange={setView}
+            >
+              {collectionBar}
+            </ContentToolbar>
+            <DocumentGrid
+              slug={sector.slug}
+              documents={filteredDocuments}
+              collection={vitrine}
             />
-            {collectionBar}
-            <DocumentGrid slug={sector.slug} documents={filteredDocuments} />
           </div>
         )}
 
@@ -479,7 +531,11 @@ export function SectorPage({
           ))}
 
         {activeId === "cronograma" && cronograma && (
-          <CronogramaPanel slug={sector.slug} sectorLabel={sector.name} data={cronograma} />
+          <CronogramaPanel
+            slug={sector.slug}
+            sectorLabel={sector.name}
+            data={cronograma}
+          />
         )}
 
         {activeId === "funil-vendas" && salesFunnel && (
@@ -490,7 +546,6 @@ export function SectorPage({
             onSelect={selecionarFunil}
           />
         )}
-
       </TabPanel>
 
       {mediaModal && (
@@ -505,10 +560,17 @@ export function SectorPage({
       <FileUploadModal
         slug={sector.slug}
         open={documentModalOpen}
-        title={activeId === "material" ? "Enviar material de apoio" : "Enviar documento"}
+        title={
+          activeId === "material"
+            ? "Enviar material de apoio"
+            : "Enviar documento"
+        }
         extraFields={
           vitrine
-            ? { temporada: materialTemporada.trim(), colecao: materialColecao.trim() }
+            ? {
+                temporada: materialTemporada.trim(),
+                colecao: materialColecao.trim(),
+              }
             : undefined
         }
         onUploaded={() => {

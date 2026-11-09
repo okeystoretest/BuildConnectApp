@@ -16,6 +16,9 @@ export type TranscriptMode = "keep" | "replace" | "remove";
 export interface MediaEditValue {
   title: string;
   tags: readonly string[];
+  /** Só existem quando o modal foi aberto com `collection`. */
+  temporada?: string;
+  colecao?: string;
   /** Só existe quando o modal foi aberto com `transcript`. */
   transcriptMode?: TranscriptMode;
   transcriptFile?: File | null;
@@ -39,6 +42,13 @@ export interface MediaEditModalProps {
    * `current` são os ids dos subsetores que já recebem o vídeo.
    */
   sharing?: { slug: string; current: readonly string[] };
+  /**
+   * Presente só na vitrine: Temporada e Coleção, os mesmos campos do envio.
+   * `ano` entra como informação, não como campo — ele vem da data de
+   * publicação, e um input que não se pode editar é pior do que uma linha de
+   * texto dizendo de onde o valor sai.
+   */
+  collection?: { ano?: number };
   /** true enquanto o salvamento roda — trava os botões e o fechar. */
   saving?: boolean;
   /** Erro vindo do servidor, exibido dentro do modal. */
@@ -46,7 +56,8 @@ export interface MediaEditModalProps {
   onSave: (value: MediaEditValue) => void;
 }
 
-const TRANSCRIPT_ACCEPT = ".txt,.md,.vtt,.srt,text/plain,text/vtt,text/markdown";
+const TRANSCRIPT_ACCEPT =
+  ".txt,.md,.vtt,.srt,text/plain,text/vtt,text/markdown";
 
 /**
  * Edição de vídeo/documento: título e tags — e, nos vídeos, a transcrição.
@@ -61,12 +72,15 @@ export function MediaEditModal({
   suggestions = [],
   transcript,
   sharing,
+  collection,
   saving = false,
   serverError = null,
   onSave,
 }: MediaEditModalProps) {
   const [title, setTitle] = useState(initial.title);
   const [tags, setTags] = useState<readonly string[]>(initial.tags);
+  const [temporada, setTemporada] = useState(initial.temporada ?? "");
+  const [colecao, setColecao] = useState(initial.colecao ?? "");
   const [draft, setDraft] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [transcriptMode, setTranscriptMode] = useState<TranscriptMode>("keep");
@@ -75,8 +89,12 @@ export function MediaEditModal({
 
   const { role } = useRole();
   const canShare = Boolean(sharing) && role === "ADMIN";
-  const [targets, setTargets] = useState<{ id: string; label: string; sector: string }[]>([]);
-  const [shareWith, setShareWith] = useState<readonly string[]>(sharing?.current ?? []);
+  const [targets, setTargets] = useState<
+    { id: string; label: string; sector: string }[]
+  >([]);
+  const [shareWith, setShareWith] = useState<readonly string[]>(
+    sharing?.current ?? [],
+  );
   const [loadingTargets, setLoadingTargets] = useState(false);
   const [targetsError, setTargetsError] = useState(false);
 
@@ -85,12 +103,14 @@ export function MediaEditModal({
     if (open) {
       setTitle(initial.title);
       setTags(initial.tags);
+      setTemporada(initial.temporada ?? "");
+      setColecao(initial.colecao ?? "");
       setDraft("");
       setError(null);
       setTranscriptMode("keep");
       setTranscriptFile(null);
     }
-  }, [open, initial.title, initial.tags]);
+  }, [open, initial.title, initial.tags, initial.temporada, initial.colecao]);
 
   // A lista de subsetores vem do servidor ao abrir, e só para quem pode
   // compartilhar: o modal serve a todo card e não deve puxar isso à toa.
@@ -117,7 +137,9 @@ export function MediaEditModal({
   }, [open, canShare, sharing]);
 
   function toggleShare(id: string) {
-    setShareWith((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    setShareWith((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
   }
 
   function addTag(value: string) {
@@ -144,7 +166,11 @@ export function MediaEditModal({
         return;
       }
       const excedeu = validateUploadSizes([
-        { label: "A transcrição", bytes: transcriptFile.size, max: MAX_BYTES.transcript },
+        {
+          label: "A transcrição",
+          bytes: transcriptFile.size,
+          max: MAX_BYTES.transcript,
+        },
       ]);
       if (excedeu) {
         setError(excedeu);
@@ -154,18 +180,22 @@ export function MediaEditModal({
     onSave({
       title: title.trim(),
       tags,
+      ...(collection
+        ? { temporada: temporada.trim(), colecao: colecao.trim() }
+        : {}),
       ...(transcript ? { transcriptMode, transcriptFile } : {}),
       ...(canShare ? { shareWith } : {}),
     });
-    // Quem salva no servidor fecha o modal quando terminar; sem servidor
-    // (documentos, por ora), fecha aqui mesmo.
-    if (!transcript) onClose();
+    // Quem fecha é sempre quem salva: documento passou a ter servidor
+    // (`updateSectorDocument`), e fechar aqui engoliria o erro dele.
   }
 
   /** Rótulo do estado da transcrição, para o campo dizer o que vai acontecer. */
   function transcriptStatus(): string {
-    if (transcriptMode === "replace" && transcriptFile) return transcriptFile.name;
-    if (transcriptMode === "remove") return "A transcrição será removida ao salvar.";
+    if (transcriptMode === "replace" && transcriptFile)
+      return transcriptFile.name;
+    if (transcriptMode === "remove")
+      return "A transcrição será removida ao salvar.";
     if (transcript?.hasCurrent) return "Transcrição enviada.";
     return "Nenhuma transcrição enviada.";
   }
@@ -179,11 +209,18 @@ export function MediaEditModal({
       dismissible={!saving}
       title="Editar conteúdo"
       description={
-        canShare
-          ? "Altere o título, os filtros, a transcrição e com quem o vídeo é compartilhado."
-          : transcript
-            ? "Altere o título, os filtros e a transcrição."
-            : "Altere o título e as tags de filtragem."
+        collection
+          ? transcript
+            ? "Altere o título, a temporada, a coleção e a transcrição."
+            : "Altere o título, a temporada e a coleção."
+          : canShare
+            ? "Altere o título, os filtros, a transcrição e com quem o vídeo é compartilhado."
+            : transcript
+              ? "Altere o título, os filtros e a transcrição."
+              : // Sobra o DOCUMENTO fora da vitrine: só título. As tags
+                // saíram, e prometer "tags de filtragem" aqui descrevia um
+                // campo que a tela não mostra mais.
+                "Altere o título."
       }
       className="max-w-lg"
       footer={
@@ -214,74 +251,135 @@ export function MediaEditModal({
           {error && <p className="mt-1.5 text-xs text-danger">{error}</p>}
         </div>
 
-        <div>
-          <Label htmlFor="media-tag">Tags / filtros</Label>
-          <div className="flex gap-2">
-            <Input
-              id="media-tag"
-              value={draft}
-              placeholder="Ex.: Segurança"
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addTag(draft);
-                }
-              }}
-              className="h-10 rounded-lg"
-            />
-            <Button variant="secondary" onClick={() => addTag(draft)} className="shrink-0">
-              <Plus className="h-4 w-4" />
-              Adicionar
-            </Button>
-          </div>
-
-          {tags.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center gap-1 rounded-full border border-primary/25 bg-primary/10 py-1 pl-3 pr-1.5 text-xs font-medium text-primary"
-                >
-                  {tag}
-                  <button
-                    type="button"
-                    onClick={() => removeTag(tag)}
-                    aria-label={`Remover tag ${tag}`}
-                    className="focus-ring rounded-full text-primary/70 transition-colors hover:text-danger"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
-              ))}
-            </div>
-          )}
-
-          {available.length > 0 && (
-            <div className="mt-3">
-              <p className="mb-1.5 text-[11px] text-muted">Sugestões do setor:</p>
-              <div className="flex flex-wrap gap-2">
-                {available.map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    type="button"
-                    onClick={() => addTag(suggestion)}
-                    className="focus-ring rounded-full border border-dashed border-border px-3 py-1 text-xs text-muted transition-colors hover:border-border-strong hover:text-foreground"
-                  >
-                    + {suggestion}
-                  </button>
-                ))}
+        {/* Mesma ordem e mesmos rótulos do envio: quem cadastrou a peça
+            reencontra os campos onde os deixou. */}
+        {collection && (
+          <div className="space-y-1.5">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="media-temporada">Temporada</Label>
+                <Input
+                  id="media-temporada"
+                  value={temporada}
+                  onChange={(e) => setTemporada(e.target.value)}
+                  disabled={saving}
+                  maxLength={60}
+                  placeholder="Ex.: Verão"
+                  className="h-11 rounded-xl"
+                />
+              </div>
+              <div>
+                <Label htmlFor="media-colecao">Coleção</Label>
+                <Input
+                  id="media-colecao"
+                  value={colecao}
+                  onChange={(e) => setColecao(e.target.value)}
+                  disabled={saving}
+                  maxLength={60}
+                  placeholder="Ex.: Cápsula 1"
+                  className="h-11 rounded-xl"
+                />
               </div>
             </div>
-          )}
-        </div>
+            <p className="text-xs text-muted">
+              {collection.ano
+                ? `Ano: ${collection.ano} — vem da data de publicação e não se edita aqui.`
+                : "O ano vem da data de publicação e não se edita aqui."}{" "}
+              Deixar um campo em branco limpa o valor gravado.
+            </p>
+          </div>
+        )}
+
+        {/* Tags são de VÍDEO, e só fora da vitrine.
+
+            Na vitrine o que filtra é temporada, coleção e ano — as pílulas de
+            tag nunca chegaram a ser exibidas naquelas abas (ver FILTERABLE em
+            `sector-page`). E em DOCUMENTO elas nunca filtraram nada, em setor
+            nenhum: `Document.tags` é coluna que só recebe, e o campo chegou a
+            aceitar edição que o servidor descartava em silêncio. Campo que
+            grava e não filtra é pior do que campo nenhum.
+
+            `transcript` é o sinal de "isto é um vídeo" — a mesma convenção que
+            o resto do arquivo já usa. As tags JÁ GRAVADAS continuam intactas:
+            esconder o campo não é apagar o dado. */}
+        {!collection && transcript && (
+          <div>
+            <Label htmlFor="media-tag">Tags / filtros</Label>
+            <div className="flex gap-2">
+              <Input
+                id="media-tag"
+                value={draft}
+                placeholder="Ex.: Segurança"
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addTag(draft);
+                  }
+                }}
+                className="h-10 rounded-lg"
+              />
+              <Button
+                variant="secondary"
+                onClick={() => addTag(draft)}
+                className="shrink-0"
+              >
+                <Plus className="h-4 w-4" />
+                Adicionar
+              </Button>
+            </div>
+
+            {tags.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="inline-flex items-center gap-1 rounded-full border border-primary/25 bg-primary/10 py-1 pl-3 pr-1.5 text-xs font-medium text-primary"
+                  >
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={() => removeTag(tag)}
+                      aria-label={`Remover tag ${tag}`}
+                      className="focus-ring rounded-full text-primary/70 transition-colors hover:text-danger"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {available.length > 0 && (
+              <div className="mt-3">
+                <p className="mb-1.5 text-[11px] text-muted">
+                  Sugestões do setor:
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {available.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      onClick={() => addTag(suggestion)}
+                      className="focus-ring rounded-full border border-dashed border-border px-3 py-1 text-xs text-muted transition-colors hover:border-border-strong hover:text-foreground"
+                    >
+                      + {suggestion}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {transcript && (
           <div>
             <Label htmlFor="media-transcript">Transcrição do Vídeo</Label>
             <div className="flex items-center gap-2 rounded-xl border border-border bg-surface-2 px-3 py-2.5">
               <Captions className="h-4 w-4 shrink-0 text-muted" />
-              <p className="min-w-0 flex-1 truncate text-xs text-muted">{transcriptStatus()}</p>
+              <p className="min-w-0 flex-1 truncate text-xs text-muted">
+                {transcriptStatus()}
+              </p>
               <Button
                 variant="secondary"
                 size="sm"
@@ -289,7 +387,9 @@ export function MediaEditModal({
                 disabled={saving}
               >
                 <Upload className="h-3.5 w-3.5" />
-                {transcript.hasCurrent || transcriptFile ? "Substituir" : "Enviar"}
+                {transcript.hasCurrent || transcriptFile
+                  ? "Substituir"
+                  : "Enviar"}
               </Button>
               {(transcriptMode === "replace" ||
                 (transcript.hasCurrent && transcriptMode === "keep")) && (
@@ -301,10 +401,14 @@ export function MediaEditModal({
                     setTranscriptFile(null);
                     // Sem transcrição atual, desfazer a escolha volta ao "nada";
                     // com uma atual, o pedido é remover a que existe.
-                    setTranscriptMode(transcript.hasCurrent ? "remove" : "keep");
+                    setTranscriptMode(
+                      transcript.hasCurrent ? "remove" : "keep",
+                    );
                   }}
                 >
-                  {transcriptMode === "replace" && !transcript.hasCurrent ? "Desfazer" : "Remover"}
+                  {transcriptMode === "replace" && !transcript.hasCurrent
+                    ? "Desfazer"
+                    : "Remover"}
                 </Button>
               )}
             </div>
@@ -324,7 +428,8 @@ export function MediaEditModal({
               }}
             />
             <p className="mt-1.5 text-[11px] text-muted">
-              TXT, MD, VTT ou SRT, até {maxMb("transcript")} MB. O texto aparece ao lado do player.
+              TXT, MD, VTT ou SRT, até {maxMb("transcript")} MB. O texto aparece
+              ao lado do player.
             </p>
           </div>
         )}
@@ -333,8 +438,8 @@ export function MediaEditModal({
           <div>
             <Label>Compartilhar com outros setores</Label>
             <p className="mb-2 text-[11px] text-muted">
-              O mesmo arquivo passa a aparecer nas Instruções em Vídeo dos setores marcados. Só
-              este setor edita ou exclui.
+              O mesmo arquivo passa a aparecer nas Instruções em Vídeo dos
+              setores marcados. Só este setor edita ou exclui.
             </p>
             {loadingTargets ? (
               <p className="text-xs text-muted">Carregando setores…</p>
@@ -343,7 +448,9 @@ export function MediaEditModal({
                 Não foi possível carregar os setores. Feche e abra de novo.
               </p>
             ) : targets.length === 0 ? (
-              <p className="text-xs text-muted">Nenhum outro setor disponível.</p>
+              <p className="text-xs text-muted">
+                Nenhum outro setor disponível.
+              </p>
             ) : (
               <div className="scrollbar-slim max-h-48 space-y-1 overflow-y-auto rounded-xl border border-border bg-surface-2 p-2">
                 {targets.map((t) => (
@@ -360,7 +467,9 @@ export function MediaEditModal({
                     />
                     <span className="min-w-0 truncate">
                       {t.label}
-                      <span className="ml-1 text-xs text-muted">· {t.sector}</span>
+                      <span className="ml-1 text-xs text-muted">
+                        · {t.sector}
+                      </span>
                     </span>
                   </label>
                 ))}
@@ -368,7 +477,8 @@ export function MediaEditModal({
             )}
             {shareWith.length > 0 && (
               <p className="mt-1.5 flex items-center gap-1 text-[11px] text-muted">
-                <Share2 className="h-3 w-3" /> Compartilhado com {shareWith.length} setor(es).
+                <Share2 className="h-3 w-3" /> Compartilhado com{" "}
+                {shareWith.length} setor(es).
               </p>
             )}
           </div>

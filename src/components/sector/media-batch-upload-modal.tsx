@@ -91,7 +91,7 @@ const CONFIG: Record<MediaUploadKind, KindConfig> = {
     title: "Enviar fotos",
     formats: "JPG, PNG, WebP ou HEIC",
     accept: PHOTO_ACCEPT,
-    labels: { maxBytes: MAX_BYTES.image, singular: "foto", plural: "fotos" },
+    labels: { maxBytes: MAX_BYTES.image, singular: "foto", plural: "fotos", fem: true },
     preview: "self",
   },
 };
@@ -152,6 +152,9 @@ export function MediaBatchUploadModal({
 }: MediaBatchUploadModalProps) {
   const config = CONFIG[kind];
   const { labels } = config;
+  /** "a"/"o" e "as"/"os" das frases do modal, conforme o gênero do arquivo. */
+  const a = labels.fem ? "a" : "o";
+  const as = labels.fem ? "as" : "os";
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<QueueItem[]>([]);
@@ -294,7 +297,7 @@ export function MediaBatchUploadModal({
   async function submit() {
     const pending = items.filter((it) => it.status !== "done");
     if (pending.length === 0) {
-      setError(`Selecione ao menos um${labels.singular === "foto" ? "a" : ""} ${labels.singular}.`);
+      setError(`Selecione ao menos um${labels.fem ? "a" : ""} ${labels.singular}.`);
       return;
     }
     const semTitulo = pending.find((it) => !it.title.trim());
@@ -331,8 +334,8 @@ export function MediaBatchUploadModal({
       router.refresh();
       setError(
         failed === 1
-          ? `1 ${labels.singular} não foi enviad${labels.singular === "foto" ? "a" : "o"}. Veja o motivo na lista e tente de novo.`
-          : `${failed} ${labels.plural} não foram enviad${labels.singular === "foto" ? "as" : "os"}. Veja o motivo na lista e tente de novo.`,
+          ? `1 ${labels.singular} não foi enviad${a}. Veja o motivo na lista e tente de novo.`
+          : `${failed} ${labels.plural} não foram enviad${as}. Veja o motivo na lista e tente de novo.`,
       );
     }
   }
@@ -347,7 +350,7 @@ export function MediaBatchUploadModal({
       onClose={handleClose}
       dismissible={!running}
       title={config.title}
-      description={`Até ${MAX_BATCH_FILES} ${labels.plural} por vez, enviad${labels.singular === "foto" ? "as" : "os"} um a um. ${config.formats}, até ${formatBytes(labels.maxBytes)} cada.`}
+      description={`Até ${MAX_BATCH_FILES} ${labels.plural} por vez, enviad${as} um${a} a um${a}. ${config.formats}, até ${formatBytes(labels.maxBytes)} cada.`}
       className="max-w-2xl"
       footer={
         <div className="flex items-center justify-between gap-3">
@@ -459,7 +462,7 @@ export function MediaBatchUploadModal({
                     value={item.title}
                     onChange={(e) => patch(item.key, { title: e.target.value })}
                     disabled={running || item.status === "done"}
-                    placeholder={`Título d${labels.singular === "foto" ? "a foto" : "o vídeo"}`}
+                    placeholder={`Título d${a} ${labels.singular}`}
                     aria-label={`Título de ${item.file.name}`}
                     className="h-9"
                   />
