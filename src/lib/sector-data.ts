@@ -111,6 +111,9 @@ export async function getSectorContent(
     thumbnailPath: string | null;
     transcriptPath: string | null;
     transcriptText: string | null;
+    temporada: string | null;
+    colecao: string | null;
+    createdAt: Date;
   };
   const toItem = (v: VideoRow): VideoItem => ({
     id: v.id,
@@ -124,6 +127,9 @@ export async function getSectorContent(
     thumbnailPath: v.thumbnailPath ?? undefined,
     transcriptPath: v.transcriptPath ?? undefined,
     transcriptText: v.transcriptText ?? undefined,
+    temporada: v.temporada ?? undefined,
+    colecao: v.colecao ?? undefined,
+    ano: v.createdAt.getFullYear(),
   });
 
   // Vídeos separados por tipo (VIDEO/INSTRUCAO vão para "videos"; WORKSHOP à parte).
@@ -146,22 +152,45 @@ export async function getSectorContent(
   const instrucoes = sub.kind === "PADRAO";
   const orderedVideos = instrucoes ? sortInstrucoes(allVideos) : allVideos;
 
-  const photos: PhotoItem[] = sub.photos.map((p: { id: string; title: string; filePath: string }) => ({
-    id: p.id,
-    title: p.title,
-    // Sem gradiente fictício: foto real vem por filePath.
-    swatch: "from-surface-2 to-surface",
-    filePath: p.filePath,
-  }));
+  type ColecaoRow = { temporada: string | null; colecao: string | null; createdAt: Date };
+  /** Temporada/Coleção/Ano da vitrine, na forma que `collection-filters` espera. */
+  const colecaoDe = (row: ColecaoRow) => ({
+    temporada: row.temporada ?? undefined,
+    colecao: row.colecao ?? undefined,
+    ano: row.createdAt.getFullYear(),
+  });
 
-  const documents: DocumentItem[] = sub.documents.map((d: { id: string; name: string; sizeBytes: number; kind: DocumentItem["kind"]; tags: string[]; filePath: string }) => ({
-    id: d.id,
-    name: d.name,
-    size: formatBytes(d.sizeBytes),
-    kind: d.kind,
-    tags: d.tags,
-    filePath: d.filePath,
-  }));
+  const photos: PhotoItem[] = sub.photos.map(
+    (p: { id: string; title: string; filePath: string } & ColecaoRow) => ({
+      id: p.id,
+      title: p.title,
+      // Sem gradiente fictício: foto real vem por filePath.
+      swatch: "from-surface-2 to-surface",
+      filePath: p.filePath,
+      ...colecaoDe(p),
+    }),
+  );
+
+  const documents: DocumentItem[] = sub.documents.map(
+    (
+      d: {
+        id: string;
+        name: string;
+        sizeBytes: number;
+        kind: DocumentItem["kind"];
+        tags: string[];
+        filePath: string;
+      } & ColecaoRow,
+    ) => ({
+      id: d.id,
+      name: d.name,
+      size: formatBytes(d.sizeBytes),
+      kind: d.kind,
+      tags: d.tags,
+      filePath: d.filePath,
+      ...colecaoDe(d),
+    }),
+  );
 
   const links: LinkItem[] = linkRows.map(
     (l: { id: string; label: string; url: string; iconPath: string | null }) => ({

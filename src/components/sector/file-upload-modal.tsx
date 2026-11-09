@@ -12,7 +12,7 @@ import { useUploadProgress, uploadPhaseLabel } from "@/lib/use-upload-progress";
 /**
  * Envio de documento (PDF/DOC/DOCX/XLS/XLSX/PPT/PPTX e imagem PNG/JPG/WEBP/TIFF/GIF).
  *
- * Os vídeos saíram daqui: sobem em lote pelo `VideoBatchUploadModal`, um por
+ * Os vídeos saíram daqui: sobem em lote pelo `MediaBatchUploadModal`, um por
  * requisição. Este modal ficou só com o caso de um arquivo, sem título.
  */
 

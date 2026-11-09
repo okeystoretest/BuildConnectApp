@@ -13,7 +13,7 @@ import { DocumentGrid } from "@/components/sector/document-grid";
 import { AppShortcuts } from "@/components/sector/app-shortcuts";
 import { UploadAction } from "@/components/sector/upload-action";
 import { FileUploadModal } from "@/components/sector/file-upload-modal";
-import { VideoBatchUploadModal } from "@/components/sector/video-batch-upload-modal";
+import { MediaBatchUploadModal } from "@/components/sector/media-batch-upload-modal";
 import { FilterPills } from "@/components/sector/filter-pills";
 import { deriveFilters, matchesFilters } from "@/lib/video-filters";
 import { paginate } from "@/lib/paginate";
@@ -225,7 +225,7 @@ export function ItSectorView({
       </TabPanel>
 
       {videoModalOpen && (
-        <VideoBatchUploadModal
+        <MediaBatchUploadModal
           slug="ti"
           kind="instrucao-video"
           open

@@ -12,11 +12,16 @@ import { formatBytes } from "./utils";
 /** Vídeos por lote. Acima disso o modal recusa a seleção inteira. */
 export const MAX_BATCH_FILES = 15;
 
-/** Título sugerido a partir do nome do arquivo: sem extensão, sem `_`/`-`. */
-export function titleFromFilename(name: string): string {
+/**
+ * Título sugerido a partir do nome do arquivo: sem extensão, sem `_`/`-`.
+ *
+ * É o que torna o título OPCIONAL no envio — a linha já chega preenchida com
+ * o nome do próprio arquivo, e trocar passa a ser escolha de quem envia.
+ */
+export function titleFromFilename(name: string, fallback = "Vídeo"): string {
   const semExtensao = name.replace(/\.[^.]+$/, "");
   const limpo = semExtensao.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
-  return limpo || "Vídeo";
+  return limpo || fallback;
 }
 
 export interface BatchFile {
@@ -24,19 +29,39 @@ export interface BatchFile {
   size: number;
 }
 
+/** Como o tipo de arquivo se chama nas mensagens: singular e plural. */
+export interface BatchLabels {
+  maxBytes: number;
+  singular: string;
+  plural: string;
+}
+
+const VIDEO_LABELS: BatchLabels = {
+  maxBytes: MAX_BYTES.video,
+  singular: "vídeo",
+  plural: "vídeos",
+};
+
 /**
  * Confere a seleção ANTES de subir um byte: quantidade e teto por arquivo.
- * Cada vídeo vai na sua própria requisição, então não há soma a conferir —
+ * Cada arquivo vai na sua própria requisição, então não há soma a conferir —
  * o teto que importa é o individual.
+ *
+ * Os rótulos entram por parâmetro porque as fotos usam a mesma fila: o teto
+ * de 15 por operação e a recusa do lote inteiro são a MESMA regra, e duplicá-la
+ * seria assinar que um dia os dois números divergem sem ninguém notar.
  */
-export function validateBatch(files: readonly BatchFile[]): string | null {
-  if (files.length === 0) return "Selecione ao menos um vídeo.";
+export function validateBatch(
+  files: readonly BatchFile[],
+  labels: BatchLabels = VIDEO_LABELS,
+): string | null {
+  if (files.length === 0) return `Selecione ao menos um ${labels.singular}.`;
   if (files.length > MAX_BATCH_FILES) {
-    return `Selecione no máximo ${MAX_BATCH_FILES} vídeos por vez (você escolheu ${files.length}).`;
+    return `Selecione no máximo ${MAX_BATCH_FILES} ${labels.plural} por vez (você escolheu ${files.length}).`;
   }
   for (const file of files) {
-    if (file.size > MAX_BYTES.video) {
-      return `${file.name} tem ${formatBytes(file.size)} — o limite por vídeo é ${formatBytes(MAX_BYTES.video)}.`;
+    if (file.size > labels.maxBytes) {
+      return `${file.name} tem ${formatBytes(file.size)} — o limite por ${labels.singular} é ${formatBytes(labels.maxBytes)}.`;
     }
   }
   return null;

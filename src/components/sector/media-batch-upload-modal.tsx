@@ -2,33 +2,99 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertCircle, CheckCircle2, Film, Loader2, RotateCcw, Upload, X } from "lucide-react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  Film,
+  ImageIcon,
+  Loader2,
+  RotateCcw,
+  Upload,
+  X,
+} from "lucide-react";
 import { cn, formatBytes } from "@/lib/utils";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { maxMb } from "@/lib/storage/limits";
-import { MAX_BATCH_FILES, titleFromFilename, validateBatch, runSequentially } from "@/lib/video-batch";
+import { MAX_BYTES } from "@/lib/storage/limits";
+import {
+  MAX_BATCH_FILES,
+  titleFromFilename,
+  validateBatch,
+  runSequentially,
+  type BatchLabels,
+} from "@/lib/video-batch";
 import { captureVideoThumbnail } from "@/lib/video-thumbnail";
 import { useUploadProgress, uploadPhaseLabel } from "@/lib/use-upload-progress";
 
-/** As três abas de vídeo compartilham este modal; só muda o `kind` gravado. */
-export type VideoUploadKind = "video" | "workshop" | "instrucao-video";
+/** As abas de vídeo e a de fotos compartilham este modal; só muda a config. */
+export type MediaUploadKind = "video" | "workshop" | "instrucao-video" | "foto";
 
-const KIND_VALUE: Record<VideoUploadKind, "VIDEO" | "WORKSHOP" | "INSTRUCAO"> = {
-  video: "VIDEO",
-  workshop: "WORKSHOP",
-  "instrucao-video": "INSTRUCAO",
-};
-
-const TITLE: Record<VideoUploadKind, string> = {
-  video: "Enviar vídeos",
-  workshop: "Enviar workshops",
-  "instrucao-video": "Enviar instruções em vídeo",
-};
-
+const PHOTO_ACCEPT = "image/jpeg,image/png,image/webp,image/heic";
 const VIDEO_ACCEPT = ".mp4,.webm,.mov,.mkv,video/mp4,video/webm,video/quicktime,video/x-matroska";
+
+const VIDEO_LABELS: BatchLabels = {
+  maxBytes: MAX_BYTES.video,
+  singular: "vídeo",
+  plural: "vídeos",
+};
+
+interface KindConfig {
+  /** Porta de `api/uploads` que recebe o arquivo. */
+  uploadKind: string;
+  /** `kind` gravado em Video. Ausente na foto, que tem tabela própria. */
+  videoKind?: "VIDEO" | "WORKSHOP" | "INSTRUCAO";
+  title: string;
+  /** Formatos aceitos, para a linha de apoio do modal. */
+  formats: string;
+  accept: string;
+  labels: BatchLabels;
+  /**
+   * Foto não tem quadro a capturar: a própria imagem é a prévia, e fica pronta
+   * no mesmo instante em que o arquivo é escolhido.
+   */
+  preview: "video-frame" | "self";
+}
+
+const CONFIG: Record<MediaUploadKind, KindConfig> = {
+  video: {
+    uploadKind: "setor-video",
+    videoKind: "VIDEO",
+    title: "Enviar vídeos",
+    formats: "MP4, WebM, MOV ou MKV",
+    accept: VIDEO_ACCEPT,
+    labels: VIDEO_LABELS,
+    preview: "video-frame",
+  },
+  workshop: {
+    uploadKind: "setor-video",
+    videoKind: "WORKSHOP",
+    title: "Enviar workshops",
+    formats: "MP4, WebM, MOV ou MKV",
+    accept: VIDEO_ACCEPT,
+    labels: VIDEO_LABELS,
+    preview: "video-frame",
+  },
+  "instrucao-video": {
+    uploadKind: "setor-video",
+    videoKind: "INSTRUCAO",
+    title: "Enviar instruções em vídeo",
+    formats: "MP4, WebM, MOV ou MKV",
+    accept: VIDEO_ACCEPT,
+    labels: VIDEO_LABELS,
+    preview: "video-frame",
+  },
+  foto: {
+    uploadKind: "setor-foto",
+    title: "Enviar fotos",
+    formats: "JPG, PNG, WebP ou HEIC",
+    accept: PHOTO_ACCEPT,
+    labels: { maxBytes: MAX_BYTES.image, singular: "foto", plural: "fotos" },
+    preview: "self",
+  },
+};
 
 type ItemStatus = "queued" | "sending" | "done" | "error";
 
@@ -37,44 +103,67 @@ interface QueueItem {
   key: string;
   file: File;
   title: string;
-  /** URL de objeto da miniatura capturada, para a pré-visualização na linha. */
+  /** URL de objeto da prévia (quadro capturado, ou a própria imagem). */
   previewUrl: string | null;
+  /** Miniatura a enviar junto do vídeo. Sempre null na foto. */
   thumbnail: Blob | null;
-  /** null enquanto a captura ainda roda. */
+  /** false enquanto a captura ainda roda. */
   thumbnailReady: boolean;
   status: ItemStatus;
   error: string | null;
 }
 
-export interface VideoBatchUploadModalProps {
+export interface MediaBatchUploadModalProps {
   slug: string;
-  kind: VideoUploadKind;
+  kind: MediaUploadKind;
   open: boolean;
+  /**
+   * Vitrine: pede Temporada e Coleção, que valem para o LOTE inteiro. Fora das
+   * vitrines os campos não existem — em Instruções em Vídeo não há coleção a
+   * informar, e um campo vazio e opcional só convidaria a inventar um valor.
+   */
+  collection?: boolean;
   onClose: () => void;
 }
 
 /**
- * Envio de vídeos em lote: até MAX_BATCH_FILES arquivos, subindo UM POR VEZ.
+ * Envio de mídia em lote: até MAX_BATCH_FILES arquivos, subindo UM POR VEZ.
  *
- * Sequencial de propósito. Cada vídeo vai na sua própria requisição, e o
+ * Sequencial de propósito. Cada arquivo vai na sua própria requisição, e o
  * orçamento de tempo (300 s do `requestTimeout`) vale por requisição — quinze
  * envios em paralelo dividiriam a banda de subida e todos estourariam o
  * relógio juntos. Um de cada vez, cada um tem a banda inteira.
  *
- * Transcrição e filtros NÃO entram aqui: ficam na tela de edição do vídeo,
- * depois que ele existe.
+ * As fotos entraram aqui em 09/11/2026, no lugar de um modal próprio de um
+ * arquivo só. Não foi economia de linhas: o teto de 15 por operação, a recusa
+ * do lote inteiro, a fila sequencial, o retentar por linha e o título que já
+ * vem do nome do arquivo são a MESMA regra — e, em dois arquivos, a foto é o
+ * que fica para trás quando a regra do vídeo muda.
+ *
+ * Transcrição e tags NÃO entram aqui: ficam na tela de edição, depois que o
+ * conteúdo existe.
  */
-export function VideoBatchUploadModal({ slug, kind, open, onClose }: VideoBatchUploadModalProps) {
+export function MediaBatchUploadModal({
+  slug,
+  kind,
+  open,
+  collection = false,
+  onClose,
+}: MediaBatchUploadModalProps) {
+  const config = CONFIG[kind];
+  const { labels } = config;
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [items, setItems] = useState<QueueItem[]>([]);
+  const [temporada, setTemporada] = useState("");
+  const [colecao, setColecao] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   /** Índice do item em envio, para a barra de progresso ficar na linha certa. */
   const [current, setCurrent] = useState<number | null>(null);
   const upload = useUploadProgress();
 
-  // Libera as URLs de objeto das miniaturas ao desmontar ou trocar a lista.
+  // Libera as URLs de objeto das prévias ao desmontar ou trocar a lista.
   useEffect(() => {
     return () => {
       for (const item of items) if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
@@ -89,6 +178,8 @@ export function VideoBatchUploadModal({ slug, kind, open, onClose }: VideoBatchU
   function reset() {
     for (const item of items) if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
     setItems([]);
+    setTemporada("");
+    setColecao("");
     setError(null);
     setCurrent(null);
     upload.reset();
@@ -100,17 +191,42 @@ export function VideoBatchUploadModal({ slug, kind, open, onClose }: VideoBatchU
     onClose();
   }
 
+  function toItem(file: File): QueueItem {
+    const self = config.preview === "self";
+    return {
+      key: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`,
+      file,
+      // O título JÁ VEM PREENCHIDO com o nome do arquivo: trocar é opcional.
+      title: titleFromFilename(file.name, self ? "Foto" : "Vídeo"),
+      previewUrl: self ? URL.createObjectURL(file) : null,
+      thumbnail: null,
+      thumbnailReady: self,
+      status: "queued",
+      error: null,
+    };
+  }
+
   function addFiles(list: FileList | null) {
     if (!list || list.length === 0) return;
     const chosen = Array.from(list);
     const next = [...items.filter((it) => it.status !== "done"), ...chosen.map(toItem)];
-    const problem = validateBatch(next.map((it) => ({ name: it.file.name, size: it.file.size })));
+    const problem = validateBatch(
+      next.map((it) => ({ name: it.file.name, size: it.file.size })),
+      labels,
+    );
     if (problem) {
+      // Recusa a seleção inteira: as prévias já criadas das novas linhas
+      // seriam vazamento de URL de objeto, já que elas não entram na lista.
+      for (const item of next) if (!items.includes(item) && item.previewUrl) {
+        URL.revokeObjectURL(item.previewUrl);
+      }
       setError(problem);
       return;
     }
     setError(null);
     setItems(next);
+
+    if (config.preview === "self") return;
 
     // A captura roda em segundo plano, uma por vez, para não abrir quinze
     // decodificadores de vídeo ao mesmo tempo no navegador.
@@ -125,19 +241,6 @@ export function VideoBatchUploadModal({ slug, kind, open, onClose }: VideoBatchU
         });
       }
     })();
-  }
-
-  function toItem(file: File): QueueItem {
-    return {
-      key: `${file.name}-${file.size}-${file.lastModified}-${Math.random().toString(36).slice(2, 8)}`,
-      file,
-      title: titleFromFilename(file.name),
-      previewUrl: null,
-      thumbnail: null,
-      thumbnailReady: false,
-      status: "queued",
-      error: null,
-    };
   }
 
   function remove(key: string) {
@@ -172,11 +275,15 @@ export function VideoBatchUploadModal({ slug, kind, open, onClose }: VideoBatchU
     const fd = new FormData();
     fd.set("slug", slug);
     fd.set("title", item.title.trim());
-    fd.set("kind", KIND_VALUE[kind]);
+    if (config.videoKind) fd.set("kind", config.videoKind);
     fd.set("file", item.file);
     if (thumbnail) fd.set("thumbnailFile", thumbnail, "thumbnail.jpg");
+    if (collection) {
+      fd.set("temporada", temporada.trim());
+      fd.set("colecao", colecao.trim());
+    }
 
-    const res = await upload.send("setor-video", fd);
+    const res = await upload.send(config.uploadKind, fd);
     patch(item.key, {
       status: res.ok ? "done" : "error",
       error: res.ok ? null : (res.error ?? "Falha no envio."),
@@ -187,7 +294,7 @@ export function VideoBatchUploadModal({ slug, kind, open, onClose }: VideoBatchU
   async function submit() {
     const pending = items.filter((it) => it.status !== "done");
     if (pending.length === 0) {
-      setError("Selecione ao menos um vídeo.");
+      setError(`Selecione ao menos um${labels.singular === "foto" ? "a" : ""} ${labels.singular}.`);
       return;
     }
     const semTitulo = pending.find((it) => !it.title.trim());
@@ -195,7 +302,10 @@ export function VideoBatchUploadModal({ slug, kind, open, onClose }: VideoBatchU
       setError(`Informe o título de "${semTitulo.file.name}".`);
       return;
     }
-    const problem = validateBatch(pending.map((it) => ({ name: it.file.name, size: it.file.size })));
+    const problem = validateBatch(
+      pending.map((it) => ({ name: it.file.name, size: it.file.size })),
+      labels,
+    );
     if (problem) {
       setError(problem);
       return;
@@ -221,22 +331,23 @@ export function VideoBatchUploadModal({ slug, kind, open, onClose }: VideoBatchU
       router.refresh();
       setError(
         failed === 1
-          ? "1 vídeo não foi enviado. Veja o motivo na lista e tente de novo."
-          : `${failed} vídeos não foram enviados. Veja o motivo na lista e tente de novo.`,
+          ? `1 ${labels.singular} não foi enviad${labels.singular === "foto" ? "a" : "o"}. Veja o motivo na lista e tente de novo.`
+          : `${failed} ${labels.plural} não foram enviad${labels.singular === "foto" ? "as" : "os"}. Veja o motivo na lista e tente de novo.`,
       );
     }
   }
 
   const pendingCount = items.filter((it) => it.status !== "done").length;
   const doneCount = items.length - pendingCount;
+  const EmptyPreviewIcon = config.preview === "self" ? ImageIcon : Film;
 
   return (
     <Modal
       open={open}
       onClose={handleClose}
       dismissible={!running}
-      title={TITLE[kind]}
-      description={`Até ${MAX_BATCH_FILES} vídeos por vez, enviados um a um. MP4, WebM, MOV ou MKV, até ${maxMb("video")} MB cada.`}
+      title={config.title}
+      description={`Até ${MAX_BATCH_FILES} ${labels.plural} por vez, enviad${labels.singular === "foto" ? "as" : "os"} um a um. ${config.formats}, até ${formatBytes(labels.maxBytes)} cada.`}
       className="max-w-2xl"
       footer={
         <div className="flex items-center justify-between gap-3">
@@ -244,7 +355,7 @@ export function VideoBatchUploadModal({ slug, kind, open, onClose }: VideoBatchU
             {running && current !== null
               ? `Enviando ${doneCount + 1} de ${items.length} · ${uploadPhaseLabel(upload.phase, upload.percent)}`
               : items.length > 0
-                ? `${pendingCount} ${pendingCount === 1 ? "vídeo" : "vídeos"} na fila`
+                ? `${pendingCount} ${pendingCount === 1 ? labels.singular : labels.plural} na fila`
                 : ""}
           </p>
           <div className="flex gap-2">
@@ -253,13 +364,47 @@ export function VideoBatchUploadModal({ slug, kind, open, onClose }: VideoBatchU
             </Button>
             <Button onClick={submit} disabled={running || pendingCount === 0}>
               {running && <Loader2 className="h-4 w-4 animate-spin" />}
-              {running ? "Enviando…" : pendingCount > 1 ? `Enviar ${pendingCount} vídeos` : "Enviar"}
+              {running
+                ? "Enviando…"
+                : pendingCount > 1
+                  ? `Enviar ${pendingCount} ${labels.plural}`
+                  : "Enviar"}
             </Button>
           </div>
         </div>
       }
     >
       <div className="space-y-4 p-6">
+        {/* Temporada e Coleção valem para o lote inteiro: quem envia as fotos
+            de uma coleção envia todas de uma vez, e repetir o mesmo par em
+            quinze linhas seria quinze chances de digitar diferente. */}
+        {collection && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="lote-temporada">Temporada (opcional)</Label>
+              <Input
+                id="lote-temporada"
+                value={temporada}
+                onChange={(e) => setTemporada(e.target.value)}
+                disabled={running}
+                maxLength={60}
+                placeholder="Ex.: Verão"
+              />
+            </div>
+            <div>
+              <Label htmlFor="lote-colecao">Coleção (opcional)</Label>
+              <Input
+                id="lote-colecao"
+                value={colecao}
+                onChange={(e) => setColecao(e.target.value)}
+                disabled={running}
+                maxLength={60}
+                placeholder="Ex.: Cápsula 1"
+              />
+            </div>
+          </div>
+        )}
+
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
@@ -270,15 +415,15 @@ export function VideoBatchUploadModal({ slug, kind, open, onClose }: VideoBatchU
             <Upload className="h-5 w-5" />
             <span>
               {items.length === 0
-                ? "Selecionar vídeos"
-                : `Adicionar mais vídeos (${items.length}/${MAX_BATCH_FILES})`}
+                ? `Selecionar ${labels.plural}`
+                : `Adicionar mais ${labels.plural} (${items.length}/${MAX_BATCH_FILES})`}
             </span>
           </span>
         </button>
         <input
           ref={inputRef}
           type="file"
-          accept={VIDEO_ACCEPT}
+          accept={config.accept}
           multiple
           className="sr-only"
           onChange={(e) => {
@@ -303,7 +448,7 @@ export function VideoBatchUploadModal({ slug, kind, open, onClose }: VideoBatchU
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={item.previewUrl} alt="" className="h-full w-full object-cover" />
                   ) : item.thumbnailReady ? (
-                    <Film className="h-5 w-5 text-muted" aria-label="Sem miniatura" />
+                    <EmptyPreviewIcon className="h-5 w-5 text-muted" aria-label="Sem prévia" />
                   ) : (
                     <Loader2 className="h-4 w-4 animate-spin text-muted" />
                   )}
@@ -314,7 +459,7 @@ export function VideoBatchUploadModal({ slug, kind, open, onClose }: VideoBatchU
                     value={item.title}
                     onChange={(e) => patch(item.key, { title: e.target.value })}
                     disabled={running || item.status === "done"}
-                    placeholder="Título do vídeo"
+                    placeholder={`Título d${labels.singular === "foto" ? "a foto" : "o vídeo"}`}
                     aria-label={`Título de ${item.file.name}`}
                     className="h-9"
                   />
@@ -375,9 +520,16 @@ export function VideoBatchUploadModal({ slug, kind, open, onClose }: VideoBatchU
         {error && <p className="text-xs text-danger">{error}</p>}
 
         <ol className="list-decimal space-y-0.5 pl-4 text-[11px] text-muted">
-          <li>Selecione um ou mais vídeos — o nome do arquivo vira o título.</li>
-          <li>Ajuste os títulos, se quiser, e confira as miniaturas.</li>
-          <li>Clique em Enviar e aguarde: os vídeos sobem um de cada vez.</li>
+          <li>
+            Selecione um ou mais arquivos — o nome do arquivo já vira o título, e trocar é
+            opcional.
+          </li>
+          <li>
+            {config.preview === "self"
+              ? "Confira as prévias e ajuste os títulos, se quiser."
+              : "Ajuste os títulos, se quiser, e confira as miniaturas."}
+          </li>
+          <li>Clique em Enviar e aguarde: os arquivos sobem um de cada vez.</li>
         </ol>
       </div>
     </Modal>

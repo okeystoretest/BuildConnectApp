@@ -367,6 +367,14 @@ model Video {
   filePath String?
   order    Int       @default(0)
 
+  // Vitrine: temporada e coleção informadas no envio (ver
+  // `lib/collection-filters`). Nulas fora das vitrines e no que foi enviado
+  // antes do recurso. ANO NÃO É COLUNA: é o ano de `createdAt` — a data de
+  // publicação já está gravada, e uma segunda cópia dela só criaria a chance
+  // de as duas discordarem.
+  temporada String?
+  colecao   String?
+
   // Miniatura (.webp) capturada no navegador na hora do envio: um quadro do
   // próprio vídeo. Nula nos vídeos enviados antes do recurso e quando o
   // navegador não conseguiu decodificar o arquivo para capturar.
@@ -419,6 +427,14 @@ model Photo {
   filePath String
   order    Int    @default(0)
 
+  // Vitrine: temporada e coleção informadas no envio (ver
+  // `lib/collection-filters`). Nulas fora das vitrines e no que foi enviado
+  // antes do recurso. ANO NÃO É COLUNA: é o ano de `createdAt` — a data de
+  // publicação já está gravada, e uma segunda cópia dela só criaria a chance
+  // de as duas discordarem.
+  temporada String?
+  colecao   String?
+
   subsectorId String
   subsector   Subsector @relation(fields: [subsectorId], references: [id], onDelete: Cascade)
 
@@ -445,6 +461,14 @@ model Document {
   filePath  String
   tags      String[] @default([])
   order     Int      @default(0)
+
+  // Vitrine: temporada e coleção informadas no envio (ver
+  // `lib/collection-filters`). Nulas fora das vitrines e no que foi enviado
+  // antes do recurso. ANO NÃO É COLUNA: é o ano de `createdAt` — a data de
+  // publicação já está gravada, e uma segunda cópia dela só criaria a chance
+  // de as duas discordarem.
+  temporada String?
+  colecao   String?
 
   subsectorId String
   subsector   Subsector @relation(fields: [subsectorId], references: [id], onDelete: Cascade)

@@ -6,6 +6,8 @@ import { AppShell } from "@/components/layout/app-shell";
 import { PageHeader } from "@/components/layout/page-header";
 import { Tabs, TabPanel, type TabItem } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useRole } from "@/providers/role-provider";
 import type { LinkItem, SectorContent, TabId } from "@/types/sector";
 import { ContentToolbar, type ViewMode } from "./content-toolbar";
@@ -15,10 +17,16 @@ import { PhotoGrid } from "./photo-grid";
 import { DocumentGrid } from "./document-grid";
 import { AppShortcuts } from "./app-shortcuts";
 import { UploadAction } from "./upload-action";
-import { PhotoUploadModal } from "./photo-upload-modal";
 import { FileUploadModal } from "./file-upload-modal";
-import { VideoBatchUploadModal, type VideoUploadKind } from "./video-batch-upload-modal";
+import { MediaBatchUploadModal, type MediaUploadKind } from "./media-batch-upload-modal";
+import { CollectionFilterBar } from "./collection-filter-bar";
 import { deriveFilters, matchesFilters } from "@/lib/video-filters";
+import {
+  EMPTY_COLLECTION_FILTER,
+  deriveCollectionOptions,
+  matchesCollection,
+  type CollectionFilter,
+} from "@/lib/collection-filters";
 import { paginate } from "@/lib/paginate";
 import { INSTRUCOES_PAGE_SIZE } from "@/lib/instrucoes-video";
 import { Pagination } from "@/components/ui/pagination";
@@ -197,18 +205,23 @@ export function SectorPage({
   const [view, setView] = useState<ViewMode>("grid");
   const [activeFilters, setActiveFilters] = useState<readonly string[]>([]);
   const [page, setPage] = useState(1);
-  const [photoModalOpen, setPhotoModalOpen] = useState(false);
-  const [videoModal, setVideoModal] = useState<VideoUploadKind | null>(null);
+  const [mediaModal, setMediaModal] = useState<MediaUploadKind | null>(null);
+  /** Temporada/Coleção/Ano da vitrine. Zerado a cada troca de aba. */
+  const [collectionFilter, setCollectionFilter] =
+    useState<CollectionFilter>(EMPTY_COLLECTION_FILTER);
+  /** Temporada e Coleção do envio de material de apoio (vitrine). */
+  const [materialTemporada, setMaterialTemporada] = useState("");
+  const [materialColecao, setMaterialColecao] = useState("");
   const [documentModalOpen, setDocumentModalOpen] = useState(false);
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [editingLink, setEditingLink] = useState<LinkItem | null>(null);
 
   /** Abre o modal de upload correto para a aba atual. */
   function openUpload(tabId: TabId) {
-    if (tabId === "fotos") return setPhotoModalOpen(true);
-    if (tabId === "videos") return setVideoModal("video");
-    if (tabId === "workshop") return setVideoModal("workshop");
-    if (tabId === "instrucoes-video") return setVideoModal("instrucao-video");
+    if (tabId === "fotos") return setMediaModal("foto");
+    if (tabId === "videos") return setMediaModal("video");
+    if (tabId === "workshop") return setMediaModal("workshop");
+    if (tabId === "instrucoes-video") return setMediaModal("instrucao-video");
     if (tabId === "documentos") return setDocumentModalOpen(true);
     if (tabId === "material") return setDocumentModalOpen(true);
   }
@@ -223,6 +236,8 @@ export function SectorPage({
   const filterable = FILTERABLE.includes(activeId);
   const instrucoes = activeId === "instrucoes-video";
 
+  const vitrine = sector.kind === "VITRINE";
+
   const videos = activeId === "workshop" ? sector.workshops : sector.videos;
   // As pílulas são as tags em uso nos vídeos da aba: atribuir uma tag na
   // edição é o que faz a pílula existir. Também servem de sugestão na edição.
@@ -231,9 +246,43 @@ export function SectorPage({
     const q = query.trim().toLowerCase();
     return videos.filter(
       (v) =>
-        v.title.toLowerCase().includes(q) && (!filterable || matchesFilters(v, activeFilters)),
+        v.title.toLowerCase().includes(q) &&
+        (!filterable || matchesFilters(v, activeFilters)) &&
+        (!vitrine || matchesCollection(v, collectionFilter)),
     );
-  }, [videos, query, filterable, activeFilters]);
+  }, [videos, query, filterable, activeFilters, vitrine, collectionFilter]);
+
+  // Fotos: busca pelo título e os três campos da coleção, como nas demais
+  // abas da vitrine. Fora da vitrine a aba não existe.
+  const filteredPhotos = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return sector.photos.filter(
+      (p) => p.title.toLowerCase().includes(q) && matchesCollection(p, collectionFilter),
+    );
+  }, [sector.photos, query, collectionFilter]);
+
+  const filteredDocuments = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return sector.documents.filter(
+      (d) =>
+        d.name.toLowerCase().includes(q) && (!vitrine || matchesCollection(d, collectionFilter)),
+    );
+  }, [sector.documents, query, vitrine, collectionFilter]);
+
+  // As opções dos seletores saem do conteúdo da ABA ATUAL: oferecer uma
+  // temporada que só existe nos vídeos enquanto se olha as fotos é prometer
+  // um resultado vazio.
+  const collectionOptions = useMemo(
+    () =>
+      deriveCollectionOptions(
+        activeId === "fotos"
+          ? sector.photos
+          : activeId === "material"
+            ? sector.documents
+            : videos,
+      ),
+    [activeId, sector.photos, sector.documents, videos],
+  );
 
   function toggleFilter(filter: string) {
     setActiveFilters((prev) =>
@@ -252,6 +301,15 @@ export function SectorPage({
 
   // As pílulas ficam sempre à vista (pedido de 18/09/2026): sem botão para
   // abri-las e sem restrição de papel. Sem tag em uso, não há nada a mostrar.
+  /** Os três seletores da vitrine, acima do conteúdo de qualquer aba dela. */
+  const collectionBar = vitrine ? (
+    <CollectionFilterBar
+      options={collectionOptions}
+      value={collectionFilter}
+      onChange={setCollectionFilter}
+    />
+  ) : null;
+
   const filterBar =
     filterable && filters.length > 0 ? (
       <FilterPills
@@ -287,6 +345,7 @@ export function SectorPage({
           onValueChange={(id) => {
             setActive(id as TabId);
             setQuery("");
+            setCollectionFilter(EMPTY_COLLECTION_FILTER);
             setPage(1);
             syncTabToUrl(id as TabId);
           }}
@@ -297,17 +356,43 @@ export function SectorPage({
       </div>
 
       {/* Atalhos abaixo da barra de abas, fora do TabPanel: eles não pertencem
-          a aba nenhuma e não devem reanimar a cada troca. */}
-      <AppShortcuts
-        slug={sector.slug}
-        links={sector.links}
-        sourceLabel={sector.appsSourceLabel}
-        onCreate={() => openLinkModal(null)}
-        onEdit={(link) => openLinkModal(link)}
-      />
+          a aba nenhuma e não devem reanimar a cada troca.
+
+          A VITRINE NÃO TEM APLICATIVOS (pedido de 09/11/2026): nem os atalhos,
+          nem o "+", nem o cadastro. Os registros continuam no banco — a
+          herança de escopo (`resolveAppScope`) é de outro setor e não é nossa
+          para apagar; o que saiu é a ferramenta desta tela. */}
+      {!vitrine && (
+        <AppShortcuts
+          slug={sector.slug}
+          links={sector.links}
+          sourceLabel={sector.appsSourceLabel}
+          onCreate={() => openLinkModal(null)}
+          onEdit={(link) => openLinkModal(link)}
+        />
+      )}
 
       <TabPanel tabId={activeId} className="mt-5">
-        {activeId === "fotos" && <PhotoGrid photos={sector.photos} />}
+        {activeId === "fotos" && (
+          <div className="space-y-4">
+            <ContentToolbar
+              query={query}
+              onQueryChange={setQuery}
+              placeholder="Buscar foto"
+              view={view}
+              onViewChange={setView}
+            />
+            {collectionBar}
+            {filteredPhotos.length === 0 ? (
+              <EmptyState
+                title="Nenhuma foto encontrada"
+                description="Ajuste a busca ou os filtros de temporada, coleção e ano."
+              />
+            ) : (
+              <PhotoGrid photos={filteredPhotos} />
+            )}
+          </div>
+        )}
 
         {(activeId === "videos" || activeId === "workshop" || activeId === "instrucoes-video") && (
           <div className="space-y-4">
@@ -321,6 +406,7 @@ export function SectorPage({
               view={view}
               onViewChange={setView}
             />
+            {collectionBar}
             {filterBar}
 
             {filteredVideos.length === 0 ? (
@@ -369,12 +455,8 @@ export function SectorPage({
               view={view}
               onViewChange={setView}
             />
-            <DocumentGrid
-              slug={sector.slug}
-              documents={sector.documents.filter((doc) =>
-                doc.name.toLowerCase().includes(query.trim().toLowerCase()),
-              )}
-            />
+            {collectionBar}
+            <DocumentGrid slug={sector.slug} documents={filteredDocuments} />
           </div>
         )}
 
@@ -411,34 +493,70 @@ export function SectorPage({
 
       </TabPanel>
 
-      <PhotoUploadModal
-        slug={sector.slug}
-        open={photoModalOpen}
-        onClose={() => setPhotoModalOpen(false)}
-      />
-      {videoModal && (
-        <VideoBatchUploadModal
+      {mediaModal && (
+        <MediaBatchUploadModal
           slug={sector.slug}
-          kind={videoModal}
+          kind={mediaModal}
           open
-          onClose={() => setVideoModal(null)}
+          collection={vitrine}
+          onClose={() => setMediaModal(null)}
         />
       )}
       <FileUploadModal
         slug={sector.slug}
         open={documentModalOpen}
         title={activeId === "material" ? "Enviar material de apoio" : "Enviar documento"}
-        onClose={() => setDocumentModalOpen(false)}
-      />
-      <LinkModal
-        slug={sector.slug}
-        link={editingLink}
-        open={linkModalOpen}
-        onClose={() => {
-          setLinkModalOpen(false);
-          setEditingLink(null);
+        extraFields={
+          vitrine
+            ? { temporada: materialTemporada.trim(), colecao: materialColecao.trim() }
+            : undefined
+        }
+        onUploaded={() => {
+          setMaterialTemporada("");
+          setMaterialColecao("");
         }}
-      />
+        onClose={() => setDocumentModalOpen(false)}
+      >
+        {/* O modal de arquivo já abre espaço para campos do chamador
+            (`children` + `extraFields`); a vitrine usa esse encaixe em vez de
+            ganhar um modal próprio. */}
+        {vitrine && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="material-temporada">Temporada (opcional)</Label>
+              <Input
+                id="material-temporada"
+                value={materialTemporada}
+                onChange={(e) => setMaterialTemporada(e.target.value)}
+                maxLength={60}
+                placeholder="Ex.: Verão"
+              />
+            </div>
+            <div>
+              <Label htmlFor="material-colecao">Coleção (opcional)</Label>
+              <Input
+                id="material-colecao"
+                value={materialColecao}
+                onChange={(e) => setMaterialColecao(e.target.value)}
+                maxLength={60}
+                placeholder="Ex.: Cápsula 1"
+              />
+            </div>
+          </div>
+        )}
+      </FileUploadModal>
+      {/* LinkModal só fora da vitrine: lá não há como criar nem editar. */}
+      {!vitrine && (
+        <LinkModal
+          slug={sector.slug}
+          link={editingLink}
+          open={linkModalOpen}
+          onClose={() => {
+            setLinkModalOpen(false);
+            setEditingLink(null);
+          }}
+        />
+      )}
     </AppShell>
   );
 }

@@ -114,6 +114,21 @@ export async function markVideoEnded(input: { videoId: string }): Promise<Action
 // Upload de foto (sharp → .webp)
 // ──────────────────────────────────────────────
 
+/**
+ * Temporada e Coleção do conteúdo de vitrine, lidas do envio.
+ *
+ * Opcionais em qualquer envio: fora das vitrines a tela nem mostra os campos,
+ * e vazio grava NULL — string vazia viraria uma opção fantasma na lista de
+ * filtros. O teto de 60 caracteres é a validação de borda: é campo de texto
+ * livre vindo do navegador, e "Verão 2026 / Cápsula 1" caberia três vezes.
+ *
+ * O ANO não vem daqui: é o ano de `createdAt`, gravado pelo próprio banco.
+ */
+function colecaoFields(formData: FormData): { temporada: string | null; colecao: string | null } {
+  const campo = (nome: string) => String(formData.get(nome) ?? "").trim().slice(0, 60) || null;
+  return { temporada: campo("temporada"), colecao: campo("colecao") };
+}
+
 export async function uploadSectorPhoto(formData: FormData): Promise<ActionResult> {
   const { user, error } = await requireUploader();
   if (!user) return { ok: false, error: error ?? undefined };
@@ -140,7 +155,13 @@ export async function uploadSectorPhoto(formData: FormData): Promise<ActionResul
   try {
     const count = await prisma.photo.count({ where: { subsectorId } });
     await prisma.photo.create({
-      data: { subsectorId, title, filePath: stored.publicPath, order: count },
+      data: {
+        subsectorId,
+        title,
+        filePath: stored.publicPath,
+        order: count,
+        ...colecaoFields(formData),
+      },
     });
     revalidatePath(`/setores/${slug}`);
     return { ok: true };
@@ -240,6 +261,7 @@ export async function uploadSectorVideo(formData: FormData): Promise<ActionResul
         thumbnailPath,
         isNew: true,
         order: count,
+        ...colecaoFields(formData),
       },
     });
     // Depois do commit. Workshop é vitrine (Coleção) e não avisa; a função
@@ -494,6 +516,7 @@ export async function uploadSectorDocument(formData: FormData): Promise<ActionRe
         sizeBytes: stored.sizeBytes,
         filePath: stored.publicPath,
         order: count,
+        ...colecaoFields(formData),
       },
     });
     await notifyNewContent({ slug, kind: "document", title: name });

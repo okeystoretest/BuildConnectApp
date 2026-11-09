@@ -42,6 +42,12 @@ export interface VideoItem {
   transcriptText?: string;
   /** Caminho público do arquivo de transcrição enviado. */
   transcriptPath?: string;
+  /** Vitrine: temporada informada no envio (ver `lib/collection-filters`). */
+  temporada?: string;
+  /** Vitrine: coleção informada no envio. */
+  colecao?: string;
+  /** Ano da publicação, derivado de `createdAt`. Não é campo de cadastro. */
+  ano?: number;
   /**
    * Rótulo do subsetor dono, presente só quando o vídeo chegou aqui por
    * compartilhamento. Com ele, o card não oferece editar nem excluir.
@@ -58,6 +64,12 @@ export interface PhotoItem {
   swatch: string;
   /** Caminho da imagem real (.webp). Quando presente, é renderizada. */
   filePath?: string;
+  /** Vitrine: temporada informada no envio (ver `lib/collection-filters`). */
+  temporada?: string;
+  /** Vitrine: coleção informada no envio. */
+  colecao?: string;
+  /** Ano da publicação, derivado de `createdAt`. Não é campo de cadastro. */
+  ano?: number;
 }
 
 export type FileKind = "PDF" | "DOCX" | "XLSX" | "PPTX" | "PNG";
@@ -70,6 +82,12 @@ export interface DocumentItem {
   tags?: readonly string[];
   /** Caminho público do arquivo, para visualizar/baixar. */
   filePath: string;
+  /** Vitrine: temporada informada no envio (ver `lib/collection-filters`). */
+  temporada?: string;
+  /** Vitrine: coleção informada no envio. */
+  colecao?: string;
+  /** Ano da publicação, derivado de `createdAt`. Não é campo de cadastro. */
+  ano?: number;
 }
 
 /** Atalho de plataforma, exibido abaixo da barra de abas do setor. */

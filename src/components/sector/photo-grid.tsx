@@ -1,6 +1,11 @@
 import { cn } from "@/lib/utils";
 import type { PhotoItem } from "@/types/sector";
 
+/** "Verão · Cápsula 1 · 2026", pulando o que a foto não tem. */
+function legenda(photo: PhotoItem): string {
+  return [photo.temporada, photo.colecao, photo.ano].filter(Boolean).join(" · ");
+}
+
 export function PhotoGrid({ photos }: { photos: readonly PhotoItem[] }) {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -23,7 +28,12 @@ export function PhotoGrid({ photos }: { photos: readonly PhotoItem[] }) {
             />
           )}
           <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-3">
-            <span className="text-sm font-medium text-white">{photo.title}</span>
+            <span className="block text-sm font-medium text-white">{photo.title}</span>
+            {/* Temporada · Coleção · Ano: sem isto, filtrar por temporada
+                devolveria uma grade em que nada diz a temporada de nada. */}
+            {legenda(photo) && (
+              <span className="block text-[11px] text-white/75">{legenda(photo)}</span>
+            )}
           </span>
         </button>
       ))}
