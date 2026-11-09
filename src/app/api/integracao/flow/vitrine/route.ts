@@ -1,3 +1,4 @@
+import path from "node:path";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { flowEnv } from "@/lib/flow/env";
@@ -26,9 +27,11 @@ import { verifyFlowSignature } from "@/lib/flow/signature";
  *   assistiu, quem avaliou, quem acertou o quiz. A tela do Flow não tem motivo
  *   para conhecer, e campo que não atravessa a fronteira não vaza.
  *
- * O Flow recebe o SLUG do subsetor para montar o link de volta. Quem tem login
- * do Connect abre o arquivo lá, onde o portão dele já decide o que pode ver —
- * nenhum arquivo é reservido por aqui.
+ * O Flow recebe o SLUG do subsetor para montar o link de volta, e os BYTES de
+ * cada item pela rota irmã `vitrine/arquivo` — por ID, nunca por caminho (o
+ * cabeçalho dela explica por quê). Esta rota continua sem publicar caminho
+ * algum: o que ela ganhou foram dois booleanos, `temArquivo` e
+ * `temMiniatura`, para a tela de lá saber se há player a mostrar.
  *
  * ASSINATURA NO LUGAR DE TOKEN: idêntica à do cronograma (o HMAC do webhook,
  * sobre CAMINHO + QUERY, com janela de 5 minutos). Nenhum segredo novo para
@@ -45,6 +48,20 @@ export const dynamic = "force-dynamic";
  * nada avisar — o Flow mostraria uma vitrine "sem documentos" que tem.
  */
 const TETO = 100;
+
+/**
+ * A EXTENSÃO REAL do arquivo, e não o `kind`.
+ *
+ * `FileKind` é CATEGORIA, não formato: um .jpg entra no acervo como `PNG`
+ * (é o rótulo de "imagem" no enum), e o Flow, que nomeia o download, baixava
+ * um JPEG chamado ".png". Deduzir formato de categoria não tem conserto do
+ * outro lado — o dado certo está aqui, no caminho gravado.
+ *
+ * A extensão NÃO é o caminho: diz o formato, não onde o arquivo mora.
+ */
+function extensaoDe(caminho: string | null): string {
+  return caminho ? path.extname(caminho).replace(/^./, "").toLowerCase() : "";
+}
 
 export async function GET(request: Request) {
   const env = flowEnv();
@@ -76,17 +93,48 @@ export async function GET(request: Request) {
       photos: {
         orderBy: { order: "asc" },
         take: TETO,
-        select: { id: true, title: true, createdAt: true },
+        select: {
+          id: true,
+          title: true,
+          temporada: true,
+          colecao: true,
+          createdAt: true,
+          // Lido só para virar EXTENSÃO no mapa abaixo.
+          filePath: true,
+        },
       },
       videos: {
         orderBy: { order: "asc" },
         take: TETO,
-        select: { id: true, title: true, kind: true, isNew: true, tags: true, createdAt: true },
+        select: {
+          id: true,
+          title: true,
+          kind: true,
+          isNew: true,
+          tags: true,
+          temporada: true,
+          colecao: true,
+          createdAt: true,
+          // Lidos SÓ para virarem booleano no mapa abaixo. Ver o cabeçalho.
+          filePath: true,
+          thumbnailPath: true,
+        },
       },
       documents: {
         orderBy: { order: "asc" },
         take: TETO,
-        select: { id: true, name: true, kind: true, sizeBytes: true, tags: true, createdAt: true },
+        select: {
+          id: true,
+          name: true,
+          kind: true,
+          sizeBytes: true,
+          tags: true,
+          temporada: true,
+          colecao: true,
+          createdAt: true,
+          // Lido só para virar EXTENSÃO no mapa abaixo.
+          filePath: true,
+        },
       },
     },
   });
@@ -96,9 +144,41 @@ export async function GET(request: Request) {
       slug: v.slug,
       label: v.label,
       setor: v.sector.label,
-      fotos: v.photos,
-      videos: v.videos,
-      documentos: v.documents,
+      fotos: v.photos.map((f) => ({
+        id: f.id,
+        title: f.title,
+        temporada: f.temporada,
+        colecao: f.colecao,
+        createdAt: f.createdAt,
+        extensao: extensaoDe(f.filePath),
+      })),
+      // Mapeado à mão, e não repassado como as fotos: `filePath` e
+      // `thumbnailPath` foram SELECIONADOS acima e um spread os publicaria.
+      videos: v.videos.map((vd) => ({
+        id: vd.id,
+        title: vd.title,
+        kind: vd.kind,
+        isNew: vd.isNew,
+        tags: vd.tags,
+        temporada: vd.temporada,
+        colecao: vd.colecao,
+        createdAt: vd.createdAt,
+        // SE EXISTE, não ONDE ESTÁ.
+        temArquivo: Boolean(vd.filePath),
+        temMiniatura: Boolean(vd.thumbnailPath),
+        extensao: extensaoDe(vd.filePath),
+      })),
+      documentos: v.documents.map((d) => ({
+        id: d.id,
+        name: d.name,
+        kind: d.kind,
+        sizeBytes: d.sizeBytes,
+        tags: d.tags,
+        temporada: d.temporada,
+        colecao: d.colecao,
+        createdAt: d.createdAt,
+        extensao: extensaoDe(d.filePath),
+      })),
       // `truncado` POR VITRINE, como no cronograma: a tela de lá precisa poder
       // dizer "há mais" em vez de mostrar um acervo que parece completo e não é.
       truncado:
