@@ -8,15 +8,16 @@ import { Modal } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/providers/toast-provider";
 import { useRole } from "@/providers/role-provider";
-import { cn } from "@/lib/utils";
+import { cn, formatBytes } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
 import { removeWelcomeVideo } from "@/lib/welcome-video-actions";
 import { useUploadProgress, uploadPhaseLabel } from "@/lib/use-upload-progress";
-import { maxMb } from "@/lib/storage/limits";
+import { MAX_BYTES } from "@/lib/storage/limits";
 
 // Teto vem de storage/limits, o mesmo que o servidor aplica. Os 500 daqui
 // prometiam o que o middleware nunca deixou passar.
-const MAX_SIZE_MB = maxMb("video");
+/** Rótulo do teto. `formatBytes` passa a GB sozinho acima de 1024 MB. */
+const MAX_VIDEO_LABEL = formatBytes(MAX_BYTES.video);
 const ACCEPTED = ["video/mp4", "video/webm", "video/quicktime", "video/x-matroska"];
 
 export interface WelcomeVideoCardProps {
@@ -67,8 +68,8 @@ export function WelcomeVideoCard({
       setFile(null);
       return;
     }
-    if (selected.size > MAX_SIZE_MB * 1024 * 1024) {
-      setError(`Arquivo acima de ${MAX_SIZE_MB} MB.`);
+    if (selected.size > MAX_BYTES.video) {
+      setError(`Arquivo acima de ${MAX_VIDEO_LABEL}.`);
       setFile(null);
       return;
     }
@@ -223,7 +224,7 @@ export function WelcomeVideoCard({
             <span className="mt-1 text-xs text-muted">
               {file
                 ? `${(file.size / 1024 / 1024).toFixed(1)} MB`
-                : `MP4, WebM, MOV ou MKV · até ${MAX_SIZE_MB} MB`}
+                : `MP4, WebM, MOV ou MKV · até ${MAX_VIDEO_LABEL}`}
             </span>
           </label>
 

@@ -87,11 +87,11 @@ test("a miniatura é pequena: quadro único em JPEG, não uma imagem de galeria"
 });
 
 test("o corpo da requisição é vídeo + miniatura + folga, sem espaço para instrução escrita", () => {
-  // A instrução escrita foi retirada do módulo. 1040 MB = vídeo (1024) +
+  // A instrução escrita foi retirada do módulo. 4112 MB = vídeo (4096) +
   // miniatura (2) + folga. Um teto deste tamanho só funciona porque o
   // `requestTimeout` do Node é elevado no start (scripts/http-request-timeout.cjs).
-  assert.equal(MAX_BYTES.video, 1024 * 1024 * 1024);
-  assert.equal(MAX_REQUEST_BYTES, 1040 * 1024 * 1024);
+  assert.equal(MAX_BYTES.video, 4 * 1024 * 1024 * 1024);
+  assert.equal(MAX_REQUEST_BYTES, 4112 * 1024 * 1024);
   assert.ok(!("instruction" in MAX_BYTES));
 });
 

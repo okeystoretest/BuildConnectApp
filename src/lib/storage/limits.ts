@@ -14,30 +14,41 @@ import { formatBytes } from "@/lib/utils";
 
 export const MAX_BYTES = {
   /**
-   * 1 GB — e só funciona porque o `requestTimeout` do Node foi elevado.
+   * 4 GB — e o que o sustenta é o `requestTimeout`, não o byte.
    *
-   * A restrição de verdade nunca foi byte: era o `requestTimeout` do Node, que
-   * vale **300 segundos** por padrão e que o `next start` não deixa configurar
-   * (ele só mexe em `keepAliveTimeout`). Passado disso, o Node destrói o
-   * socket, o proxy responde 502 e o log fica com um `ECONNRESET` mudo. Foi
-   * isso que segurou o teto em 135 MB até 21/09/2026.
+   * A restrição de verdade nunca foi tamanho: é TEMPO. O `requestTimeout` do
+   * Node vale **300 segundos** por padrão e o `next start` não deixa
+   * configurá-lo (ele só mexe em `keepAliveTimeout`). Passado disso, o Node
+   * destrói o socket, o proxy responde 502 e o log fica com um `ECONNRESET`
+   * mudo. Foi isso que segurou o teto em 135 MB até 21/09/2026, e em 1 GB até
+   * 28/10/2026.
    *
-   * Hoje o `start` do package.json carrega `scripts/http-request-timeout.cjs`
-   * via `node --require`, que eleva o `requestTimeout` para 1 hora. A 4,8 Mbps
-   * medidos em produção (09/09/2026), 1 GB leva ~30 min — cabe. Quem envia
-   * vídeo é sempre Admin (`welcomeVideo.manage`), então é a banda dessa pessoa
-   * que decide quanto tempo o envio demora.
+   * A conta que manda, na banda de 4,8 Mbps medida em produção (09/09/2026):
+   *
+   *     1 GB  →  ~30 min
+   *     4 GB  →  ~119 min
+   *
+   * Por isso `scripts/http-request-timeout.cjs` subiu de 1 h para 5 h junto
+   * com este número. SUBIR UM SEM O OUTRO ENTREGA UM LIMITE MENTIROSO: o
+   * navegador aceita o arquivo, a barra anda por uma hora e o envio morre na
+   * metade sem mensagem nenhuma.
    *
    * O PROXY REVERSO NA FRENTE DO CONTAINER TEM OS PRÓPRIOS LIMITES (tamanho de
    * corpo e timeout de leitura). Se ele ficar abaixo disto, o envio morre lá,
    * antes de chegar aqui — e nenhuma conferência de tamanho vai avisar.
    *
-   * Memória: o Server Action bufferiza o corpo inteiro, duas vezes (middleware
-   * + FormData). Um envio de 1 GB chega a ~2 GB de pico, contra ~11 GB livres
-   * no host. Cabe, mas é UM envio por vez — o lote sobe um vídeo por
-   * requisição de propósito.
+   * MEMÓRIA — é aqui que 4 GB cobra caro. O corpo é bufferizado inteiro antes
+   * de chegar ao disco (`request.formData()`), então um envio de 4 GB é ~4 GB
+   * de RSS enquanto dura, contra ~11 GB livres no host. Um por vez cabe; DOIS
+   * SIMULTÂNEOS NÃO. O envio em lote sobe um arquivo por requisição de
+   * propósito, mas nada impede duas pessoas enviando ao mesmo tempo — nesse
+   * dia, o remédio é streaming multipart para o disco, não um número maior.
+   *
+   * Envio de vídeo é sempre de Admin (`welcomeVideo.manage`) ou de quem
+   * administra o DHO (Página de Integração), então é banda e paciência dessas
+   * pessoas que decidem a duração.
    */
-  video: 1024 * 1024 * 1024,
+  video: 4 * 1024 * 1024 * 1024,
   image: 50 * 1024 * 1024,
   document: 50 * 1024 * 1024,
   pdf: 50 * 1024 * 1024,
@@ -83,7 +94,7 @@ export type UploadRule = keyof typeof MAX_BYTES;
  * o bodySizeLimit de 520 MB ter qualquer efeito.
  *
  * O número precisa caber o PIOR envio legítimo, não o maior arquivo: o modal
- * de vídeo manda vídeo e miniatura no mesmo FormData. 1024 + 2 = 1026 MB, e os
+ * de vídeo manda vídeo e miniatura no mesmo FormData. 4096 + 2 = 4098 MB, e os
  * 14 MB restantes são folga para o overhead do multipart — o cliente soma
  * bytes de ARQUIVO, mas o corpo HTTP carrega fronteiras e cabeçalhos por
  * cima. Sem essa folga, um envio aprovado no navegador seria recusado no
@@ -94,16 +105,17 @@ export type UploadRule = keyof typeof MAX_BYTES;
  * pela tela de edição.
  *
  * O QUE DECIDE ESTE NÚMERO É TEMPO. O `requestTimeout` do Node é elevado
- * para 1 h no `start` (node --require scripts/http-request-timeout.cjs); a 4,8 Mbps medidos em
- * produção, 1040 MB levam ~30 min. Memória: bufferizado duas vezes (middleware
- * + FormData), ~2 GB de pico contra ~11 GB livres no host.
+ * para 5 h no `start` (node --require scripts/http-request-timeout.cjs); a
+ * 4,8 Mbps medidos em produção, 4112 MB levam ~119 min. Memória: o corpo é
+ * bufferizado inteiro, ~4 GB de pico contra ~11 GB livres no host — cabe UM
+ * envio por vez, não dois simultâneos.
  *
  * Antes de subir isto, refaça a conta de tempo contra o `requestTimeout` E
  * contra o timeout do proxy reverso: um envio que não termina morre em 502
  * com um `ECONNRESET` mudo no log, e nenhuma conferência de tamanho — nem
  * aqui, nem no navegador — vai avisar o usuário.
  */
-export const MAX_REQUEST_BYTES = 1040 * 1024 * 1024;
+export const MAX_REQUEST_BYTES = 4112 * 1024 * 1024;
 
 export interface UploadItem {
   /** Como o campo aparece na tela, para a mensagem citar o certo. */

@@ -3,20 +3,21 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, RefreshCw, Trash2, TriangleAlert, Upload, VideoOff } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatBytes } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { useRole } from "@/providers/role-provider";
 import { useToast } from "@/providers/toast-provider";
-import { maxMb } from "@/lib/storage/limits";
+import { MAX_BYTES } from "@/lib/storage/limits";
 import { Progress } from "@/components/ui/progress";
 import { removePlatformWelcomeVideo } from "@/lib/platform-welcome-actions";
 import { useUploadProgress, uploadPhaseLabel } from "@/lib/use-upload-progress";
 
 // Teto vem de storage/limits, o mesmo que o servidor aplica. Os 500 daqui
 // prometiam o que o middleware nunca deixou passar.
-const MAX_SIZE_MB = maxMb("video");
+/** Rótulo do teto. `formatBytes` passa a GB sozinho acima de 1024 MB. */
+const MAX_VIDEO_LABEL = formatBytes(MAX_BYTES.video);
 const ACCEPTED = ["video/mp4", "video/webm", "video/quicktime", "video/x-matroska"];
 
 export interface InstitutionalVideoProps {
@@ -59,8 +60,8 @@ export function InstitutionalVideo({ path, title, watchedCount }: InstitutionalV
       setFile(null);
       return;
     }
-    if (selected.size > MAX_SIZE_MB * 1024 * 1024) {
-      setError(`Arquivo acima de ${MAX_SIZE_MB} MB.`);
+    if (selected.size > MAX_BYTES.video) {
+      setError(`Arquivo acima de ${MAX_VIDEO_LABEL}.`);
       setFile(null);
       return;
     }
@@ -230,7 +231,7 @@ export function InstitutionalVideo({ path, title, watchedCount }: InstitutionalV
             <span className="mt-1 text-xs text-muted">
               {file
                 ? `${(file.size / 1024 / 1024).toFixed(1)} MB`
-                : `MP4, WebM, MOV ou MKV · até ${MAX_SIZE_MB} MB`}
+                : `MP4, WebM, MOV ou MKV · até ${MAX_VIDEO_LABEL}`}
             </span>
           </label>
 
