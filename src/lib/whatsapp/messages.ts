@@ -51,3 +51,13 @@ export function newEmployeeManagerText(params: {
 export function newEmployeeTeamText(params: { fullName: string; sectorLabel: string }): string {
   return `${params.fullName} entrou no setor ${params.sectorLabel}.\nDê as boas-vindas ao novo integrante da equipe.`;
 }
+
+/**
+ * Cobrança ao convidado que não alcançou a nota no questionário do filme.
+ *
+ * Texto definido pelo DHO, ao pé da letra. Não cita a nota nem quantas errou:
+ * o convite é para rever o filme, não um boletim.
+ */
+export const GUEST_RETRY_TEXT =
+  "Olá! Observamos que a resposta que você escolheu não condiz com a mensagem do vídeo, " +
+  "pedimos que assista ao filme e responda novamente.";

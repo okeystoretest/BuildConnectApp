@@ -78,6 +78,26 @@ export async function enqueue(
   const now = options.now ?? new Date();
   const delay = options.delayMs ?? randomDelayMs;
 
+  let cursor = await nextSlot(now, delay);
+  const data = unique.map((userId, index) => {
+    if (index > 0) cursor += delay();
+    return { userId, kind, sendAfter: new Date(cursor), text: options.text ?? null };
+  });
+
+  await prisma.whatsappMessage.createMany({ data });
+  scheduleOutboxTick();
+  return unique.length;
+}
+
+/**
+ * Primeiro horário livre da fila.
+ *
+ * Extraído de `enqueue` quando o convidado da Página de Integração passou a
+ * receber mensagem: as duas filas são a MESMA fila e o mesmo número de
+ * WhatsApp, então o espaçamento tem de ser calculado por uma conta só. Duas
+ * cópias divergiriam, e o preço de divergir aqui é o número ser bloqueado.
+ */
+async function nextSlot(now: Date, delay: () => number): Promise<number> {
   const [tail, lastSent] = await Promise.all([
     prisma.whatsappMessage.aggregate({ where: { status: "PENDENTE" }, _max: { sendAfter: true } }),
     prisma.whatsappMessage.aggregate({ where: { status: "ENVIADO" }, _max: { sentAt: true } }),
@@ -97,15 +117,28 @@ export async function enqueue(
   const sentAt = lastSent._max.sentAt;
   const anchor = tail._max.sendAfter ?? (sentAt && sentAt <= now ? sentAt : null);
 
-  let cursor = anchor ? Math.max(now.getTime(), anchor.getTime() + delay()) : now.getTime();
-  const data = unique.map((userId, index) => {
-    if (index > 0) cursor += delay();
-    return { userId, kind, sendAfter: new Date(cursor), text: options.text ?? null };
-  });
+  return anchor ? Math.max(now.getTime(), anchor.getTime() + delay()) : now.getTime();
+}
 
-  await prisma.whatsappMessage.createMany({ data });
+/**
+ * Enfileira UMA mensagem para um convidado da Página de Integração.
+ *
+ * Separada de `enqueue` porque o destinatário é outro (não há `User`), e
+ * igual a ela no que importa: mesmo espaçamento, mesma fila, mesma drenagem.
+ */
+export async function enqueueGuest(
+  guestId: string,
+  kind: WhatsappKind,
+  text: string,
+  options: { now?: Date; delayMs?: () => number } = {},
+): Promise<void> {
+  const now = options.now ?? new Date();
+  const delay = options.delayMs ?? randomDelayMs;
+
+  await prisma.whatsappMessage.create({
+    data: { guestId, kind, text, sendAfter: new Date(await nextSlot(now, delay)) },
+  });
   scheduleOutboxTick();
-  return unique.length;
 }
 
 export interface DrainResult {
@@ -227,18 +260,25 @@ const MSG_SELECT = {
   id: true,
   kind: true,
   userId: true,
+  guestId: true,
   attempts: true,
   text: true,
   user: { select: { phone: true } },
+  guest: { select: { phone: true } },
 } as const;
 
 type QueuedMessage = {
   id: string;
   kind: WhatsappKind;
-  userId: string;
+  // Um dos dois, nunca os dois: colaborador ou convidado da Página de
+  // Integração. O telefone sai do cadastro de um ou do convite do outro, e em
+  // nenhum caso fica guardado na mensagem.
+  userId: string | null;
+  guestId: string | null;
   attempts: number;
   text: string | null;
-  user: { phone: string | null };
+  user: { phone: string | null } | null;
+  guest: { phone: string | null } | null;
 };
 
 type Outcome = "enviado" | "falhou" | "pendente";
@@ -263,7 +303,7 @@ async function attemptOne(
   },
 ): Promise<Outcome> {
   try {
-    const candidates = jidCandidates(msg.user.phone);
+    const candidates = jidCandidates(msg.user?.phone ?? msg.guest?.phone ?? null);
     if (candidates.length === 0) {
       throw new PermanentFailure("Telefone ausente ou inválido no cadastro.");
     }
@@ -310,7 +350,7 @@ async function attemptOne(
       },
     });
     // userId, nunca o telefone.
-    console.error(`[whatsapp] falha ao enviar ${msg.kind} para ${msg.userId}: ${motivo}`);
+    console.error(`[whatsapp] falha ao enviar ${msg.kind} para ${msg.userId ?? msg.guestId}: ${motivo}`);
     return desistir ? "falhou" : "pendente";
   }
 }

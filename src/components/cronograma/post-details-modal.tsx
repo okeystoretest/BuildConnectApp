@@ -189,6 +189,18 @@ export function PostDetailsModal({
           )}
         </div>
 
+        {/* O mesmo bloco do calendário, aqui com espaço para respirar. */}
+        {post.lineUp !== undefined && (
+          <div className="mt-3 inline-flex items-baseline gap-2 rounded-lg border border-primary/40 bg-primary/10 px-3 py-1.5">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">
+              Line-up
+            </span>
+            <span className="text-lg font-bold leading-none tabular-nums text-primary">
+              {post.lineUp}
+            </span>
+          </div>
+        )}
+
         {/* Alcance: quem enxerga esta atividade. Três estados — público
             chama atenção; setor e pessoal ficam discretos. */}
         <div

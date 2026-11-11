@@ -48,6 +48,13 @@ export interface ItSectorViewProps {
   welcome?: SectorWelcomeVideoData | null;
   /** Configuração da IA. Nulo para quem não tem `ai.manage` — a aba some. */
   aiSettings?: AiSettingsView | null;
+  /**
+   * Aba pedida pela URL (`?aba=`), resolvida no servidor. Existe para esta
+   * página responder a link externo e ao F5 como a rota genérica
+   * `/setores/[slug]` já responde — sem isso, um link para uma aba específica
+   * abre na primeira e a pessoa conclui que o link está quebrado.
+   */
+  initialTab?: string;
 }
 
 export function ItSectorView({
@@ -57,9 +64,24 @@ export function ItSectorView({
   evaluations,
   welcome,
   aiSettings,
+  initialTab,
 }: ItSectorViewProps) {
   const { can } = useRole();
-  const [active, setActive] = useState("chamados");
+
+  // A aba de IA só existe para quem pode configurá-la. A checagem é dupla de
+  // propósito: a permissão diz quem PODE, e a prop diz que o servidor de fato
+  // ENVIOU a configuração — sem uma das duas, a aba nem é listada.
+  const showAi = can("ai.manage") && aiSettings != null;
+  const tabs = showAi ? TABS : TABS.filter((tab) => tab.id !== "ia");
+
+  /*
+   * Aba pedida na URL, quando ela existe PARA ESTE USUÁRIO. Validar contra
+   * `tabs`, e não contra `TABS`, é o que impede `?aba=ia` de deixar quem não
+   * configura a IA olhando um painel em branco, sem aba marcada.
+   */
+  const [active, setActive] = useState(
+    initialTab && tabs.some((tab) => tab.id === initialTab) ? initialTab : "chamados",
+  );
   const [query, setQuery] = useState("");
   const [view, setView] = useState<ViewMode>("grid");
   const [videoModalOpen, setVideoModalOpen] = useState(false);
@@ -74,12 +96,6 @@ export function ItSectorView({
   // enviar conteúdo exige content.upload; o resto dos painéis se autolimita
   // (LinksPanel por links.manage, KanbanBoard por tickets.manage/claim).
   const canUpload = can("content.upload");
-
-  // A aba de IA só existe para quem pode configurá-la. A checagem é dupla de
-  // propósito: a permissão diz quem PODE, e a prop diz que o servidor de fato
-  // ENVIOU a configuração — sem uma das duas, a aba nem é listada.
-  const showAi = can("ai.manage") && aiSettings != null;
-  const tabs = showAi ? TABS : TABS.filter((tab) => tab.id !== "ia");
 
   const uploadLabel = !canUpload
     ? undefined

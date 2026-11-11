@@ -2,7 +2,14 @@
 
 export type FunnelStage = "TOFU" | "MOFU" | "BOFU";
 
-export type ContentFormat = "REEL" | "STORY" | "FEED" | "CARROSSEL" | "LIVE" | "OUTRO";
+export type ContentFormat =
+  | "REEL"
+  | "STORY"
+  | "FEED"
+  | "CARROSSEL"
+  | "LIVE"
+  | "LANCAMENTO"
+  | "OUTRO";
 
 export type ContentStatus = "IDEIA" | "EM_PRODUCAO" | "AGENDADO" | "PUBLICADO";
 
@@ -49,6 +56,8 @@ export interface ContentPostItem {
   platforms: readonly ContentPlatform[];
   /** Texto livre do formato quando OUTRO está entre os escolhidos. */
   formatOther?: string;
+  /** Nº do line-up quando LANCAMENTO está entre os formatos escolhidos. */
+  lineUp?: number;
   owner: PostOwner | null;
   notes?: string;
   /** Autor do registro. */

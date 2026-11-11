@@ -10,7 +10,12 @@ import type { Role } from "@/types";
 
 export const dynamic = "force-dynamic";
 
-export default async function DriversSectorPage() {
+export default async function DriversSectorPage({
+  searchParams,
+}: {
+  /** `aba` guarda a aba aberta, como na rota genérica `/setores/[slug]`. */
+  searchParams?: Promise<{ aba?: string }>;
+}) {
   const session = await getVerifiedSession();
   if (!session) redirect(LOGIN_EXPIRED_PATH);
 
@@ -41,6 +46,7 @@ export default async function DriversSectorPage() {
 
   return (
     <DriverSectorView
+      initialTab={(await searchParams)?.aba}
       content={safeContent}
       evaluations={evaluations}
       welcome={welcome}

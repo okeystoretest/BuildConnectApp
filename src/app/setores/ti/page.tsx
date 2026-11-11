@@ -13,7 +13,12 @@ import type { Role } from "@/types";
 
 export const dynamic = "force-dynamic";
 
-export default async function ItSectorPage() {
+export default async function ItSectorPage({
+  searchParams,
+}: {
+  /** `aba` guarda a aba aberta, como na rota genérica `/setores/[slug]`. */
+  searchParams?: Promise<{ aba?: string }>;
+}) {
   const session = await getVerifiedSession();
   if (!session) redirect(LOGIN_EXPIRED_PATH);
 
@@ -57,6 +62,7 @@ export default async function ItSectorPage() {
 
   return (
     <ItSectorView
+      initialTab={(await searchParams)?.aba}
       welcome={welcome}
       content={safeContent}
       tickets={tickets}

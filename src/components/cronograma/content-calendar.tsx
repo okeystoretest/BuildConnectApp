@@ -231,6 +231,37 @@ function PostChip({
         </span>
       )}
 
+      {/* Line-up em BLOCO, também aqui.
+          O calendário tem DOIS cards: este chip, que é o que se vê na célula
+          do mês, e o `ExpandedPostCard`. O bloco precisa dos dois — marcá-lo
+          só no expandido deixaria o número invisível em quem nunca expande,
+          que é o caso comum. */}
+      {post.lineUp !== undefined && (
+        <span
+          className={cn(
+            "mt-1.5 flex w-fit items-baseline gap-1 rounded border px-1.5 py-0.5",
+            brand ? "border-black/15 bg-white/55" : "border-primary/40 bg-primary/10",
+          )}
+        >
+          <span
+            className={cn(
+              "text-[8px] font-semibold uppercase tracking-wide",
+              !brand && "text-primary",
+            )}
+          >
+            Line-up
+          </span>
+          <span
+            className={cn(
+              "text-[11px] font-bold leading-none tabular-nums",
+              !brand && "text-primary",
+            )}
+          >
+            {post.lineUp}
+          </span>
+        </span>
+      )}
+
       <span className="mt-1.5 flex flex-wrap items-center gap-1">
         {brand ? (
           <>
@@ -467,6 +498,35 @@ function ExpandedPostCard({
       >
         {post.title}
       </p>
+
+      {/* Line-up em BLOCO, e não num selo na fileira abaixo: o número é o que
+          identifica o lançamento na reunião de pauta, e entre os outros selos
+          ele viraria mais um item de uma lista horizontal. */}
+      {post.lineUp !== undefined && (
+        <p
+          className={cn(
+            "mt-1 flex shrink-0 items-baseline gap-1 self-start rounded border px-1.5 py-0.5",
+            brand ? "border-black/15 bg-white/55" : "border-primary/40 bg-primary/10",
+          )}
+        >
+          <span
+            className={cn(
+              "text-[8px] font-semibold uppercase tracking-wide",
+              !brand && "text-primary",
+            )}
+          >
+            Line-up
+          </span>
+          <span
+            className={cn(
+              "text-xs font-bold leading-none tabular-nums",
+              !brand && "text-primary",
+            )}
+          >
+            {post.lineUp}
+          </span>
+        </p>
+      )}
 
       <div className="mt-1 flex shrink-0 flex-wrap items-center gap-1">
         <Tag solid={FUNNEL[post.funnel].color}>{FUNNEL[post.funnel].short}</Tag>

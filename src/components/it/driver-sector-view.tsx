@@ -30,10 +30,25 @@ export interface DriverSectorViewProps {
   evaluations?: SectorEvaluations | null;
   /** Vídeo de boas-vindas do setor (modal + card de gestão). */
   welcome?: SectorWelcomeVideoData | null;
+  /**
+   * Aba pedida pela URL (`?aba=`), resolvida no servidor — mesma razão da
+   * view de TI: link externo e F5 precisam cair na aba certa, como já
+   * acontece na rota genérica `/setores/[slug]`.
+   */
+  initialTab?: string;
 }
 
-export function DriverSectorView({ content, evaluations, welcome }: DriverSectorViewProps) {
-  const [active, setActive] = useState("documentos");
+export function DriverSectorView({
+  content,
+  evaluations,
+  welcome,
+  initialTab,
+}: DriverSectorViewProps) {
+  // Aba pedida na URL, quando existe. Mesma razão da view de TI: link externo
+  // e F5 precisam cair na aba certa.
+  const [active, setActive] = useState(
+    initialTab && TABS.some((tab) => tab.id === initialTab) ? initialTab : "documentos",
+  );
   const [query, setQuery] = useState("");
   const [view, setView] = useState<ViewMode>("grid");
   const [docModalOpen, setDocModalOpen] = useState(false);

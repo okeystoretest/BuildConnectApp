@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { activeMembersOfSector, activeUserIdsInSubsector } from "@/lib/notifications/membership";
-import { newEmployeeManagerText, newEmployeeTeamText, ticketText } from "./messages";
-import { enqueue, sendNow, type SendNowOptions } from "./outbox";
+import { GUEST_RETRY_TEXT, newEmployeeManagerText, newEmployeeTeamText, ticketText } from "./messages";
+import { enqueue, enqueueGuest, sendNow, type SendNowOptions } from "./outbox";
 import { ROLE_LABEL } from "@/lib/permissions";
 import type { Role } from "@/types";
 
@@ -165,5 +165,26 @@ export async function notifyNewEmployee(
         text: newEmployeeTeamText({ fullName: input.fullName, sectorLabel }),
       });
     }
+  });
+}
+
+/**
+ * O convidado da Página de Integração não alcançou a nota: pede que reveja o
+ * filme e responda de novo.
+ *
+ * Silenciosa por fora, como o resto deste módulo: WhatsApp fora do ar, número
+ * inválido ou convite sem telefone (os criados antes de 28/10/2026) não podem
+ * transformar "reveja o filme" num erro na tela de quem está respondendo.
+ */
+export async function notifyGuestRetry(guestId: string): Promise<void> {
+  await silently("retomada do convidado", async () => {
+    const guest = await prisma.integrationGuest.findUnique({
+      where: { id: guestId },
+      select: { phone: true },
+    });
+    // Sem telefone não há o que enfileirar: a linha ficaria pendente para
+    // sempre, falhando a cada passada da drenagem.
+    if (!guest?.phone) return;
+    await enqueueGuest(guestId, "INTEGRACAO", GUEST_RETRY_TEXT);
   });
 }

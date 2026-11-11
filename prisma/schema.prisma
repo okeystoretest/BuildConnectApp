@@ -128,6 +128,7 @@ model User {
   evaluationRounds         EvaluationRound[]      @relation("EvaluationRoundSubject")
   evaluationAssignments    EvaluationAssignment[] @relation("EvaluationAssignmentRater")
   integrationMaps          IntegrationMap[]
+  integrationGuests        IntegrationGuest[]     @relation("IntegrationGuestAuthor")
   // Denúncias recebidas (o denunciante é sempre anônimo — não há relação).
   reportsReceived          Report[]               @relation("ReportTarget")
   notifications            NotificationRead[]
@@ -593,6 +594,8 @@ enum ContentFormat {
   FEED
   CARROSSEL
   LIVE
+  // Peça de LANÇAMENTO. Leva o número do line-up em ContentPost.lineUp.
+  LANCAMENTO
   // Formato fora da lista. O texto digitado vai em ContentPost.formatOther.
   OUTRO
 }
@@ -651,6 +654,9 @@ model ContentPost {
   platforms   ContentPlatform[] @default([])
   // Descrição livre do formato quando OUTRO está entre os escolhidos.
   formatOther String?
+  // Número do line-up quando LANCAMENTO está entre os escolhidos. Inteiro e
+  // não texto: é identificador de lançamento, e o formulário só aceita dígito.
+  lineUp      Int?
   notes       String?
 
   // Quem enxerga o post. Definido na criação a partir da aba de origem.
@@ -1770,9 +1776,17 @@ model WhatsappSession {
 // nenhum: o telefone é resolvido do User na hora do envio e não é persistido
 // aqui, para esta tabela não virar uma lista de contatos.
 model WhatsappMessage {
-  id     String @id @default(cuid())
-  userId String
-  user   User   @relation("WhatsappRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  id String @id @default(cuid())
+
+  // Destinatário: UM dos dois, nunca os dois. Colaborador (telefone no
+  // cadastro) ou convidado da Página de Integração (telefone no convite).
+  // Em nenhum dos casos o número é copiado para cá — continua resolvido na
+  // hora do envio, para esta tabela não virar lista de contatos.
+  userId String?
+  user   User?   @relation("WhatsappRecipient", fields: [userId], references: [id], onDelete: Cascade)
+
+  guestId String?
+  guest   IntegrationGuest? @relation(fields: [guestId], references: [id], onDelete: Cascade)
 
   kind     WhatsappKind
   status   WhatsappStatus @default(PENDENTE)
@@ -1795,4 +1809,194 @@ model WhatsappMessage {
 
   @@index([status, sendAfter])
   @@index([userId])
+  @@index([guestId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Página de Integração — módulo ISOLADO, para convidado sem conta
+// ─────────────────────────────────────────────────────────────
+//
+// Isolamento nos DOIS sentidos, e isso é o requisito:
+//  - o convidado alcança esta página e NADA do sistema principal. Ele não tem
+//    `User`, não tem `bc_session`, e o cookie que o identifica aqui não abre
+//    porta nenhuma lá;
+//  - o usuário do sistema principal não entra por aqui. A página não lê a
+//    sessão dele: quem passa é quem tem convite válido.
+
+/// O convidado É o convite.
+///
+/// Eram duas tabelas (link e convidado) até 28/10/2026, quando o convite
+/// passou a exigir nome e telefone do destinatário: o link deixou de ser
+/// "compartilhável" e virou pessoal. Com isso as duas viraram a mesma linha —
+/// manter duas em 1:1 só criava a pergunta de qual delas é a pessoa.
+///
+/// `token` é a credencial: quem o tem, entra. Revogar não apaga nada; o que
+/// morre é a entrada, e as tentativas ficam para o DHO ler.
+model IntegrationGuest {
+  id    String @id @default(cuid())
+  // Aleatório e longo. Adivinhar é a única via sem convite, e o tamanho a fecha.
+  token String @unique
+
+  // Quem o DHO convidou. O convidado confirma na chegada; não digita.
+  fullName String
+  // Telefone do destinatário, para a cobrança por WhatsApp quando ele não
+  // alcança a nota.
+  //
+  // Anulável só por causa dos convites criados ANTES de 28/10/2026, que
+  // nasceram sem telefone. A tela exige; aqueles continuam navegando e apenas
+  // não recebem aviso.
+  phone String?
+
+  /// Abriu o convite e confirmou o nome. Null = ainda não entrou.
+  confirmedAt DateTime?
+
+  /// Entrada fechada À MÃO pelo DHO. O fim da trilha não escreve aqui: ele
+  /// marca `completedAt` e deixa `accessUntil` fechar sozinho, 24 h depois.
+  revokedAt DateTime?
+
+  /// Quando a trilha inteira foi concluída com aproveitamento. É FATO
+  /// GRAVADO, não conta refeita: antes, "concluído" era derivado de haver
+  /// tentativa aprovada em todo filme, e bastava o DHO cadastrar um filme
+  /// novo para quem já tinha terminado voltar a aparecer como pendente.
+  /// Uma vez marcado, não se apaga.
+  completedAt DateTime?
+
+  /// Fim da janela de acesso. Gravado na conclusão (24 h) e renovado quando o
+  /// DHO reabre — sem ele, reabrir um convite já vencido não teria efeito,
+  /// porque a conclusão é permanente e fecharia a porta de novo na hora.
+  /// Null = sem prazo (convite ainda em andamento).
+  accessUntil DateTime?
+
+  createdById String?
+  createdBy   User?   @relation("IntegrationGuestAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  attempts  IntegrationAttempt[]
+  whatsapps WhatsappMessage[]
+
+  createdAt DateTime @default(now())
+
+  @@index([revokedAt])
+  @@index([completedAt])
+}
+
+enum IntegrationAssetKind {
+  // Entra na TRILHA, em ordem, e destrava o próximo ao ser concluído.
+  FILME
+  // Acervo complementar. Fora da trilha: não tranca nada.
+  VIDEO
+  DOCUMENTO
+}
+
+/// Peça da página: filme da trilha, vídeo complementar ou documento.
+///
+/// Tabela PRÓPRIA, e não `Video`/`Document` com uma coluna a mais: aqueles
+/// dois pertencem a um SUBSETOR e entram na contagem de progresso do
+/// colaborador (`lib/progress-data`), no histórico e na vitrine do subsetor.
+/// Um filme de integração caindo nessas listas seria conteúdo de setor que
+/// ninguém cadastrou.
+model IntegrationAsset {
+  id       String               @id @default(cuid())
+  kind     IntegrationAssetKind
+  title    String
+  // Subtítulo do PDF de ordem ("Autoconhecimento e Presença").
+  focus    String?
+  // A "lição chave" do filme, exibida ao lado dele.
+  lesson   String?
+  // Caminho público do arquivo. Nulo enquanto o DHO não subiu o arquivo.
+  filePath String?
+  /// Capa do filme (.webp), em tamanho padronizado. Nula = a tela desenha o
+  /// bloco sem imagem; nada quebra sem ela.
+  thumbnailPath String?
+  order    Int                  @default(0)
+
+  questions IntegrationQuestion[]
+  attempts  IntegrationAttempt[]
+
+  createdAt DateTime @default(now())
+
+  @@index([kind, order])
+}
+
+/// Pergunta do questionário de um filme, com GABARITO.
+///
+/// Tabela própria, e não o motor de formulários do DHO. Foi o contrário
+/// primeiro: o questionário era um `Form` comum, anexado ao filme por um
+/// seletor. Não serve, por uma razão de modelo — formulário de avaliação e de
+/// pesquisa não tem resposta certa, e marcar "esta é a correta" lá dentro
+/// espalharia um conceito de prova por um motor que existe para colher
+/// opinião. Aqui o gabarito é a razão de ser.
+model IntegrationQuestion {
+  id      String           @id @default(cuid())
+  assetId String
+  asset   IntegrationAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  label String
+  order Int    @default(0)
+
+  options IntegrationOption[]
+  answers IntegrationAnswer[]
+
+  @@index([assetId, order])
+}
+
+model IntegrationOption {
+  id         String              @id @default(cuid())
+  questionId String
+  question   IntegrationQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  label String
+  order Int     @default(0)
+  // O gabarito. Uma por pergunta — a tela do DHO garante, o banco não.
+  correct Boolean @default(false)
+
+  answers IntegrationAnswer[]
+
+  @@index([questionId, order])
+}
+
+/// Uma rodada de respostas de um convidado a um filme.
+///
+/// Tentativa, e não "progresso": quem não alcança a nota refaz, e cada rodada
+/// fica gravada. É o que permite ao DHO ver quem errou o quê antes de acertar,
+/// e é o que a coluna de pendentes do quadro lê.
+///
+/// O filme está concluído quando existe UMA tentativa aprovada. Não há tabela
+/// de progresso separada: ela seria uma segunda verdade sobre o mesmo fato.
+model IntegrationAttempt {
+  id      String           @id @default(cuid())
+  guestId String
+  guest   IntegrationGuest @relation(fields: [guestId], references: [id], onDelete: Cascade)
+  assetId String
+  asset   IntegrationAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  // Acertos e total, não a nota. A nota é `acertos / total * 10`, e guardar a
+  // conta em vez do resultado deixa o cálculo num lugar só
+  // (`lib/integration/grade`): mudar o piso de aprovação não reescreve linha
+  // nenhuma já gravada.
+  correctCount Int
+  totalCount   Int
+  passed       Boolean
+
+  answers IntegrationAnswer[]
+
+  createdAt DateTime @default(now())
+
+  @@index([guestId, assetId])
+  @@index([assetId])
+}
+
+model IntegrationAnswer {
+  id        String             @id @default(cuid())
+  attemptId String
+  attempt   IntegrationAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+
+  questionId String
+  question   IntegrationQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  optionId String
+  option   IntegrationOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+
+  // Uma resposta por pergunta em cada tentativa.
+  @@unique([attemptId, questionId])
+  @@index([questionId])
 }

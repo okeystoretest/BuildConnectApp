@@ -44,12 +44,15 @@ const postSchema = z.object({
   // `.min(1)` porque a lista, ao contrário da coluna única que existia antes,
   // pode chegar vazia — e post sem formato nenhum não tem tag no calendário.
   formats: z
-    .array(z.enum(["REEL", "STORY", "FEED", "CARROSSEL", "LIVE", "OUTRO"]))
+    .array(z.enum(["REEL", "STORY", "FEED", "CARROSSEL", "LIVE", "LANCAMENTO", "OUTRO"]))
     .min(1, "Escolha ao menos um formato.")
-    .max(6),
+    .max(7),
   // Texto livre do formato "Outro". Ignorado (e limpo) quando OUTRO não está
   // entre os escolhidos.
   formatOther: z.string().trim().max(60, "Descrição do formato muito longa.").optional(),
+  // Nº do line-up. Inteiro positivo, e limpo quando LANCAMENTO sai da
+  // seleção — a mesma regra que governa o formatOther logo acima.
+  lineUp: z.number().int().positive("Nº do line-up inválido.").max(999999).optional(),
   brand: z.enum(["OKEY", "LOV_CLUB"]).optional(),
   // Alcance escolhido nos botões do formulário. Ausente = o padrão da aba,
   // para que uma chamada antiga não vire um card público sem querer.
@@ -66,6 +69,15 @@ const postSchema = z.object({
       message: "Descreva o formato do conteúdo.",
     });
   }
+  // "Lançamento" sem número é um bloco vazio no calendário: o nº do line-up é
+  // exatamente o que se procura no card.
+  if (data.formats.includes("LANCAMENTO") && data.lineUp === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["lineUp"],
+      message: "Informe o nº do line-up.",
+    });
+  }
 });
 
 /** Formatos, redes e texto do formato normalizados para o banco. */
@@ -75,6 +87,7 @@ function contentFields(data: ContentPostInput) {
     formats: Array.from(new Set(data.formats)),
     platforms: Array.from(new Set(data.platforms ?? [])),
     formatOther: data.formats.includes("OUTRO") ? (data.formatOther ?? null) : null,
+    lineUp: data.formats.includes("LANCAMENTO") ? (data.lineUp ?? null) : null,
   };
 }
 

@@ -81,6 +81,7 @@ interface PostRow {
   brand: ContentPostItem["brand"] | null;
   platforms: ContentPlatform[];
   formatOther: string | null;
+  lineUp: number | null;
   notes: string | null;
   visibility: ContentVisibility;
   originSlug: string | null;
@@ -148,6 +149,7 @@ function toItem(row: PostRow, userId: string, role: Role): ContentPostItem {
     brand: row.brand ?? undefined,
     platforms: row.platforms ?? [],
     formatOther: row.formatOther ?? undefined,
+    lineUp: row.lineUp ?? undefined,
     owner: row.owner
       ? {
           id: row.owner.id,
@@ -241,6 +243,7 @@ export async function getCronogramaData(
       brand: true,
       platforms: true,
       formatOther: true,
+      lineUp: true,
       notes: true,
       visibility: true,
       originSlug: true,

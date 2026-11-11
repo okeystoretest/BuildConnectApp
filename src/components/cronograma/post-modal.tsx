@@ -90,6 +90,9 @@ export function PostModal({
   const [visibility, setVisibility] = useState<ContentVisibility>("SHARED");
   const [platforms, setPlatforms] = useState<readonly ContentPlatform[]>([]);
   const [formatOther, setFormatOther] = useState("");
+  // String, e não number: o campo guarda o que foi digitado, e "" é o estado
+  // vazio que um number nao sabe representar sem fingir que vale zero.
+  const [lineUp, setLineUp] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -108,6 +111,7 @@ export function PostModal({
     setVisibility(post?.visibility ?? defaultVisibilityForSlug(slug));
     setPlatforms(post?.platforms ?? []);
     setFormatOther(post?.formatOther ?? "");
+    setLineUp(post?.lineUp === undefined ? "" : String(post.lineUp));
     setNotes(post?.notes ?? "");
     setError(null);
   }, [open, post, defaultDate, slug]);
@@ -131,6 +135,9 @@ export function PostModal({
         brand: brand ?? undefined,
         platforms: PLATFORM_ORDER.filter((option) => platforms.includes(option)),
         formatOther: formats.includes("OUTRO") ? formatOther.trim() : undefined,
+        // Campo vazio vai como ausente, e não como 0: a validação precisa
+        // distinguir "não informei" de um número, para cobrar o line-up.
+        lineUp: formats.includes("LANCAMENTO") && lineUp ? Number(lineUp) : undefined,
         notes: notes.trim() || undefined,
         visibility,
       };
@@ -275,6 +282,26 @@ export function PostModal({
                   onChange={(e) => setFormatOther(e.target.value)}
                   placeholder="Ex.: Newsletter, Podcast, Evento presencial…"
                   maxLength={60}
+                />
+              </div>
+            )}
+
+            {/* O nº do line-up só existe no Lançamento, como o texto livre só
+                existe em "Outro". */}
+            {formats.includes("LANCAMENTO") && (
+              <div className="mt-2">
+                <Label htmlFor="post-line-up">N° do Line-Up</Label>
+                <Input
+                  id="post-line-up"
+                  value={lineUp}
+                  disabled={readOnly}
+                  inputMode="numeric"
+                  // Dígitos filtrados na digitação, e nao type="number": o
+                  // campo numérico do navegador aceita "e", sinal e separador
+                  // decimal, e oferece setas de incremento para algo que é
+                  // identificador, não quantidade.
+                  onChange={(e) => setLineUp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="Ex.: 42"
                 />
               </div>
             )}

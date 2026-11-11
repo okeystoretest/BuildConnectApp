@@ -162,6 +162,7 @@ export const FORMAT_ORDER: readonly ContentFormat[] = [
   "FEED",
   "CARROSSEL",
   "LIVE",
+  "LANCAMENTO",
   "OUTRO",
 ];
 
@@ -186,6 +187,9 @@ export const FORMAT: Record<ContentFormat, FormatMeta> = {
   FEED: { label: "Feed", color: "#22c55e" },
   CARROSSEL: { label: "Carrossel", color: "#f97316" },
   LIVE: { label: "Live", color: "#e11d48" },
+  // Azul e a unica familia ausente das cinco acima, então o selo de
+  // lançamento não se confunde com nenhum outro de relance.
+  LANCAMENTO: { label: "Lançamento", color: "#2563eb" },
   OUTRO: { label: "Outro", color: "#64748b" },
 };
 
@@ -195,6 +199,7 @@ export const FORMAT_LABEL: Record<ContentFormat, string> = {
   FEED: FORMAT.FEED.label,
   CARROSSEL: FORMAT.CARROSSEL.label,
   LIVE: FORMAT.LIVE.label,
+  LANCAMENTO: FORMAT.LANCAMENTO.label,
   OUTRO: FORMAT.OUTRO.label,
 };
 

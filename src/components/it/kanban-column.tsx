@@ -1,7 +1,8 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { useCardListLimit } from "@/components/ui/use-card-list-limit";
 import type { ItTicket, ItTicketStatus } from "@/types/it";
 import { IT_STATUS_DOT, IT_STATUS_LABEL } from "@/lib/it-data";
 import { TicketCard } from "./ticket-card";
@@ -43,40 +44,7 @@ export function KanbanColumn({
 }: KanbanColumnProps) {
   const [over, setOver] = useState(false);
 
-  /**
-   * No máximo VISIBLE_CARDS cards à vista; do quarto em diante, a coluna
-   * rola. Como a altura do card varia (título que quebra linha, anexos,
-   * contagem regressiva do concluído), o limite não é um número fixo de
-   * pixels: a lista mede a base do terceiro card e fixa a altura máxima
-   * ali. Com três ou menos, sem limite. Remedido quando os cards mudam de
-   * tamanho — texto, largura da coluna, sidebar recolhida.
-   */
-  const listRef = useRef<HTMLDivElement | null>(null);
-  const [maxHeight, setMaxHeight] = useState<number | undefined>(undefined);
-
-  useLayoutEffect(() => {
-    const list = listRef.current;
-    if (!list) return;
-
-    const measure = () => {
-      const cards = Array.from(list.children).filter(
-        (el): el is HTMLElement => el instanceof HTMLElement && el.tagName === "ARTICLE",
-      );
-      if (cards.length <= VISIBLE_CARDS) {
-        setMaxHeight(undefined);
-        return;
-      }
-      const first = cards[0]!;
-      const last = cards[VISIBLE_CARDS - 1]!;
-      setMaxHeight(last.offsetTop + last.offsetHeight - first.offsetTop);
-    };
-
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(list);
-    for (const child of Array.from(list.children)) observer.observe(child);
-    return () => observer.disconnect();
-  }, [tickets]);
+  const { ref: listRef, maxHeight } = useCardListLimit(VISIBLE_CARDS, tickets.length);
 
   return (
     <section

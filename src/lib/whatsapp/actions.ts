@@ -73,12 +73,15 @@ export async function getWhatsappLog(limit = 50): Promise<WhatsappLogRow[]> {
       sentAt: true,
       sendAfter: true,
       user: { select: { fullName: true } },
+      guest: { select: { fullName: true } },
     },
   });
 
   return rows.map((r) => ({
     id: r.id,
-    name: r.user.fullName,
+    // Colaborador ou convidado da Página de Integração: o log mostra o nome
+    // de quem recebeu, venha de onde vier. Nunca o número.
+    name: r.user?.fullName ?? r.guest?.fullName ?? "—",
     kind: r.kind,
     status: r.status,
     error: r.error ?? undefined,
