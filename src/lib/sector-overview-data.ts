@@ -34,20 +34,42 @@ export interface VideoQualityRow {
   average: number | null;
 }
 
-/** Uma pílula do seletor: um setor. */
+/** Um subsetor selecionável dentro de um setor. */
+export interface OverviewSubscope {
+  subsectorId: string;
+  subsectorLabel: string;
+}
+
+/** Uma pílula do seletor: um setor e os subsetores que ele abre. */
 export interface OverviewScope {
   sectorId: string;
   sectorLabel: string;
+  /** Só os PADRAO: a vitrine não tem equipe nem material a concluir. */
+  subsectors: OverviewSubscope[];
 }
 
 /** O que se está olhando. */
 export interface OverviewTarget {
   sectorId: string;
+  /**
+   * Recorte opcional por subsetor. Nulo = o setor inteiro.
+   *
+   * Filtra QUEM aparece, nunca o número de ninguém: o denominador de cada
+   * pessoa já é o dos subsetores dela (`trackedSubsectorIdsOf`), então a
+   * mesma pessoa exibe o mesmo percentual com ou sem filtro. Era exatamente
+   * isso que faltava em 22/09, quando a pílula de subsetor foi removida por
+   * dar dois percentuais à mesma pessoa.
+   */
+  subsectorId?: string | null;
 }
 
 export interface SectorOverview {
   sectorId: string;
   sectorLabel: string;
+  /** Subsetor em foco, ou nulo para o setor inteiro. */
+  subsectorId: string | null;
+  subsectorLabel: string | null;
+  /** Colaboradores NO RECORTE aberto, não no setor. */
   memberCount: number;
   totalItems: number;
   doneItems: number;
@@ -60,18 +82,42 @@ export interface SectorOverview {
 }
 
 /**
- * As pílulas do seletor do Admin: um setor, uma pílula.
+ * As pílulas do seletor: um setor, uma pílula, e os subsetores que ele abre.
  *
- * O recorte por subsetor existiu até 22/09 e saiu: ele dividia a equipe em
- * listas que o gestor não pedia e mexia no denominador junto, de modo que a
- * mesma pessoa tinha um percentual em cada pílula.
+ * O recorte por subsetor existiu até 22/09, saiu, e voltou em 11/11. O que o
+ * derrubou foi ele mexer no DENOMINADOR junto, de modo que a mesma pessoa
+ * tinha um percentual em cada pílula. Hoje o denominador é por pessoa e não
+ * depende de pílula nenhuma — o filtro escolhe quem entra na lista, e só.
+ *
+ * `onlySectorId` recorta a lista a um setor: é o caso do Gestor, que não
+ * escolhe setor mas precisa dos subsetores do dele. O recorte aqui é
+ * conveniência de tela; quem prende o Gestor ao próprio setor é a página e a
+ * rota, cada uma conferindo de novo.
  */
-export async function listScopesForOverview(): Promise<OverviewScope[]> {
+export async function listScopesForOverview(
+  onlySectorId?: string | null,
+): Promise<OverviewScope[]> {
   const sectors = await prisma.sector.findMany({
+    where: onlySectorId ? { id: onlySectorId } : undefined,
     orderBy: { order: "asc" },
-    select: { id: true, label: true },
+    select: {
+      id: true,
+      label: true,
+      subsectors: {
+        where: TRACKED_SUBSECTOR,
+        orderBy: { order: "asc" },
+        select: { id: true, label: true },
+      },
+    },
   });
-  return sectors.map((sector) => ({ sectorId: sector.id, sectorLabel: sector.label }));
+  return sectors.map((sector) => ({
+    sectorId: sector.id,
+    sectorLabel: sector.label,
+    subsectors: sector.subsectors.map((sub) => ({
+      subsectorId: sub.id,
+      subsectorLabel: sub.label,
+    })),
+  }));
 }
 
 /**
@@ -126,7 +172,7 @@ export async function resolveEvaluationsHref(
 }
 
 export async function getSectorOverview(target: OverviewTarget): Promise<SectorOverview> {
-  const { sectorId } = target;
+  const { sectorId, subsectorId = null } = target;
 
   /*
    * O recorte do CONTEÚDO: todo o material PADRAO do setor. A vitrine fica
@@ -375,7 +421,7 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
     evaluationsByUser.set(g.userId, entries);
   }
 
-  const memberRows: MemberOverview[] = members.map((m) => {
+  const memberRows: MemberOverview[] = members.flatMap((m) => {
     const { approved, rejections } = splitGrades(gradesByUser.get(m.id) ?? []);
     /*
      * O denominador é O DESTA PESSOA: os subsetores em que ela está marcada
@@ -389,6 +435,14 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
         subsectorIds,
       ),
     );
+    /*
+     * Recorte por subsetor: entra quem RESPONDE por ele — a mesma régua do
+     * denominador. Quem não marcou subsetor nenhum responde pelo setor
+     * inteiro, e por isso aparece em qualquer filtro dele: escondê-lo faria
+     * pessoas sumirem do painel sem que ninguém as tivesse excluído.
+     */
+    if (subsectorId && !escopo.has(subsectorId)) return [];
+
     const catalog = subsectors
       .filter((sub) => escopo.has(sub.id))
       .flatMap((sub) => catalogBySubsector.get(sub.id) ?? []);
@@ -400,7 +454,7 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
      */
     const doneItems = catalog.length - pendingList.length;
     const doneTypes = doneTypesByUser.get(m.id) ?? new Set<string>();
-    return {
+    return [{
       userId: m.id,
       name: m.fullName,
       role: ROLE_LABEL[m.role as Role],
@@ -417,7 +471,7 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
       performance: performanceByUser.get(m.id) ?? [],
       evaluationGaps: evaluationCatalog.filter((t) => !doneTypes.has(t.typeId)),
       personnelFiles: personnelCount.get(m.id) ?? 0,
-    };
+    }];
   });
 
   // Média do setor: um denominador só. A média das médias daria o mesmo peso a
@@ -426,6 +480,10 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
 
   const byVideo = new Map<string, VideoQualityRow>();
   for (const sub of subsectors) {
+    // A aba de qualidade acompanha o filtro: a pílula diz qual recorte está
+    // aberto, e metade da tela ignorá-la seria a pessoa ler dois escopos ao
+    // mesmo tempo sem saber qual vale.
+    if (subsectorId && sub.id !== subsectorId) continue;
     for (const v of sub.videos) {
       byVideo.set(v.id, {
         videoId: v.id,
@@ -493,7 +551,13 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
   return {
     sectorId,
     sectorLabel: sector?.label ?? "—",
-    memberCount: members.length,
+    subsectorId,
+    // Nulo quando não há filtro, e também quando o id não é deste setor — a
+    // página já ignora o forjado, e aqui o rótulo não inventa um nome.
+    subsectorLabel: subsectorId
+      ? (subsectors.find((s) => s.id === subsectorId)?.label ?? null)
+      : null,
+    memberCount: memberRows.length,
     // O catálogo PADRAO do setor. NÃO é o denominador do progresso — esse é
     // por pessoa, em `MemberOverview.totalItems`.
     totalItems,

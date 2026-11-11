@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
 export default async function MySectorPage({
   searchParams,
 }: {
-  searchParams: Promise<{ setor?: string }>;
+  searchParams: Promise<{ setor?: string; subsetor?: string }>;
 }) {
   const user = await getCurrentUser();
   if (!user) redirect(LOGIN_EXPIRED_PATH);
@@ -34,8 +34,16 @@ export default async function MySectorPage({
   if (!can(role, "sector.overview")) notFound();
 
   const isAdmin = role === "ADMIN";
-  const scopes = isAdmin ? await listScopesForOverview() : [];
-  const { setor } = await searchParams;
+
+  /*
+   * O Gestor TAMBÉM recebe escopos — os subsetores do setor dele. Ele não
+   * escolhe setor (a linha do `sectorId` abaixo ignora o `?setor=`), mas
+   * filtra dentro do próprio, que é para o que a pílula de subsetor serve.
+   * Sem lotação não há o que listar, e a tela já responde isso adiante.
+   */
+  const scopes =
+    isAdmin || user.sectorId ? await listScopesForOverview(isAdmin ? null : user.sectorId) : [];
+  const { setor, subsetor } = await searchParams;
 
   /*
    * O Gestor é preso ao próprio setor: o parâmetro da URL é ignorado para ele.
@@ -43,9 +51,7 @@ export default async function MySectorPage({
    * Admin, e esta é a linha que faz disso verdade, não a ausência do seletor
    * na tela.
    *
-   * Um `?subsetor=` de link antigo simplesmente não é lido: o painel abre o
-   * setor inteiro, em vez de responder "página não encontrada" a quem guardou
-   * o endereço.
+   * O `?subsetor=` voltou a ser lido em 11/11, e é validado logo abaixo.
    */
   const sectorId = isAdmin ? (setor ?? scopes[0]?.sectorId ?? null) : user.sectorId;
 
@@ -67,7 +73,17 @@ export default async function MySectorPage({
   // Admin com parâmetro forjado: só vale setor que existe.
   if (isAdmin && !scopes.some((s) => s.sectorId === sectorId)) notFound();
 
-  const data = await getSectorOverview({ sectorId });
+  /*
+   * `?subsetor=` forjado é IGNORADO, não recusado: só vale subsetor do setor
+   * que está aberto. Dois motivos para ignorar em vez de dar 404 — um link
+   * antigo abre o setor inteiro em vez de uma tela de erro, e um id de outro
+   * setor não vira um jeito de descobrir o que existe lá.
+   */
+  const aberto = scopes.find((s) => s.sectorId === sectorId);
+  const subsectorId =
+    subsetor && aberto?.subsectors.some((s) => s.subsectorId === subsetor) ? subsetor : null;
+
+  const data = await getSectorOverview({ sectorId, subsectorId });
 
   /*
    * Destino do atalho das avaliações pendentes. Resolvido AQUI, a partir de
@@ -94,7 +110,11 @@ export default async function MySectorPage({
   return (
     <AppShell eyebrow="Menu" title="Meu Setor">
       <PageHeader
-        title={`Meu Setor · ${data.sectorLabel}`}
+        // O subsetor entra no título porque os números abaixo passam a ser
+        // dele: sem isso, "3 colaboradores" num setor de 30 lê como erro.
+        title={`Meu Setor · ${data.sectorLabel}${
+          data.subsectorLabel ? ` · ${data.subsectorLabel}` : ""
+        }`}
         description="Avanço dos colaboradores nos treinamentos e o que eles acharam dos vídeos."
       />
       <SectorOverviewView

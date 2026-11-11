@@ -6,10 +6,12 @@ import { getSectorOverview, listScopesForOverview } from "./sector-overview-data
 /**
  * O recorte do painel do Meu Setor, contra o Postgres.
  *
- * A LISTA é o setor: todo mundo lotado nele aparece, numa grade só. Isso vem
- * de 22/09, quando a pílula de subsetor foi removida — ela dividia a equipe em
- * listas que o gestor não pedia e, ao trocar o denominador junto, fazia a
- * MESMA pessoa exibir dois percentuais conforme a pílula aberta.
+ * A LISTA é o setor por padrão, e pode ser recortada por subsetor desde
+ * 11/11. A pílula de subsetor existiu até 22/09 e foi removida porque trocava
+ * o DENOMINADOR junto, fazendo a MESMA pessoa exibir dois percentuais
+ * conforme a pílula aberta. Ela voltou quando essa causa deixou de existir:
+ * hoje o denominador é de cada pessoa e o filtro só escolhe quem entra na
+ * lista — e há um teste abaixo cuidando de que continue assim.
  *
  * O DENOMINADOR é o subsetor, desde 11/11. Não reabre aquele problema: não há
  * pílula, e cada pessoa tem um escopo só — o dela —, logo um percentual só.
@@ -168,14 +170,53 @@ test("concluir algo FORA do próprio subsetor não mexe no percentual", async ()
   assert.equal(a?.progress, 50);
 });
 
-test("o seletor traz uma pílula por setor, e nenhuma de subsetor", async () => {
+test("o seletor traz, por setor, os subsetores PADRAO dele", async () => {
   const scopes = await listScopesForOverview();
   const meus = scopes.filter((s) => s.sectorId === sectorId);
   assert.equal(meus.length, 1);
   assert.equal(meus[0]?.sectorLabel, `Setor ${MARK}`);
-  // Nenhum escopo, de setor nenhum, carrega subsetor.
-  assert.equal(
-    scopes.every((s) => !("subsectorId" in s)),
-    true,
-  );
+
+  const ids = meus[0]?.subsectors.map((s) => s.subsectorId) ?? [];
+  assert.equal(ids.length, 2);
+  assert.ok(ids.includes(subAId));
+  assert.ok(ids.includes(subBId));
+  // A vitrine nunca vira escolha: não tem material a concluir.
+  assert.ok(!ids.includes(vitrineId));
+});
+
+test("o recorte por subsetor filtra QUEM aparece, sem mexer no número de ninguém", async () => {
+  const todos = await getSectorOverview({ sectorId });
+  const soNoA = await getSectorOverview({ sectorId, subsectorId: subAId });
+
+  const ids = soNoA.members.map((m) => m.userId);
+  assert.ok(ids.includes(soA));
+  // Marcado só no B: fora do recorte do A.
+  assert.ok(!ids.includes(soB));
+  // Sem marcação responde pelo setor inteiro, logo aparece em qualquer filtro
+  // dele — escondê-lo faria uma pessoa sumir do painel sem ninguém excluí-la.
+  assert.ok(ids.includes(semMarcacao));
+  assert.equal(soNoA.memberCount, 2);
+  assert.equal(soNoA.subsectorId, subAId);
+  assert.equal(soNoA.subsectorLabel, `Sub1 ${MARK}`);
+
+  /*
+   * O CORAÇÃO DESTE TESTE: o mesmo percentual com e sem filtro.
+   *
+   * Era exatamente isto que faltava em 22/09, quando a pílula foi removida
+   * por dar dois percentuais à mesma pessoa. Hoje o denominador é dela, não
+   * do recorte aberto — se alguém voltar a derivá-lo do filtro, cai aqui.
+   */
+  const antes = todos.members.find((m) => m.userId === soA);
+  const depois = soNoA.members.find((m) => m.userId === soA);
+  assert.equal(depois?.totalItems, antes?.totalItems);
+  assert.equal(depois?.progress, antes?.progress);
+  assert.equal(depois?.doneItems, antes?.doneItems);
+});
+
+test("subsetor que não é do setor não devolve equipe nenhuma", async () => {
+  // A página e a rota ignoram o id forjado antes de chegar aqui. Se um dia
+  // deixarem de ignorar, o recorte não vaza equipe: devolve vazio.
+  const out = await getSectorOverview({ sectorId, subsectorId: vitrineId });
+  assert.equal(out.memberCount, 0);
+  assert.equal(out.members.length, 0);
 });

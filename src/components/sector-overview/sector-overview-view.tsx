@@ -122,9 +122,14 @@ export function SectorOverviewView({
               />
             </div>
   
-            {/* Exportar fica na linha das abas e da busca, à direita: é uma ação
-                sobre o painel inteiro, não sobre a aba aberta — por isso NÃO
-                acompanha o recorte da busca, e o arquivo traz o setor completo.
+            {/* Exportar acompanha o RECORTE das pílulas — setor e subsetor —,
+                porque é o recorte que tem endereço: ele está na URL, a tela
+                inteira obedece a ele, e o arquivo sai com o que se está vendo.
+
+                NÃO acompanha a busca por nome, que é estado do cliente e não
+                viaja na URL: um relatório que mudasse conforme o que se
+                digitou no campo seria um arquivo que ninguém consegue pedir
+                duas vezes igual.
   
                 Um link, e não um botão com fetch: a resposta é um arquivo, e o
                 download nativo do navegador já faz o trabalho (barra de
@@ -132,7 +137,9 @@ export function SectorOverviewView({
                 refaria pior. O `setor` vai na query porque o Admin troca de
                 setor pelas pílulas; para o Gestor a rota ignora o parâmetro. */}
             <a
-              href={`/api/meu-setor/relatorio?setor=${encodeURIComponent(data.sectorId)}`}
+              href={`/api/meu-setor/relatorio?setor=${encodeURIComponent(data.sectorId)}${
+                data.subsectorId ? `&subsetor=${encodeURIComponent(data.subsectorId)}` : ""
+              }`}
               className="focus-ring inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 text-sm font-semibold text-foreground transition-colors hover:border-border-strong hover:bg-surface-3"
             >
               <FileDown className="h-4 w-4" aria-hidden />
@@ -146,7 +153,7 @@ export function SectorOverviewView({
             quem alcança mais de um — o Gestor é preso ao próprio setor no
             servidor, e para ele a lista vem vazia. */}
         <div className="mt-4">
-          <ScopePills scopes={scopes} sectorId={data.sectorId} />
+          <ScopePills scopes={scopes} sectorId={data.sectorId} subsectorId={data.subsectorId} />
         </div>
 
         <TabPanel tabId={tab} className="mt-5">

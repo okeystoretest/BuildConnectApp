@@ -52,9 +52,16 @@ export async function GET(request: Request) {
   }
 
   const isAdmin = role === "ADMIN";
-  const pedido = new URL(request.url).searchParams.get("setor");
-  // Os setores existentes só interessam ao Admin — é ele quem escolhe.
-  const scopes = isAdmin ? await listScopesForOverview() : [];
+  const query = new URL(request.url).searchParams;
+  const pedido = query.get("setor");
+  const subPedido = query.get("subsetor");
+  /*
+   * Os escopos vêm para os DOIS papéis, ao contrário de antes: o Gestor não
+   * escolhe setor, mas filtra subsetor dentro do próprio, e é desta lista que
+   * sai a validação do `?subsetor=`.
+   */
+  const scopes =
+    isAdmin || user.sectorId ? await listScopesForOverview(isAdmin ? null : user.sectorId) : [];
 
   /*
    * A MESMA resolução da página (`app/meu-setor/page.tsx`), incluindo o padrão:
@@ -70,7 +77,18 @@ export async function GET(request: Request) {
     return new Response("Setor não encontrado", { status: 404 });
   }
 
-  const data = await getSectorOverview({ sectorId });
+  /*
+   * `?subsetor=` forjado é IGNORADO, exatamente como na página: só vale
+   * subsetor do setor que o escopo acima liberou. Para o Gestor isso é a
+   * trava — a lista dele só tem o próprio setor, então um id de outro setor
+   * não casa e o relatório sai com o setor dele inteiro, nunca com a equipe
+   * alheia recortada.
+   */
+  const aberto = scopes.find((s) => s.sectorId === sectorId);
+  const subsectorId =
+    subPedido && aberto?.subsectors.some((s) => s.subsectorId === subPedido) ? subPedido : null;
+
+  const data = await getSectorOverview({ sectorId, subsectorId });
 
   /*
    * Os campos de CADASTRO não vêm de `MemberOverview` de propósito: usuário e
@@ -115,8 +133,17 @@ export async function GET(request: Request) {
   }
 
   const agora = new Date();
+  /*
+   * O recorte no título E no nome do arquivo. Dois relatórios do mesmo setor,
+   * um por subsetor, baixados na mesma tarde, chegariam com nome idêntico na
+   * pasta de downloads — e o navegador os guardaria como "(1)" e "(2)", sem
+   * ninguém saber qual é qual.
+   */
+  const escopoLabel = data.subsectorLabel
+    ? `${data.sectorLabel} · ${data.subsectorLabel}`
+    : data.sectorLabel;
   const pdf = gerarRelatorioSetorPdf({
-    sectorLabel: data.sectorLabel,
+    sectorLabel: escopoLabel,
     requestedByName: user.fullName,
     generatedAtLabel: `${dateLabelBR(agora)} às ${timeLabelBR(agora)}`,
     progress: data.progress,
@@ -129,7 +156,7 @@ export async function GET(request: Request) {
   return new Response(pdf, {
     headers: {
       "content-type": "application/pdf",
-      "content-disposition": `attachment; filename="${nomeDoArquivo(data.sectorLabel, agora)}"`,
+      "content-disposition": `attachment; filename="${nomeDoArquivo(escopoLabel, agora)}"`,
       // Nunca cacheado: o arquivo carrega documentação pessoal e o recorte
       // depende de quem pediu — uma resposta guardada serviria o relatório de
       // um gestor a outro, e sobreviveria à retirada do acesso.
