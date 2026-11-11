@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/db/prisma";
+import { canAccessSlug, resolveAccessibleSlugs } from "@/lib/auth/access";
 import { dateLabelBR } from "@/lib/brasilia";
+import { isMultiRaterSlug } from "@/lib/evaluation-rounds-config";
 import { ROLE_LABEL } from "@/lib/permissions";
-import { TRACKED_SUBSECTOR } from "@/lib/progress-scope";
+import { TRACKED_SUBSECTOR, trackedSubsectorIdsOf } from "@/lib/progress-scope";
+import { PEOPLE_SECTOR_SLUG } from "@/lib/sector-evaluations-data";
 import { isPassing } from "@/lib/video-comprehension";
 import { averageOf } from "@/lib/video-rating";
 import {
@@ -9,6 +12,7 @@ import {
   progressPct,
   splitGrades,
   type MemberEvaluation,
+  type MemberEvaluationGap,
   type MemberOverview,
   type MemberPerformanceEvaluation,
   type PendingContentItem,
@@ -71,10 +75,56 @@ export async function listScopesForOverview(): Promise<OverviewScope[]> {
 }
 
 /**
- * O painel de um setor. A régua do progresso é a mesma de "Meu Progresso"
- * (`TRACKED_SUBSECTOR`): se o painel do gestor discordar do que o colaborador
- * vê, os dois percebem.
+ * O painel de um setor. A régua do progresso é a mesma de "Meu Progresso" e do
+ * "Histórico do Colaborador" (`trackedSubsectorIdsOf`): o denominador de cada
+ * pessoa são os subsetores DELA. Se o painel do gestor discordar do que o
+ * colaborador vê na própria tela, os dois percebem.
  */
+/**
+ * Para onde o atalho de uma avaliação pendente leva o AVALIADOR.
+ *
+ * O slug é de um subsetor que QUEM OLHA alcança, e não do colaborador do card:
+ * a ferramenta de lá já lista a equipe inteira do setor (ver
+ * `getSectorEvaluations`), então qualquer subsetor acessível abre a mesma
+ * fila — e um slug fora do alcance do visitante daria "página não encontrada"
+ * na própria rota, que confere o acesso de novo.
+ *
+ * Só subsetor PADRAO: a vitrine não tem a aba de Avaliações.
+ *
+ * O DHO devolve `null` sempre: lá a ferramenta de preenchimento não existe —
+ * aquele setor concentra os RESULTADOS (ver `getSectorEvaluations`, que
+ * devolve null para ele). Um atalho apontaria para uma aba que não está lá.
+ *
+ * `null` quando nenhum serve. Pendência sem atalho é honesta; atalho que não
+ * abre é pior do que atalho nenhum.
+ */
+export async function resolveEvaluationsHref(
+  viewerId: string,
+  role: Role,
+  sectorId: string,
+): Promise<string | null> {
+  const [sector, allowed] = await Promise.all([
+    prisma.sector.findUnique({
+      where: { id: sectorId },
+      select: {
+        slug: true,
+        subsectors: {
+          where: TRACKED_SUBSECTOR,
+          orderBy: { order: "asc" },
+          select: { slug: true },
+        },
+      },
+    }),
+    resolveAccessibleSlugs(viewerId, role),
+  ]);
+  if (!sector || sector.slug === PEOPLE_SECTOR_SLUG) return null;
+
+  const slug = sector.subsectors.find((s: { slug: string }) =>
+    canAccessSlug(allowed, s.slug),
+  )?.slug;
+  return slug ? `/setores/${slug}?aba=avaliacoes` : null;
+}
+
 export async function getSectorOverview(target: OverviewTarget): Promise<SectorOverview> {
   const { sectorId } = target;
 
@@ -98,6 +148,10 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
         role: true,
         avatarPath: true,
         createdAt: true,
+        // A marcação de subsetor do cadastro, que decide o DENOMINADOR de
+        // cada pessoa (ver `trackedSubsectorIdsOf`). Vem junto da lista para
+        // o painel resolver N colaboradores sem N consultas.
+        subsectors: { select: { subsectorId: true } },
       },
     }),
     prisma.subsector.findMany({
@@ -189,8 +243,15 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
      * uma vez em vez de uma consulta por avaliação encontrada.
      */
     prisma.evaluationType.findMany({
+      // `slug`, `title` e a ordem entraram para esta MESMA consulta servir
+      // também à lista de instrumentos pendentes do card: o catálogo completo
+      // já estava sendo lido aqui, e buscá-lo de novo seria a segunda viagem
+      // ao banco pela mesma tabela.
+      orderBy: { order: "asc" },
       select: {
         id: true,
+        slug: true,
+        title: true,
         scaleMax: true,
         sections: { select: { _count: { select: { questions: true } } } },
       },
@@ -214,12 +275,11 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
     ),
   );
 
-  const doneByUser = new Map<string, number>();
   // O que cada pessoa já concluiu, por id de conteúdo. É a outra metade da
-  // lista de pendências: catálogo do setor menos isto.
+  // lista de pendências: catálogo DELA menos isto. Só por id, sem contagem
+  // própria — contar aqui somaria o que ela viu fora do escopo dela.
   const doneIdsByUser = new Map<string, Set<string>>();
   for (const d of done) {
-    doneByUser.set(d.userId, (doneByUser.get(d.userId) ?? 0) + 1);
     const ids = doneIdsByUser.get(d.userId) ?? new Set<string>();
     const contentId = d.videoId ?? d.documentId;
     if (contentId) ids.add(contentId);
@@ -227,19 +287,34 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
   }
 
   /*
-   * Catálogo do setor na ordem em que o modal mostra: por subsetor, vídeos
-   * antes de documentos. Montado uma vez e filtrado por pessoa — remontá-lo
-   * dentro do `map` de colaboradores seria refazer o mesmo trabalho N vezes.
+   * Catálogo POR SUBSETOR, na ordem em que o modal mostra: vídeos antes de
+   * documentos. Montado uma vez e recortado por pessoa — cada colaborador
+   * pega só os subsetores dele, e remontar a lista dentro do `map` de
+   * colaboradores seria refazer o mesmo trabalho N vezes.
    */
-  const catalog: PendingContentItem[] = [];
+  const catalogBySubsector = new Map<string, PendingContentItem[]>();
   for (const sub of subsectors) {
+    const items: PendingContentItem[] = [];
     for (const v of sub.videos) {
-      catalog.push({ id: v.id, title: v.title, kind: "VIDEO", subsector: sub.label });
+      items.push({ id: v.id, title: v.title, kind: "VIDEO", subsector: sub.label });
     }
     for (const d of sub.documents) {
-      catalog.push({ id: d.id, title: d.name, kind: "DOCUMENTO", subsector: sub.label });
+      items.push({ id: d.id, title: d.name, kind: "DOCUMENTO", subsector: sub.label });
     }
+    catalogBySubsector.set(sub.id, items);
   }
+  const subsectorIds = subsectors.map((s) => s.id);
+
+  /*
+   * Catálogo de instrumentos, na ordem em que o DHO os organizou. Montado uma
+   * vez e filtrado por pessoa, como o catálogo de conteúdo acima.
+   */
+  const evaluationCatalog: MemberEvaluationGap[] = typeScales.map((t) => ({
+    typeId: t.id,
+    typeSlug: t.slug,
+    typeTitle: t.title,
+    multiRater: isMultiRaterSlug(t.slug),
+  }));
 
   // Teto de pontos por tipo de formulário, para `total` ganhar escala.
   const maxTotalByType = new Map<string, number>();
@@ -249,7 +324,17 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
   }
 
   const performanceByUser = new Map<string, MemberPerformanceEvaluation[]>();
+  /*
+   * Quais instrumentos cada pessoa JÁ tem. Sai do mesmo `performance` que
+   * alimenta o histórico — ele já traz `type.id` e já filtra `CONCLUIDA`, de
+   * modo que um rascunho de outra pessoa não marca a avaliação como feita.
+   */
+  const doneTypesByUser = new Map<string, Set<string>>();
   for (const e of performance) {
+    const doneTypes = doneTypesByUser.get(e.subjectId) ?? new Set<string>();
+    doneTypes.add(e.type.id);
+    doneTypesByUser.set(e.subjectId, doneTypes);
+
     const entries = performanceByUser.get(e.subjectId) ?? [];
     entries.push({
       id: e.id,
@@ -292,9 +377,29 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
 
   const memberRows: MemberOverview[] = members.map((m) => {
     const { approved, rejections } = splitGrades(gradesByUser.get(m.id) ?? []);
-    const doneItems = doneByUser.get(m.id) ?? 0;
+    /*
+     * O denominador é O DESTA PESSOA: os subsetores em que ela está marcada
+     * no cadastro ou, sem marcação, todos os do setor. Dois colegas do mesmo
+     * setor lotados em subsetores diferentes devem coisas diferentes, e um
+     * denominador comum cobraria de cada um o material do outro.
+     */
+    const escopo = new Set(
+      trackedSubsectorIdsOf(
+        m.subsectors.map((s) => s.subsectorId),
+        subsectorIds,
+      ),
+    );
+    const catalog = subsectors
+      .filter((sub) => escopo.has(sub.id))
+      .flatMap((sub) => catalogBySubsector.get(sub.id) ?? []);
     const doneIds = doneIdsByUser.get(m.id) ?? new Set<string>();
     const pendingList = catalog.filter((item) => !doneIds.has(item.id));
+    /*
+     * Concluídos DENTRO do escopo: o que a pessoa viu num subsetor que não é
+     * dela não pode empurrar o percentual dela acima do próprio denominador.
+     */
+    const doneItems = catalog.length - pendingList.length;
+    const doneTypes = doneTypesByUser.get(m.id) ?? new Set<string>();
     return {
       userId: m.id,
       name: m.fullName,
@@ -302,14 +407,15 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
       avatarPath: m.avatarPath ?? undefined,
       sinceLabel: dateLabelBR(m.createdAt),
       doneItems,
-      totalItems,
-      progress: progressPct(doneItems, totalItems),
+      totalItems: catalog.length,
+      progress: progressPct(doneItems, catalog.length),
       average: approvedAverage(approved),
       rejections,
       pending: pendingList.length,
       pendingList,
       evaluations: evaluationsByUser.get(m.id) ?? [],
       performance: performanceByUser.get(m.id) ?? [],
+      evaluationGaps: evaluationCatalog.filter((t) => !doneTypes.has(t.typeId)),
       personnelFiles: personnelCount.get(m.id) ?? 0,
     };
   });
@@ -373,15 +479,26 @@ export async function getSectorOverview(target: OverviewTarget): Promise<SectorO
     return a.average - b.average;
   });
 
-  const doneItems = done.length;
+  /*
+   * Progresso do setor: a soma do que a equipe JÁ concluiu sobre a soma do
+   * que ela DEVE.
+   *
+   * Não é mais um denominador único multiplicado pelo número de pessoas: cada
+   * uma tem o seu, e o produto cobraria de todo mundo o material de todo
+   * mundo. Quem está marcado só no almoxarifado entra na conta com os itens
+   * do almoxarifado, não com o acervo da Produção inteira.
+   */
+  const doneItems = memberRows.reduce((n, m) => n + m.doneItems, 0);
+  const requiredItems = memberRows.reduce((n, m) => n + m.totalItems, 0);
   return {
     sectorId,
     sectorLabel: sector?.label ?? "—",
     memberCount: members.length,
+    // O catálogo PADRAO do setor. NÃO é o denominador do progresso — esse é
+    // por pessoa, em `MemberOverview.totalItems`.
     totalItems,
     doneItems,
-    // Denominador do setor: cada colaborador precisa concluir todos os itens.
-    progress: progressPct(doneItems, totalItems * Math.max(members.length, 1)),
+    progress: progressPct(doneItems, requiredItems),
     average: approvedAverage(sectorSplit.approved),
     rejections: sectorSplit.rejections,
     members: memberRows,

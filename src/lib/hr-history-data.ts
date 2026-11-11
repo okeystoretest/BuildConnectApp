@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
 import { getActivityPage } from "@/lib/activity-timeline-data";
 import { ROLE_LABEL } from "@/lib/permissions";
-import { TRACKED_SUBSECTOR } from "@/lib/progress-scope";
+import { trackedSubsectorFilterOf } from "@/lib/progress-scope";
 import { approvedAverage, splitGrades } from "@/lib/sector-overview";
 import type { Role } from "@/types";
 import type {
@@ -116,19 +116,20 @@ export async function getEmployeeHistory(userId: string): Promise<EmployeeHistor
   /*
    * --- Catálogo de conteúdo e progresso do colaborador ---
    *
-   * Só subsetores PADRAO (vitrine não é material a concluir) e só os do SETOR
-   * DE LOTAÇÃO desta pessoa.
+   * O recorte é o SUBSETOR da pessoa (`trackedSubsectorFilterOf`), não o setor
+   * inteiro: quem está em Produção > Almoxarifado deve o material do
+   * almoxarifado, e contar a Produção toda o faria dever costura, corte e PCP.
    *
-   * O recorte por setor faltava, e era o bug visível na tela: esta consulta
-   * varria o acervo PADRAO da empresa inteira, então alguém da Retaguarda com
-   * 40 itens aparecia devendo 120. A régua aqui tem de ser a mesma de
-   * "Meu Progresso" e de "Meu Setor" — três telas que mostram o mesmo número
-   * para a mesma pessoa, ou nenhuma delas é levada a sério.
+   * Antes daqui já tinha passado por dois estados: o acervo da empresa inteira
+   * (alguém com 40 itens aparecia devendo 120) e depois o setor de lotação.
+   * A régua tem de ser a mesma de "Meu Progresso" e de "Meu Setor" — três
+   * telas que mostram o mesmo número para a mesma pessoa, ou nenhuma delas é
+   * levada a sério. Por isso a regra mora num lugar só.
    *
    * Sem lotação não há material: o filtro devolve lista vazia em vez de
    * devolver tudo.
    */
-  const tracked = { subsector: { ...TRACKED_SUBSECTOR, sectorId: user.sectorId ?? "" } };
+  const tracked = { subsector: await trackedSubsectorFilterOf(userId) };
   const [completed, videos, documents, grades] = await Promise.all([
     prisma.contentProgress.findMany({
       // `completed: false` é "chegou ao fim, não respondeu" — ainda não conta.

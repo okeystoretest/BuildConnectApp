@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
-import { resolveAccessibleSlugs } from "@/lib/auth/access";
-import { TRACKED_SUBSECTOR } from "@/lib/progress-scope";
+import { TRACKED_SUBSECTOR, trackedSubsectorFilterOf } from "@/lib/progress-scope";
 import type { Role } from "@/types";
 import type { PendingCategory } from "@/lib/pending-content";
 import { formatBytes } from "@/lib/utils";
@@ -33,48 +32,30 @@ function pct(done: number, total: number): number {
   return total === 0 ? 0 : Math.round((done / total) * 100);
 }
 
-/** Nada a mostrar: quem não tem setor de lotação não tem material a concluir. */
-const EMPTY_PROGRESS: ProgressPageData = {
-  overall: 0,
-  mappedAreas: 0,
-  pendingItems: 0,
-  consumedItems: 0,
-  totalItems: 0,
-  pending: [],
-};
-
+/*
+ * Não há mais um `EMPTY_PROGRESS` com saída antecipada: quem não tem lotação
+ * recebe um filtro de subsetores vazio, nenhum subsetor casa, e a agregação
+ * abaixo já devolve zeros e lista vazia — o mesmo resultado, sem um segundo
+ * caminho para manter em dia.
+ */
 export async function getProgressPageData(userId: string, role: Role): Promise<ProgressPageData> {
-  // `null` = Admin, sem recorte de setor.
-  const slugs = await resolveAccessibleSlugs(userId, role);
-
   /*
-   * Recorte por SETOR DE LOTAÇÃO, somado ao de subsetores acessíveis.
+   * O que esta pessoa PRECISA concluir.
    *
-   * Os dois são necessários e dizem coisas diferentes. `resolveAccessibleSlugs`
-   * responde "o que esta pessoa pode ABRIR", e um vínculo de subsetor pode
-   * atravessar setores — era isso que inflava o denominador: quem tinha um
-   * subsetor marcado fora da própria lotação carregava o material inteiro
-   * daquele outro setor como pendência sua, e 40 itens viravam 120.
+   * `trackedSubsectorFilterOf` resolve os três casos de uma vez: a marcação de
+   * subsetor do cadastro, o recorte pelo setor de lotação (um vínculo pode
+   * atravessar setores, e sem o recorte quem tinha marcação fora da própria
+   * lotação carregava o acervo daquele outro setor — 40 itens viravam 120) e
+   * quem não tem lotação, que recebe lista vazia em vez de herdar a empresa.
    *
-   * Progresso é sobre o que a pessoa PRECISA concluir, que é o material do
-   * setor em que ela está lotada. O Admin, que não tem lotação para recortar,
-   * continua vendo tudo.
+   * É a MESMA régua de "Meu Setor" e do "Histórico do Colaborador": três
+   * telas que mostram o mesmo número para a mesma pessoa.
+   *
+   * O Admin, que alcança tudo e não tem lotação a recortar, continua vendo
+   * tudo — a única exceção, e ela fica escrita aqui em vez de escondida na
+   * régua.
    */
-  const lotacao =
-    slugs === null
-      ? null
-      : ((
-          await prisma.user.findUnique({ where: { id: userId }, select: { sectorId: true } })
-        )?.sectorId ?? null);
-
-  // Não-Admin sem setor de lotação não tem material a concluir. Sem esta
-  // guarda o filtro sumiria e a pessoa herdaria o acervo da empresa inteira.
-  if (slugs !== null && lotacao === null) return EMPTY_PROGRESS;
-
-  const inScope = {
-    ...TRACKED_SUBSECTOR,
-    ...(slugs === null ? {} : { slug: { in: slugs }, sectorId: lotacao as string }),
-  };
+  const inScope = role === "ADMIN" ? TRACKED_SUBSECTOR : await trackedSubsectorFilterOf(userId);
 
   // Estrutura de setores → subsetores com seu conteúdo (vídeos e documentos).
   const [sectors, completed, rejected, endedRows] = await Promise.all([

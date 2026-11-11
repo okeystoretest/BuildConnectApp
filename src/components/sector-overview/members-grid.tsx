@@ -15,12 +15,15 @@ export function MembersGrid({
   members,
   filtered,
   canSeeDocuments,
+  evaluationsHref,
 }: {
   members: readonly MemberOverview[];
   /** A lista veio vazia por causa da busca, e não por falta de gente. */
   filtered?: boolean;
   /** Permissão de QUEM OLHA, para o bloco de Documentos. Ver `MemberCard`. */
   canSeeDocuments: boolean;
+  /** Destino do atalho de avaliação pendente. Ver `MemberCard`. */
+  evaluationsHref: string | null;
 }) {
   if (members.length === 0) {
     // Os dois vazios dizem coisas diferentes, e confundi-los faria a pessoa
@@ -43,7 +46,12 @@ export function MembersGrid({
   return (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       {members.map((m) => (
-        <MemberCard key={m.userId} member={m} canSeeDocuments={canSeeDocuments} />
+        <MemberCard
+          key={m.userId}
+          member={m}
+          canSeeDocuments={canSeeDocuments}
+          evaluationsHref={evaluationsHref}
+        />
       ))}
     </div>
   );

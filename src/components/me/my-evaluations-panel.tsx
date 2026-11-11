@@ -1,14 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { ClipboardList, FileText, MonitorPlay, UserCheck, Users } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/empty-state";
-import { Tabs, TabPanel, type TabItem } from "@/components/ui/tabs";
-import { Pagination } from "@/components/ui/pagination";
-import { paginate } from "@/lib/paginate";
-import { AnsweredEvaluationsPanel } from "@/components/me/answered-evaluations-panel";
+import { Segmented } from "@/components/ui/segmented";
+import { AnsweredEvaluationDetail } from "@/components/me/answered-evaluation-detail";
+import {
+  MyEvaluationsKanban,
+  type EvaluationScope,
+} from "@/components/me/my-evaluations-kanban";
+import { ehAvaliacaoDeVideo } from "@/components/me/evaluation-task-meta";
 import { EvaluationFormModal } from "@/components/hr/evaluation-form-modal";
 import { FormResponseModal } from "@/components/forms/form-response-modal";
 import { ComprehensionGradeModal } from "@/components/me/comprehension-grade-modal";
@@ -28,14 +27,24 @@ export interface MyEvaluationsPanelProps {
   tasks: readonly MyEvaluationTask[];
   /** Formulários dos instrumentos de rodada, indexados por slug. */
   forms: Record<string, EvalForm>;
-  /** Tudo o que este usuário já respondeu, para a aba "Concluídas". */
+  /** Tudo o que este usuário já respondeu, para a coluna "Concluídas". */
   answered: readonly AnsweredEvaluation[];
 }
 
-const TABS: readonly TabItem[] = [
-  { id: "pendentes", label: "Pendentes" },
-  { id: "concluidas", label: "Concluídas" },
-];
+/**
+ * O alternador escolhe o ESCOPO, não a forma de mostrar: a exibição é sempre o
+ * quadro. Os rótulos dizem o assunto por extenso porque "360°" e "Vídeo" só
+ * fazem sentido para quem já conhece os instrumentos.
+ */
+const SCOPES = [
+  { value: "internas", label: "Avaliações Internas / Onboarding" },
+  { value: "videos", label: "Avaliações de Vídeos" },
+] as const satisfies readonly { value: EvaluationScope; label: string }[];
+
+const SCOPE_LABEL: Record<EvaluationScope, string> = {
+  internas: SCOPES[0].label,
+  videos: SCOPES[1].label,
+};
 
 interface ActiveTask {
   task: MyEvaluationTask;
@@ -43,7 +52,8 @@ interface ActiveTask {
 }
 
 /**
- * Aba "Minhas avaliações": lista o que o usuário precisa preencher.
+ * Aba "Minhas avaliações": o que o usuário precisa preencher e o que já
+ * respondeu, em quadro.
  *  - FEEDBACK: você foi designado para avaliar outra pessoa.
  *  - AUTOAVALIACAO: as avaliações sobre você fecharam; registre a sua.
  *  - FORMULARIO: formulário do DHO atribuído a você.
@@ -53,8 +63,8 @@ interface ActiveTask {
  * cada avaliador) é vista pelo DHO na aba de Resultados.
  */
 export function MyEvaluationsPanel({ tasks, forms, answered }: MyEvaluationsPanelProps) {
-  const [tab, setTab] = useState("pendentes");
-  const [page, setPage] = useState(1);
+  const [scope, setScope] = useState<EvaluationScope>("internas");
+  const [detail, setDetail] = useState<AnsweredEvaluation | null>(null);
   const [active, setActive] = useState<ActiveTask | null>(null);
   const [activeForm, setActiveForm] = useState<FormDraft | null>(null);
   const [activeComprehension, setActiveComprehension] = useState<VideoComprehensionTask | null>(
@@ -93,112 +103,62 @@ export function MyEvaluationsPanel({ tasks, forms, answered }: MyEvaluationsPane
     setActive({ task, form });
   }
 
+  if (detail) return <AnsweredEvaluationDetail item={detail} onBack={() => setDetail(null)} />;
+
   /*
-   * O estado vazio não pode ser um `return` antecipado: ele engoliria as abas
-   * e esconderia o histórico de quem está com a fila em dia — justamente quem
-   * mais tem o que reler.
+   * Pendências do OUTRO escopo.
+   *
+   * O quadro mostra um escopo de cada vez, e sem este aviso uma pendência de
+   * vídeo ficaria invisível para quem abre a tela e só olha "Internas" — que é
+   * o estado inicial. Pendência que não aparece é a que ninguém responde.
    */
-  // Dez por página, o mesmo da aba "Respondidas": as duas listam registro do
-  // mesmo tamanho, e números diferentes fariam a página saltar ao trocar de aba.
-  const pendingPage = paginate(tasks, page, 10);
-
-  const pending =
-    tasks.length === 0 ? (
-      <EmptyState
-        icon={<ClipboardList className="h-5 w-5" />}
-        title="Nenhuma pendência"
-        description="Quando você for designado para avaliar alguém, precisar fazer sua autoavaliação, receber um formulário do DHO ou tiver uma resposta de vídeo da sua equipe para avaliar, aparece aqui."
-      />
-    ) : (
-    <div className="space-y-3">
-      <p className="text-sm text-muted">
-        Pendências para você. O DHO vê o resultado com o nome de cada avaliador.
-      </p>
-
-      {pendingPage.items.map((t) => {
-        const isForm = t.kind === "FORMULARIO";
-        const isComprehension = t.kind === "COMPREENSAO_VIDEO";
-        return (
-          <div
-            key={`${t.kind}-${t.formId ?? t.comprehension?.comprehensionId ?? t.roundId}`}
-            className="flex items-center justify-between gap-4 rounded-xl border border-border bg-surface p-4"
-          >
-            <div className="flex min-w-0 items-center gap-3">
-              <span
-                className={
-                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-full " +
-                  (t.self ? "bg-primary/15 text-primary" : "bg-accent/15 text-accent")
-                }
-              >
-                {isComprehension ? (
-                  <MonitorPlay className="h-5 w-5" />
-                ) : isForm ? (
-                  <FileText className="h-5 w-5" />
-                ) : t.self ? (
-                  <UserCheck className="h-5 w-5" />
-                ) : (
-                  <Users className="h-5 w-5" />
-                )}
-              </span>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-foreground">
-                  {isForm
-                    ? t.subjectName
-                    : t.self
-                      ? "Sua autoavaliação"
-                      : `Avaliar ${t.subjectName}`}
-                </p>
-                <p className="truncate text-xs text-muted">
-                  {isComprehension && t.comprehension
-                    ? `${t.typeTitle} · ${t.comprehension.videoTitle}`
-                    : t.typeTitle}
-                </p>
-              </div>
-            </div>
-            <div className="flex shrink-0 items-center gap-3">
-              <Badge tone={t.self ? "primary" : "accent"}>
-                {isComprehension
-                  ? "Compreensão"
-                  : isForm
-                    ? "Formulário"
-                    : t.self
-                      ? "Autoavaliação"
-                      : "Feedback"}
-              </Badge>
-              <Button
-                size="sm"
-                onClick={() => start(t)}
-                disabled={
-                  isComprehension
-                    ? false
-                    : isForm
-                      ? loadingFormId === t.formId
-                      : !forms[t.typeSlug]
-                }
-              >
-                {isComprehension
-                  ? "Avaliar"
-                  : isForm
-                    ? loadingFormId === t.formId
-                      ? "Abrindo"
-                      : "Responder"
-                    : "Preencher"}
-              </Button>
-            </div>
-          </div>
-        );
-      })}
-
-      <Pagination page={pendingPage} onChange={setPage} noun="pendências" className="pt-1" />
-    </div>
-  );
+  const outro: EvaluationScope = scope === "internas" ? "videos" : "internas";
+  const pendentesNoOutro = tasks.filter(
+    (t) => ehAvaliacaoDeVideo(t.kind) === (outro === "videos"),
+  ).length;
 
   return (
     <div className="space-y-4">
-      <Tabs items={TABS} value={tab} onValueChange={setTab} />
-      <TabPanel tabId={tab}>
-        {tab === "pendentes" ? pending : <AnsweredEvaluationsPanel items={answered} />}
-      </TabPanel>
+      <Segmented
+        options={SCOPES}
+        value={scope}
+        onChange={setScope}
+        ariaLabel="Escopo das avaliações"
+        /* Empilha no celular: lado a lado em 360px, "Avaliações Internas /
+           Onboarding" não cabe na linha e transborda o botão, que tem altura
+           fixa. O `twMerge` do `cn` faz esta classe vencer a do componente. */
+        className="w-full grid-cols-1 sm:max-w-xl sm:grid-cols-2"
+      />
+
+      <MyEvaluationsKanban
+        scope={scope}
+        tasks={tasks}
+        answered={answered}
+        forms={forms}
+        loadingFormId={loadingFormId}
+        onStart={start}
+        onOpenAnswered={setDetail}
+      />
+
+      {pendentesNoOutro > 0 && (
+        <button
+          type="button"
+          onClick={() => setScope(outro)}
+          className="focus-ring w-full rounded-xl border border-warning/40 bg-warning/10 px-4 py-2.5 text-left text-xs text-warning transition-colors hover:border-warning/60 hover:bg-warning/20"
+        >
+          {pendentesNoOutro === 1
+            ? `Há 1 pendência em ${SCOPE_LABEL[outro]}.`
+            : `Há ${pendentesNoOutro} pendências em ${SCOPE_LABEL[outro]}.`}{" "}
+          <span className="font-semibold underline">Ver</span>
+        </button>
+      )}
+
+      {/* Formulário anônimo não guarda quem respondeu, por desenho. Dizer isso
+          evita que a pessoa ache que o envio dela se perdeu. */}
+      <p className="border-t border-border pt-3 text-[11px] text-muted">
+        Só as suas respostas — ninguém mais alcança este quadro. Formulários anônimos não aparecem
+        aqui: eles não guardam quem respondeu, e é isso que os torna anônimos.
+      </p>
 
       {active && (
         <EvaluationFormModal

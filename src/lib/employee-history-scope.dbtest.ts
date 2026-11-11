@@ -125,6 +125,30 @@ test("as pendências acompanham o mesmo recorte", async () => {
   assert.equal(titles.length, 3);
 });
 
+test("marcado num subsetor, o total é o DAQUELE subsetor, não o do setor", async () => {
+  /*
+   * A régua de 11/11: Produção > Almoxarifado deve o almoxarifado, não a
+   * Produção toda. Aqui o setor ganha um segundo subsetor com 5 vídeos, e a
+   * pessoa é marcada só nele — o total tem de cair de 9 para 5, e as
+   * pendências acompanhar.
+   */
+  const outro = await makeSubsector(sectorId, "PADRAO");
+  await makeVideos(outro, 5);
+  await prisma.userSubsector.create({ data: { userId, subsectorId: outro } });
+  try {
+    const history = await getEmployeeHistory(userId);
+    // 5, e não 9: os 4 do subsetor vizinho não são material desta pessoa.
+    assert.equal(history?.totalItems, 5);
+    // O vídeo concluído era do subsetor vizinho; fora do escopo, não conta.
+    assert.equal(history?.doneItems, 0);
+    assert.equal(history?.pendingItems, 5);
+  } finally {
+    await prisma.userSubsector.deleteMany({ where: { userId, subsectorId: outro } });
+    await prisma.video.deleteMany({ where: { subsectorId: outro } });
+    await prisma.subsector.delete({ where: { id: outro } });
+  }
+});
+
 test("quem não tem setor de lotação não herda o acervo da empresa", async () => {
   await prisma.user.update({ where: { id: userId }, data: { sectorId: null } });
   try {

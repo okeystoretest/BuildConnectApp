@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/db/prisma";
-import { resolveAccessibleSlugs } from "@/lib/auth/access";
-import { TRACKED_SUBSECTOR } from "@/lib/progress-scope";
+import { TRACKED_SUBSECTOR, trackedSubsectorFilterOf } from "@/lib/progress-scope";
 import type { Role } from "@/types";
 
 /**
@@ -20,9 +19,14 @@ export interface OverallProgress {
 }
 
 export async function getOverallProgress(userId: string, role: Role): Promise<OverallProgress> {
-  const slugs = await resolveAccessibleSlugs(userId, role);
+  /*
+   * Admin não tem denominador a recortar: ele alcança a empresa inteira, e é
+   * isso que a barra dele mostra. Para todo mundo mais o escopo é o dos
+   * SUBSETORES da pessoa — a MESMA régua de "Meu Setor" e do "Histórico do
+   * Colaborador", vinda de um lugar só para as três telas não divergirem.
+   */
   const inScope = {
-    subsector: { ...TRACKED_SUBSECTOR, ...(slugs === null ? {} : { slug: { in: slugs } }) },
+    subsector: role === "ADMIN" ? TRACKED_SUBSECTOR : await trackedSubsectorFilterOf(userId),
   };
 
   const [totalVideos, totalDocuments, done] = await Promise.all([

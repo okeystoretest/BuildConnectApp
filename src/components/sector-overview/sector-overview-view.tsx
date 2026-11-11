@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { FileDown, Search } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { StatCard } from "@/components/ui/stat-card";
@@ -30,6 +30,7 @@ export function SectorOverviewView({
   data,
   scopes,
   canSeeDocuments,
+  evaluationsHref,
 }: {
   data: SectorOverview;
   scopes: readonly OverviewScope[];
@@ -38,6 +39,11 @@ export function SectorOverviewView({
    * página, a partir do cadastro de quem abriu — o card só obedece.
    */
   canSeeDocuments: boolean;
+  /**
+   * Aba onde o avaliador executa uma avaliação avulsa. Resolvida na página a
+   * partir de quem abriu; `null` quando não há destino que ele alcance.
+   */
+  evaluationsHref: string | null;
 }) {
   const [tab, setTab] = useState("colaboradores");
   const [query, setQuery] = useState("");
@@ -88,29 +94,50 @@ export function SectorOverviewView({
       </div>
 
       <Card className="mt-4 p-5">
-        {/* A busca divide a linha com as abas, encostada à direita: ela opera
-            sobre a aba aberta, e ficar ao lado dela diz isso sem legenda.
-            `flex-wrap` e não largura encolhida: no celular o campo desce para
-            a linha de baixo inteiro, porque uma busca espremida ao lado das
-            abas num telefone não dá para usar. */}
+        {/* Abas à esquerda; busca e Exportar PDF juntos à direita.
+            `flex-wrap` e não largura encolhida: no celular o par desce para a
+            linha de baixo inteiro, porque uma busca espremida ao lado das abas
+            num telefone não dá para usar. */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Tabs items={TABS} value={tab} onValueChange={setTab} />
 
-          <div className="relative w-full sm:w-64">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-            <Input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              // O alvo muda com a aba: um campo só, que busca o que está à
-              // vista. Dois campos para dois conteúdos que nunca aparecem
-              // juntos seria um sempre morto na tela.
-              placeholder={
-                tab === "colaboradores" ? "Buscar colaborador…" : "Buscar vídeo pelo título…"
-              }
-              aria-label={tab === "colaboradores" ? "Buscar colaborador" : "Buscar vídeo"}
-              className="pl-9"
-            />
+          {/* Os dois no mesmo bloco: sem isto o `justify-between` da linha
+              joga a busca para o meio, longe do botão com que ela divide o
+              canto. */}
+          <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto">
+            <div className="relative w-full sm:w-64">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+              <Input
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                // O alvo muda com a aba: um campo só, que busca o que está à
+                // vista. Dois campos para dois conteúdos que nunca aparecem
+                // juntos seria um sempre morto na tela.
+                placeholder={
+                  tab === "colaboradores" ? "Buscar colaborador…" : "Buscar vídeo pelo título…"
+                }
+                aria-label={tab === "colaboradores" ? "Buscar colaborador" : "Buscar vídeo"}
+                className="pl-9"
+              />
+            </div>
+  
+            {/* Exportar fica na linha das abas e da busca, à direita: é uma ação
+                sobre o painel inteiro, não sobre a aba aberta — por isso NÃO
+                acompanha o recorte da busca, e o arquivo traz o setor completo.
+  
+                Um link, e não um botão com fetch: a resposta é um arquivo, e o
+                download nativo do navegador já faz o trabalho (barra de
+                progresso, retomada, pasta de destino) que um `fetch` + Blob
+                refaria pior. O `setor` vai na query porque o Admin troca de
+                setor pelas pílulas; para o Gestor a rota ignora o parâmetro. */}
+            <a
+              href={`/api/meu-setor/relatorio?setor=${encodeURIComponent(data.sectorId)}`}
+              className="focus-ring inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 text-sm font-semibold text-foreground transition-colors hover:border-border-strong hover:bg-surface-3"
+            >
+              <FileDown className="h-4 w-4" aria-hidden />
+              Exportar PDF
+            </a>
           </div>
         </div>
 
@@ -129,6 +156,7 @@ export function SectorOverviewView({
                 members={current.items}
                 filtered={Boolean(needle)}
                 canSeeDocuments={canSeeDocuments}
+                evaluationsHref={evaluationsHref}
               />
               <Pagination page={current} onChange={setPage} noun="colaboradores" />
             </div>

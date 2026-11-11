@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   CalendarDays,
+  ChevronRight,
   ClipboardList,
   Download,
   Eye,
@@ -19,8 +21,10 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Progress } from "@/components/ui/progress";
 import {
+  evaluationCoverage,
   groupPending,
   memberStatus,
+  type EvaluationCoverage,
   type MemberOverview,
   type MemberStatus,
   type PendingContentGroup,
@@ -75,12 +79,40 @@ function Metric({
 }
 
 /**
- * Um dos dois botões do rodapé do card.
+ * Tons do botão de rodapé. Um mapa, e não ternários encadeados: com três tons
+ * a cadeia aparecia em três lugares do mesmo componente (moldura, rótulo e
+ * número), e bastava esquecer um para o botão sair bicolor.
+ */
+const ACTION_TONE = {
+  warning: {
+    box: "border-warning/40 bg-warning/10 hover:border-warning/60 hover:bg-warning/20",
+    text: "text-warning",
+  },
+  primary: {
+    box: "border-primary/40 bg-primary/10 hover:border-primary/60 hover:bg-primary/20",
+    text: "text-primary",
+  },
+  danger: {
+    box: "border-danger/40 bg-danger/10 hover:border-danger/60 hover:bg-danger/20",
+    text: "text-danger",
+  },
+} as const;
+
+/** Vermelho sem nenhuma aplicada, âmbar com pendência, verde com tudo em dia. */
+const COVERAGE_TONE: Record<EvaluationCoverage, keyof typeof ACTION_TONE> = {
+  NENHUMA: "danger",
+  PARCIAL: "warning",
+  COMPLETA: "primary",
+};
+
+/**
+ * Um dos botões do rodapé do card.
  *
- * É um botão desenhado aqui, e não o `Button` comum: os dois precisam do mesmo
+ * É um botão desenhado aqui, e não o `Button` comum: todos precisam do mesmo
  * bloco de rótulo + número grande e de tons próprios — âmbar para o que cobra
- * ação, primário para o que é consulta. Levar isso ao `Button` por `className`
- * acabaria reescrevendo o componente inteiro no ponto de uso, duas vezes.
+ * ação, primário para o que é consulta, vermelho para a ausência. Levar isso ao
+ * `Button` por `className` acabaria reescrevendo o componente inteiro no ponto
+ * de uso, três vezes.
  *
  * Contagem zero desabilita: abrir um modal para ler "nada aqui" é um clique que
  * a tela já podia ter respondido — e o próprio botão responde.
@@ -89,6 +121,7 @@ function CardAction({
   icon,
   label,
   count,
+  countNoun,
   emptyLabel,
   tone,
   onClick,
@@ -98,8 +131,14 @@ function CardAction({
   icon: React.ReactNode;
   label: string;
   count: number;
+  /**
+   * Substantivo ao lado do número. Serve ao tom: a cor sozinha não diz qual
+   * dos três estados é, e em preto e branco não diz nada. Omitido, cai em
+   * "item/itens".
+   */
+  countNoun?: string;
   emptyLabel: string;
-  tone: "warning" | "primary";
+  tone: keyof typeof ACTION_TONE;
   onClick: () => void;
   className?: string;
   /**
@@ -119,11 +158,7 @@ function CardAction({
       aria-haspopup={disabled ? undefined : "dialog"}
       className={cn(
         "focus-ring flex min-w-0 flex-col items-start rounded-lg border px-3 py-2 text-left transition-colors",
-        empty
-          ? "border-border bg-surface-2"
-          : tone === "warning"
-            ? "border-warning/40 bg-warning/10 hover:border-warning/60 hover:bg-warning/20"
-            : "border-primary/40 bg-primary/10 hover:border-primary/60 hover:bg-primary/20",
+        empty ? "border-border bg-surface-2" : ACTION_TONE[tone].box,
         disabled ? "cursor-default" : empty && "hover:border-border-strong hover:bg-surface-3",
         className,
       )}
@@ -131,7 +166,7 @@ function CardAction({
       <span
         className={cn(
           "flex items-center gap-1 text-[10px] uppercase tracking-wide",
-          empty ? "text-muted" : tone === "warning" ? "text-warning" : "text-primary",
+          empty ? "text-muted" : ACTION_TONE[tone].text,
         )}
       >
         {icon}
@@ -140,16 +175,11 @@ function CardAction({
       {empty ? (
         <span className="mt-0.5 truncate text-xs text-muted">{emptyLabel}</span>
       ) : (
-        <span
-          className={cn(
-            "mt-0.5 text-lg font-bold leading-tight",
-            tone === "warning" ? "text-warning" : "text-primary",
-          )}
-        >
+        <span className={cn("mt-0.5 text-lg font-bold leading-tight", ACTION_TONE[tone].text)}>
           {count}
           {/* O substantivo fica pequeno para o número não perder o peso. */}
           <span className="ml-1 text-[11px] font-medium text-muted">
-            {count === 1 ? "item" : "itens"}
+            {countNoun ?? (count === 1 ? "item" : "itens")}
           </span>
         </span>
       )}
@@ -302,6 +332,7 @@ function PersonnelFolderList({
 export function MemberCard({
   member,
   canSeeDocuments,
+  evaluationsHref,
 }: {
   member: MemberOverview;
   /**
@@ -310,6 +341,11 @@ export function MemberCard({
    * colaborador do card — e o servidor confere de novo em cada leitura.
    */
   canSeeDocuments: boolean;
+  /**
+   * Aba onde uma avaliação avulsa é executada, já resolvida para QUEM OLHA.
+   * `null` = sem destino alcançável, e a pendência aparece sem atalho.
+   */
+  evaluationsHref: string | null;
 }) {
   const [pendingModal, setPendingModal] = useState(false);
   const [evaluationsModal, setEvaluationsModal] = useState(false);
@@ -337,9 +373,27 @@ export function MemberCard({
   }
 
   const pendingGroups = groupPending(member.pendingList);
-  // Um número só no botão: para o gestor as duas listas são "o que já foi
-  // avaliado nesta pessoa", e separá-las no rótulo pediria dois botões.
-  const evaluationCount = member.evaluations.length + member.performance.length;
+  const gaps = member.evaluationGaps;
+  const answeredCount = member.evaluations.length + member.performance.length;
+  /*
+   * Um número só no botão: para o gestor as três listas são "o que há para
+   * ver sobre as avaliações desta pessoa", e separá-las no rótulo pediria
+   * três botões.
+   *
+   * As PENDÊNCIAS entram na conta de propósito. Fora dela, o botão
+   * desabilitaria (contagem zero) justamente em quem nunca foi avaliado por
+   * ninguém — a pessoa de quem o gestor mais precisa saber, e a razão de o
+   * modal listar pendência. O cabeçalho do modal abre a conta em "N registros
+   * · M pendentes" para o número não esconder a divisão.
+   */
+  const evaluationCount = answeredCount + gaps.length;
+  /*
+   * Cor do botão de Avaliações: vermelho = nada aplicado, âmbar = aplicado em
+   * parte, verde = catálogo inteiro. A PALAVRA vai junto da cor, porque o
+   * painel é lido impresso em preto e branco e por quem não distingue vermelho
+   * de verde — e nos dois casos a cor sozinha não informa estado nenhum.
+   */
+  const coverage = evaluationCoverage(answeredCount, gaps.length);
 
   return (
     <article className="flex flex-col rounded-xl border border-border bg-surface p-4">
@@ -412,8 +466,17 @@ export function MemberCard({
             icon={<ClipboardList className="h-3 w-3" />}
             label="Avaliações"
             count={evaluationCount}
+            /* O ponto separa os dois números: "6 4 pendentes" lê como um
+               número só, partido. */
+            countNoun={
+              coverage === "NENHUMA"
+                ? "· nenhuma feita"
+                : coverage === "PARCIAL"
+                  ? `· ${gaps.length} pendente${gaps.length === 1 ? "" : "s"}`
+                  : "· em dia"
+            }
             emptyLabel="Nenhuma ainda"
-            tone="primary"
+            tone={COVERAGE_TONE[coverage]}
             onClick={() => setEvaluationsModal(true)}
           />
           {/* Documentos ocupa a linha inteira: numa grade de três, "Pendências"
@@ -508,7 +571,15 @@ export function MemberCard({
         open={evaluationsModal}
         onClose={() => setEvaluationsModal(false)}
         title="Avaliações"
-        description={`${member.name} · ${evaluationCount} ${evaluationCount === 1 ? "registro" : "registros"}`}
+        description={[
+          member.name,
+          `${answeredCount} ${answeredCount === 1 ? "registro" : "registros"}`,
+          // A frase só ganha a segunda metade quando há pendência: "0
+          // pendentes" é ruído em quem está com tudo aplicado.
+          ...(gaps.length > 0
+            ? [`${gaps.length} pendente${gaps.length === 1 ? "" : "s"}`]
+            : []),
+        ].join(" · ")}
         className="max-w-lg"
         footer={
           <div className="flex justify-end">
@@ -519,6 +590,47 @@ export function MemberCard({
         }
       >
         <div className="scrollbar-slim max-h-[60vh] space-y-6 overflow-y-auto p-6">
+          {/* Pendentes primeiro: é a lista que cobra ação. O histórico é
+              consulta, e consulta espera. */}
+          {gaps.length > 0 && (
+            <section>
+              <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-warning">
+                Pendentes
+              </h4>
+              <ul className="space-y-2">
+                {gaps.map((gap) => (
+                  <li key={gap.typeId} className="flex items-start justify-between gap-3">
+                    <span className="min-w-0">
+                      <span className="block break-words text-sm text-foreground">
+                        {gap.typeTitle}
+                      </span>
+                      {/* Diz DE QUEM é a ação. "Nunca aplicada" sozinho
+                          deixaria o gestor esperando um botão que, no
+                          instrumento multiavaliador, não é dele. */}
+                      <span className="block text-[11px] text-muted">
+                        {gap.multiRater
+                          ? "Nunca aplicada · a rodada é aberta pelo DHO"
+                          : "Nunca aplicada"}
+                      </span>
+                    </span>
+                    {/* Atalho só onde o avaliador PODE agir: no instrumento
+                        multiavaliador ele cairia numa tela sem a avaliação e
+                        concluiria que o link está quebrado. */}
+                    {!gap.multiRater && evaluationsHref && (
+                      <Link
+                        href={evaluationsHref}
+                        className="focus-ring inline-flex shrink-0 items-center gap-1 rounded-lg border border-warning/40 bg-warning/10 px-2.5 py-1 text-[11px] font-semibold text-warning transition-colors hover:border-warning/60 hover:bg-warning/20"
+                      >
+                        Avaliar
+                        <ChevronRight className="h-3 w-3" aria-hidden />
+                      </Link>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           {member.evaluations.length > 0 && (
             <section>
               <h4 className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-muted">

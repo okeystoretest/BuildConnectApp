@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   approvedAverage,
+  evaluationCoverage,
   groupPending,
   memberStatus,
   progressPct,
@@ -110,4 +111,16 @@ test("a ordem de entrada é preservada dentro do grupo", () => {
     videos.items.map((i) => i.title),
     ["Integração", "Segurança"],
   );
+});
+
+test("a cobertura de avaliações separa os três estados do botão do card", () => {
+  // Vermelho: nada aplicado, haja ou não instrumento pendente.
+  assert.equal(evaluationCoverage(0, 5), "NENHUMA");
+  assert.equal(evaluationCoverage(0, 0), "NENHUMA");
+  // Âmbar: já houve avaliação, mas sobrou instrumento sem aplicar.
+  assert.equal(evaluationCoverage(1, 1), "PARCIAL");
+  assert.equal(evaluationCoverage(9, 5), "PARCIAL");
+  // Verde: catálogo inteiro aplicado.
+  assert.equal(evaluationCoverage(1, 0), "COMPLETA");
+  assert.equal(evaluationCoverage(12, 0), "COMPLETA");
 });

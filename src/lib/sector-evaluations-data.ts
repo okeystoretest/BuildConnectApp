@@ -21,7 +21,7 @@ const PRE_EFETIVO_SLUG = "acompanhamento-pre-efetivo";
  * uma checagem por label quebra silenciosamente na próxima renomeação — e foi
  * exatamente o que aconteceu com o `=== "RH"` anterior.
  */
-const PEOPLE_SECTOR_SLUG = "rh";
+export const PEOPLE_SECTOR_SLUG = "rh";
 
 /**
  * Dados da ferramenta "Avaliações" de um SETOR.

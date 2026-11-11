@@ -104,6 +104,28 @@ export function groupPending(items: readonly PendingContentItem[]): PendingConte
   })).filter((group) => group.items.length > 0);
 }
 
+/**
+ * Um instrumento de avaliação que NUNCA foi aplicado ao colaborador.
+ *
+ * Compreensão de vídeo não entra aqui porque não é um `EvaluationType`: ela
+ * nasce de uma Instrução em Vídeo e já tem lista própria no card. O que sobra
+ * é o catálogo de instrumentos menos os que têm ao menos um registro — então
+ * quem nunca foi avaliado por ninguém aparece com TODOS pendentes, que é
+ * exatamente o que o gestor abre o card para descobrir.
+ */
+export interface MemberEvaluationGap {
+  typeId: string;
+  typeSlug: string;
+  typeTitle: string;
+  /**
+   * Instrumento multiavaliador (Matriz de Decisão, Eficácia, Inteligência
+   * Emocional). Quem abre a rodada e designa os avaliadores é o DHO, então o
+   * gestor que olha o card não tem o que executar — e o item aparece sem
+   * atalho, dizendo de quem a ação é.
+   */
+  multiRater: boolean;
+}
+
 /** Um colaborador no painel do setor. */
 export interface MemberOverview {
   userId: string;
@@ -131,6 +153,8 @@ export interface MemberOverview {
   evaluations: MemberEvaluation[];
   /** Avaliações de desempenho respondidas, da mais recente para a mais antiga. */
   performance: MemberPerformanceEvaluation[];
+  /** Instrumentos que ainda não foram aplicados a esta pessoa. */
+  evaluationGaps: MemberEvaluationGap[];
   /**
    * Quantos documentos pessoais já arquivados no Departamento Pessoal. Só a
    * contagem: as pastas vêm sob demanda quando o modal abre.
@@ -181,4 +205,26 @@ export function approvedAverage(grades: readonly number[]): number | null {
 /** Percentual inteiro. Total zero devolve 0 em vez de estourar. */
 export function progressPct(done: number, total: number): number {
   return total === 0 ? 0 : Math.round((done / total) * 100);
+}
+
+/** Quanto do catálogo de avaliações já foi aplicado a um colaborador. */
+export type EvaluationCoverage = "NENHUMA" | "PARCIAL" | "COMPLETA";
+
+/**
+ * Cobertura de avaliações, para o botão "Avaliações" do card do colaborador.
+ *
+ *   NENHUMA  — nada aplicado ainda (vermelho)
+ *   PARCIAL  — já houve avaliação, mas sobrou instrumento sem aplicar (âmbar)
+ *   COMPLETA — todo o catálogo aplicado (verde)
+ *
+ * Mora aqui, e não no componente, pelo mesmo motivo de `memberStatus`: é a
+ * matemática do painel, e aqui ela é testada sem banco e sem renderizar.
+ *
+ * Sem avaliação alguma E sem pendência alguma devolve NENHUMA: é o catálogo
+ * vazio, e "completa" afirmaria que tudo foi aplicado quando nada existe. O
+ * card ainda assim desabilita o botão nesse caso — não há o que abrir.
+ */
+export function evaluationCoverage(answered: number, gaps: number): EvaluationCoverage {
+  if (answered === 0) return "NENHUMA";
+  return gaps > 0 ? "PARCIAL" : "COMPLETA";
 }
