@@ -9,7 +9,7 @@ import {
   taskKey,
   taskTone,
 } from "./evaluation-task-meta";
-import type { EvalForm, MyEvaluationTask } from "@/types/evaluation";
+import type { AnsweredEvaluationKind, EvalForm, MyEvaluationTask } from "@/types/evaluation";
 
 function task(over: Partial<MyEvaluationTask> = {}): MyEvaluationTask {
   return {
@@ -107,19 +107,64 @@ test("a chave distingue tarefas que compartilham o roundId", () => {
  * DHO: ele não é 360° nem vídeo, e precisa cair do lado não-vídeo — fora do
  * quadro ele viraria uma pendência que ninguém vê.
  */
+/**
+ * Todos os tipos, derivados do TIPO e não escritos à mão.
+ *
+ * O `Record` da união obriga o compilador a cobrar cada membro novo aqui.
+ * Antes isto era um array literal, e por isso a rede não pegava nada: nascia
+ * um tipo, o array continuava com os quatro antigos e o teste seguia verde
+ * sem cobrir o novo — o acidente exato que ele deveria impedir. Quem
+ * acrescentar um tipo agora não compila até decidir de que lado ele cai.
+ */
+const TODOS: Record<AnsweredEvaluationKind, true> = {
+  FEEDBACK: true,
+  AUTOAVALIACAO: true,
+  PRE_EFETIVO: true,
+  FORMULARIO: true,
+  COMPREENSAO_VIDEO: true,
+};
+const todos = Object.keys(TODOS) as AnsweredEvaluationKind[];
+
 test("só a compreensão de vídeo conta como avaliação de vídeo", () => {
   assert.equal(ehAvaliacaoDeVideo("COMPREENSAO_VIDEO"), true);
   assert.equal(ehAvaliacaoDeVideo("FEEDBACK"), false);
   assert.equal(ehAvaliacaoDeVideo("AUTOAVALIACAO"), false);
+  assert.equal(ehAvaliacaoDeVideo("PRE_EFETIVO"), false);
   assert.equal(ehAvaliacaoDeVideo("FORMULARIO"), false);
 });
 
-test("as quatro colunas cobrem todos os tipos, sem sobra", () => {
-  const todos = ["FEEDBACK", "AUTOAVALIACAO", "FORMULARIO", "COMPREENSAO_VIDEO"] as const;
+test("os dois escopos cobrem todos os tipos, sem sobra", () => {
   const video = todos.filter(ehAvaliacaoDeVideo);
   const resto = todos.filter((k) => !ehAvaliacaoDeVideo(k));
-  // Nenhum tipo fica de fora e nenhum entra nas duas: é o que impede uma
+  // Nenhum tipo fica de fora e nenhum entra nos dois: é o que impede uma
   // pendência de sumir do quadro quando um tipo novo for criado.
   assert.equal(video.length + resto.length, todos.length);
   assert.deepEqual(video, ["COMPREENSAO_VIDEO"]);
+  // O Pré-Efetivo é avaliação interna: cai no escopo não-vídeo.
+  assert.ok(resto.includes("PRE_EFETIVO"));
+});
+
+test("o Pré-Efetivo diz o ciclo e desde quando está aberto", () => {
+  const t = task({
+    kind: "PRE_EFETIVO",
+    roundId: "",
+    subjectId: "u1",
+    cycle: 2,
+    availableAtLabel: "03/11/2026",
+    typeSlug: "acompanhamento-pre-efetivo",
+    typeTitle: "Acompanhamento Funcional Pré-Efetivo",
+  });
+  assert.equal(taskHeadline(t), "Avaliar Ana");
+  assert.equal(
+    taskDetail(t),
+    "Acompanhamento Funcional Pré-Efetivo · ciclo 2 · disponível desde 03/11/2026",
+  );
+});
+
+test("dois ciclos do mesmo colaborador têm chaves diferentes", () => {
+  // Sem isto os dois colidiriam na chave (`roundId` vazio) e o React
+  // reaproveitaria o card errado ao reordenar a fila.
+  const c1 = task({ kind: "PRE_EFETIVO", roundId: "", subjectId: "u1", cycle: 1 });
+  const c2 = task({ kind: "PRE_EFETIVO", roundId: "", subjectId: "u1", cycle: 2 });
+  assert.notEqual(taskKey(c1), taskKey(c2));
 });

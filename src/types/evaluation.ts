@@ -335,7 +335,12 @@ export type MatrizZone =
 
 /** Tarefa na aba "Minhas avaliações" do usuário logado. */
 export interface MyEvaluationTask {
-  kind: "FEEDBACK" | "AUTOAVALIACAO" | "FORMULARIO" | "COMPREENSAO_VIDEO";
+  /**
+   * A MESMA união das concluídas, por referência e não por cópia: o que sai
+   * da fila de pendências precisa ter lugar na de concluídas, e duas listas
+   * escritas à mão divergiriam no primeiro tipo novo.
+   */
+  kind: AnsweredEvaluationKind;
   /** Rodada de avaliação. Vazio nas tarefas de formulário e de compreensão. */
   roundId: string;
   /** Formulário do DHO. Preenchido só quando kind === "FORMULARIO". */
@@ -347,6 +352,12 @@ export interface MyEvaluationTask {
   /** Nome do avaliado (ou "Você" na autoavaliação). */
   subjectName: string;
   self: boolean;
+  /** Quem será avaliado. Só em PRE_EFETIVO — ali o alvo é uma pessoa, não uma rodada. */
+  subjectId?: string;
+  /** Ciclo 1, 2 ou 3. Só em PRE_EFETIVO; quem resolve qual é o servidor. */
+  cycle?: number;
+  /** Desde quando o ciclo está disponível. Só em PRE_EFETIVO. */
+  availableAtLabel?: string;
 }
 
 /**
@@ -404,6 +415,14 @@ export interface VideoComprehensionSubject {
 export type AnsweredEvaluationKind =
   | "FEEDBACK"
   | "AUTOAVALIACAO"
+  /**
+   * Acompanhamento Funcional Pré-Efetivo. Tem tipo próprio, e não "FEEDBACK",
+   * porque é o mesmo instrumento dos dois lados: pendente é o CICLO disponível
+   * (`EvaluationCycle` em DISPONIVEL) e concluída é a avaliação preenchida.
+   * Antes disso ele chegava às concluídas rotulado como "Feedback", que é
+   * outro instrumento.
+   */
+  | "PRE_EFETIVO"
   | "FORMULARIO"
   | "COMPREENSAO_VIDEO";
 
@@ -426,6 +445,18 @@ export interface AnsweredEvaluation {
   title: string;
   /** Sobre quem — "Você" na autoavaliação; ausente em formulário. */
   subjectName?: string;
+  /**
+   * Quem PREENCHEU. Vem preenchido só para o Admin, e só nas avaliações de
+   * terceiros: para todo mundo mais o executor é a própria pessoa que está
+   * lendo, e repetir o próprio nome em cada card seria ruído.
+   */
+  evaluatorName?: string;
+  /**
+   * Quando a avaliação ficou DISPONÍVEL — a outra ponta da régua de prazo.
+   * Só o Pré-Efetivo tem essa data; nos demais instrumentos não existe nada
+   * equivalente, e o card omite em vez de inventar.
+   */
+  availableAtLabel?: string;
   answeredAtLabel: string;
   answeredAtTimeLabel: string;
   /** Resumo numérico quando existe ("42/50", "8/10"). */

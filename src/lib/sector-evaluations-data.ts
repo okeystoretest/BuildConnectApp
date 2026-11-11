@@ -10,7 +10,9 @@ import {
 import { isMultiRaterSlug } from "@/lib/evaluation-rounds-config";
 import type { SectorEvaluations, EvalForm } from "@/types/evaluation";
 
-const PRE_EFETIVO_SLUG = "acompanhamento-pre-efetivo";
+/** Slug do Acompanhamento Funcional Pré-Efetivo. Exportado porque "Minhas
+ *  Avaliações" carrega o mesmo formulário para a pendência de ciclo. */
+export const PRE_EFETIVO_SLUG = "acompanhamento-pre-efetivo";
 
 /**
  * Setor de gestão de pessoas. É o ÚNICO que não tem a aba de preenchimento —

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db/prisma";
 import { dateLabelBR, timeLabelBR } from "@/lib/brasilia";
 import { isPassing } from "@/lib/video-comprehension";
 import type { AnsweredEvaluation } from "@/types/evaluation";
+import type { Role } from "@/types";
 
 /**
  * O que ESTE usuário já respondeu, para a aba "Concluídas" de Minhas
@@ -21,20 +22,40 @@ import type { AnsweredEvaluation } from "@/types/evaluation";
  * as escreveu. A tela diz isso em vez de deixar a pessoa achar que perdeu o
  * que enviou.
  */
-export async function getMyAnsweredEvaluations(userId: string): Promise<AnsweredEvaluation[]> {
+export async function getMyAnsweredEvaluations(
+  userId: string,
+  role: Role,
+): Promise<AnsweredEvaluation[]> {
+  /*
+   * O ADMIN é a exceção ao recorte por autoria, desde 11/11: o quadro dele
+   * traz também o que OUTRAS pessoas preencheram, com o nome de quem
+   * preencheu. Não é alcance novo — ele já lê tudo isso na aba de Resultados
+   * do DHO —, é o mesmo dado onde ele acompanha o andamento.
+   *
+   * Para todo mundo mais o recorte continua sendo AUTORIA pura: o Gestor vê o
+   * que ele respondeu, e nada do que o colega respondeu.
+   */
+  const isAdmin = role === "ADMIN";
   const [submissions, responses, grades] = await Promise.all([
     // Rodadas: feedbacks que dei e minha autoavaliação. As duas gravam
     // `evaluatorId`, então uma consulta cobre ambas.
     prisma.evaluation.findMany({
-      where: { evaluatorId: userId },
+      // Só CONCLUIDA no escopo amplo: rascunho de outra pessoa é trabalho em
+      // andamento, não registro — e apareceria como se estivesse pronto.
+      where: isAdmin ? { status: "CONCLUIDA" } : { evaluatorId: userId },
       orderBy: { createdAt: "desc" },
       select: {
         id: true,
         createdAt: true,
         total: true,
         isSelfAssessment: true,
-        type: { select: { title: true } },
+        cycle: true,
+        evaluatorId: true,
+        subjectId: true,
+        typeId: true,
+        type: { select: { title: true, kind: true } },
         subject: { select: { fullName: true } },
+        evaluator: { select: { fullName: true } },
         _count: { select: { answers: true } },
       },
     }),
@@ -64,15 +85,55 @@ export async function getMyAnsweredEvaluations(userId: string): Promise<Answered
     }),
   ]);
 
+  /*
+   * Quando cada Pré-Efetivo ficou DISPONÍVEL.
+   *
+   * A data mora no ciclo (`EvaluationCycle`), e a avaliação não o referencia
+   * por chave: a ligação é a tripla (colaborador, instrumento, ciclo). Uma
+   * consulta só para todas as linhas — uma por avaliação seria uma ida ao
+   * banco por card do quadro.
+   */
+  const preEfetivos = submissions.filter((s) => s.type.kind === "PRE_EFETIVO" && s.cycle != null);
+  const cycleRows = preEfetivos.length
+    ? await prisma.evaluationCycle.findMany({
+        where: {
+          OR: preEfetivos.map((s) => ({
+            subjectId: s.subjectId,
+            typeId: s.typeId,
+            cycle: s.cycle as number,
+          })),
+        },
+        select: { subjectId: true, typeId: true, cycle: true, availableAt: true },
+      })
+    : [];
+  const disponivelPorChave = new Map(
+    cycleRows.map((c) => [`${c.subjectId}|${c.typeId}|${c.cycle}`, c.availableAt] as const),
+  );
+
   const rows: (AnsweredEvaluation & { at: Date })[] = [];
 
   for (const s of submissions) {
+    const preEfetivo = s.type.kind === "PRE_EFETIVO";
+    const disponivel =
+      preEfetivo && s.cycle != null
+        ? disponivelPorChave.get(`${s.subjectId}|${s.typeId}|${s.cycle}`)
+        : undefined;
     rows.push({
       at: s.createdAt,
       id: s.id,
-      kind: s.isSelfAssessment ? "AUTOAVALIACAO" : "FEEDBACK",
-      title: s.type.title,
+      kind: preEfetivo ? "PRE_EFETIVO" : s.isSelfAssessment ? "AUTOAVALIACAO" : "FEEDBACK",
+      // O ciclo entra no título: três ciclos do mesmo instrumento sobre a
+      // mesma pessoa sairiam como três cards idênticos.
+      title: preEfetivo && s.cycle != null ? `${s.type.title} · ciclo ${s.cycle}` : s.type.title,
       subjectName: s.isSelfAssessment ? "Você" : s.subject.fullName,
+      /*
+       * O executor só é dito quando NÃO é quem está lendo. Repetir o próprio
+       * nome em cada card seria ruído, e é também o que mantém o quadro do
+       * Gestor idêntico ao de antes: lá tudo é dele, então nada é marcado.
+       */
+      evaluatorName:
+        s.evaluatorId && s.evaluatorId !== userId ? (s.evaluator?.fullName ?? "—") : undefined,
+      availableAtLabel: disponivel ? dateLabelBR(disponivel) : undefined,
       answeredAtLabel: dateLabelBR(s.createdAt),
       answeredAtTimeLabel: timeLabelBR(s.createdAt),
       // O máximo depende da escala do instrumento e não vale uma consulta a

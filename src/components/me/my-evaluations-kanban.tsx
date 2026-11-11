@@ -243,13 +243,46 @@ function AnsweredCard({ item, onOpen }: { item: AnsweredEvaluation; onOpen: () =
           {KIND[item.kind].icon}
         </span>
         <div className="min-w-0 flex-1">
+          {/* Qual a avaliação. */}
           <p className="break-words text-sm font-semibold leading-snug text-foreground">
             {item.title}
           </p>
-          <p className="mt-0.5 break-words text-xs text-muted">
-            {item.subjectName ? `${item.subjectName} · ` : ""}
-            {item.answeredAtLabel} às {item.answeredAtTimeLabel}
-          </p>
+          {/*
+           * Quem foi avaliado, quem avaliou, quando abriu e quando aconteceu.
+           *
+           * Com RÓTULO em cada um, e não separados por pontos: dois nomes e
+           * duas datas em sequência ("Ana · Bruno · 03/11 · 11/11") não dizem
+           * qual nome é de quem nem qual data é qual.
+           *
+           * O avaliador só aparece quando é OUTRA pessoa — no quadro de quem
+           * respondeu, repetir o próprio nome em cada card é ruído.
+           */}
+          <dl className="mt-1 space-y-0.5 text-xs text-muted">
+            {item.subjectName && (
+              <div className="flex gap-1.5">
+                <dt className="shrink-0">Avaliado:</dt>
+                <dd className="min-w-0 break-words text-foreground">{item.subjectName}</dd>
+              </div>
+            )}
+            {item.evaluatorName && (
+              <div className="flex gap-1.5">
+                <dt className="shrink-0">Avaliador:</dt>
+                <dd className="min-w-0 break-words text-foreground">{item.evaluatorName}</dd>
+              </div>
+            )}
+            {item.availableAtLabel && (
+              <div className="flex gap-1.5">
+                <dt className="shrink-0">Disponível desde:</dt>
+                <dd className="min-w-0 break-words">{item.availableAtLabel}</dd>
+              </div>
+            )}
+            <div className="flex gap-1.5">
+              <dt className="shrink-0">Concluída em:</dt>
+              <dd className="min-w-0 break-words">
+                {item.answeredAtLabel} às {item.answeredAtTimeLabel}
+              </dd>
+            </div>
+          </dl>
         </div>
       </div>
 

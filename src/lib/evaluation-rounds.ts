@@ -1,4 +1,7 @@
 import { prisma } from "@/lib/db/prisma";
+import { dateLabelBR } from "@/lib/brasilia";
+import { sweepAvailability } from "@/lib/evaluation-schedule";
+import type { Role } from "@/types";
 import { MATRIZ_DECISAO_SLUG, MULTI_RATER_SLUGS } from "@/lib/evaluation-rounds-config";
 import { averageOf, classifyMatriz } from "@/lib/matriz-decisao";
 import {
@@ -287,7 +290,10 @@ function buildMatriz(
  *  - A autoavaliação dele, quando a rodada estiver AGUARDANDO_AUTO e ele ainda
  *    não tiver enviado.
  */
-export async function getMyEvaluationTasks(userId: string): Promise<MyEvaluationTask[]> {
+export async function getMyEvaluationTasks(
+  userId: string,
+  role: Role,
+): Promise<MyEvaluationTask[]> {
   const tasks: MyEvaluationTask[] = [];
 
   // 1) Feedbacks designados pendentes.
@@ -370,7 +376,65 @@ export async function getMyEvaluationTasks(userId: string): Promise<MyEvaluation
     });
   }
 
+  /*
+   * 5) Ciclos de Pré-Efetivo DISPONÍVEIS — os mesmos que a aba "Avaliações" do
+   *    setor lista. A fila aparece nos dois lugares de propósito: quem abre
+   *    "Minhas Avaliações" para ver o que deve não tem por que descobrir, só
+   *    na aba do setor, que havia um Pré-Efetivo vencendo.
+   *
+   *    O recorte é por PAPEL, e repete o da aba (`getSectorEvaluations`):
+   *      ADMIN   → todos os setores
+   *      GESTOR  → o setor de lotação dele, e só
+   *      demais  → nenhum; o Colaborador não aplica Pré-Efetivo
+   *
+   *    A varredura roda antes porque é ela que promove a DISPONIVEL o ciclo
+   *    que venceu — sem isso esta lista ficaria atrás da aba do setor, e as
+   *    duas discordariam sobre o que está disponível agora.
+   */
+  if (role === "ADMIN" || role === "GESTOR") {
+    await sweepAvailability();
+    const sectorId = role === "ADMIN" ? null : await sectorOf(userId);
+    // Gestor sem lotação não tem equipe: lista vazia, não a empresa inteira.
+    if (role === "ADMIN" || sectorId) {
+      const cycles = await prisma.evaluationCycle.findMany({
+        where: {
+          status: "DISPONIVEL",
+          subject: { active: true, ...(sectorId ? { sectorId } : {}) },
+        },
+        orderBy: { availableAt: "asc" },
+        select: {
+          cycle: true,
+          availableAt: true,
+          type: { select: { slug: true, title: true } },
+          subject: { select: { id: true, fullName: true } },
+        },
+      });
+      for (const c of cycles) {
+        tasks.push({
+          kind: "PRE_EFETIVO",
+          roundId: "",
+          subjectId: c.subject.id,
+          cycle: c.cycle,
+          availableAtLabel: dateLabelBR(c.availableAt),
+          typeSlug: c.type.slug,
+          typeTitle: c.type.title,
+          subjectName: c.subject.fullName,
+          self: false,
+        });
+      }
+    }
+  }
+
   return tasks;
+}
+
+/** Setor de lotação, para recortar a fila do Gestor. */
+async function sectorOf(userId: string): Promise<string | null> {
+  const u = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { sectorId: true },
+  });
+  return u?.sectorId ?? null;
 }
 
 /**

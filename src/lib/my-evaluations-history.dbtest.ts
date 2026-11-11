@@ -144,7 +144,7 @@ after(async () => {
 });
 
 test("o gestor vê o feedback que deu e a nota de compreensão que deu", async () => {
-  const rows = await getMyAnsweredEvaluations(gestorId);
+  const rows = await getMyAnsweredEvaluations(gestorId, "GESTOR");
   const kinds = rows.map((r) => r.kind);
   assert.ok(kinds.includes("FEEDBACK"));
   assert.ok(kinds.includes("COMPREENSAO_VIDEO"));
@@ -152,7 +152,7 @@ test("o gestor vê o feedback que deu e a nota de compreensão que deu", async (
 });
 
 test("a nota de compreensão vem inteira, sem ida extra ao servidor", async () => {
-  const rows = await getMyAnsweredEvaluations(gestorId);
+  const rows = await getMyAnsweredEvaluations(gestorId, "GESTOR");
   const nota = rows.find((r) => r.kind === "COMPREENSAO_VIDEO");
   assert.equal(nota?.comprehension?.grade, 4);
   assert.equal(nota?.comprehension?.passed, false);
@@ -161,13 +161,13 @@ test("a nota de compreensão vem inteira, sem ida extra ao servidor", async () =
 });
 
 test("ninguém vê o que outra pessoa respondeu", async () => {
-  const rows = await getMyAnsweredEvaluations(gestorId);
+  const rows = await getMyAnsweredEvaluations(gestorId, "GESTOR");
   // A submissão do outro gestor (total 11) não pode estar aqui.
   assert.ok(!rows.some((r) => r.scoreLabel === "11 pts"));
 });
 
 test("autoavaliação e feedback se distinguem, saindo da mesma tabela", async () => {
-  const rows = await getMyAnsweredEvaluations(colaboradorId);
+  const rows = await getMyAnsweredEvaluations(colaboradorId, "COLABORADOR");
   const auto = rows.find((r) => r.kind === "AUTOAVALIACAO");
   assert.equal(auto?.subjectName, "Você");
   assert.equal(auto?.scoreLabel, "30 pts");
@@ -175,17 +175,17 @@ test("autoavaliação e feedback se distinguem, saindo da mesma tabela", async (
 });
 
 test("o formulário identificado aparece; o anônimo não aparece para ninguém", async () => {
-  const doColaborador = await getMyAnsweredEvaluations(colaboradorId);
+  const doColaborador = await getMyAnsweredEvaluations(colaboradorId, "COLABORADOR");
   const forms = doColaborador.filter((r) => r.kind === "FORMULARIO");
   // Uma, não duas: a resposta anônima não tem dono para ser listada.
   assert.equal(forms.length, 1);
 
-  const doGestor = await getMyAnsweredEvaluations(gestorId);
+  const doGestor = await getMyAnsweredEvaluations(gestorId, "GESTOR");
   assert.equal(doGestor.filter((r) => r.kind === "FORMULARIO").length, 0);
 });
 
 test("a lista é uma linha do tempo só, da mais recente para a mais antiga", async () => {
-  const rows = await getMyAnsweredEvaluations(colaboradorId);
+  const rows = await getMyAnsweredEvaluations(colaboradorId, "COLABORADOR");
   assert.ok(rows.length >= 2);
   // Tipos diferentes convivem na mesma lista, sem separação por origem.
   assert.ok(new Set(rows.map((r) => r.kind)).size > 1);

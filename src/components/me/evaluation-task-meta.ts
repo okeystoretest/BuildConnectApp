@@ -22,6 +22,16 @@ export function taskDetail(task: MyEvaluationTask): string {
   if (task.kind === "COMPREENSAO_VIDEO" && task.comprehension) {
     return `${task.typeTitle} · ${task.comprehension.videoTitle}`;
   }
+  /*
+   * O Pré-Efetivo diz o ciclo e desde quando está aberto: três ciclos do
+   * mesmo instrumento sobre a mesma pessoa sairiam como três cards idênticos,
+   * e a data é o que dá a ordem de urgência da fila.
+   */
+  if (task.kind === "PRE_EFETIVO") {
+    const ciclo = task.cycle != null ? ` · ciclo ${task.cycle}` : "";
+    const desde = task.availableAtLabel ? ` · disponível desde ${task.availableAtLabel}` : "";
+    return `${task.typeTitle}${ciclo}${desde}`;
+  }
   return task.typeTitle;
 }
 
@@ -68,6 +78,15 @@ export function taskAction(
  * mesma chave — e o React reaproveitaria o card errado ao reordenar a lista.
  */
 export function taskKey(task: MyEvaluationTask): string {
+  /*
+   * O Pré-Efetivo não tem rodada: o alvo é a tripla colaborador + ciclo. Sem
+   * esta linha, dois ciclos disponíveis cairiam na mesma chave (`roundId`
+   * vazio) e o React reaproveitaria o card errado ao reordenar a fila — que é
+   * exatamente o acidente que esta função existe para evitar.
+   */
+  if (task.kind === "PRE_EFETIVO") {
+    return `${task.kind}-${task.subjectId ?? ""}-${task.cycle ?? ""}`;
+  }
   return `${task.kind}-${task.formId ?? task.comprehension?.comprehensionId ?? task.roundId}`;
 }
 

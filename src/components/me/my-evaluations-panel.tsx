@@ -29,6 +29,11 @@ export interface MyEvaluationsPanelProps {
   forms: Record<string, EvalForm>;
   /** Tudo o que este usuário já respondeu, para a coluna "Concluídas". */
   answered: readonly AnsweredEvaluation[];
+  /**
+   * Quem olha é Admin? Só muda a frase do rodapé — o recorte de quem vê o quê
+   * é decidido no servidor, nas duas consultas da página.
+   */
+  isAdmin: boolean;
 }
 
 /**
@@ -62,7 +67,12 @@ interface ActiveTask {
  * O usuário responde só o próprio formulário; a consolidação (com o nome de
  * cada avaliador) é vista pelo DHO na aba de Resultados.
  */
-export function MyEvaluationsPanel({ tasks, forms, answered }: MyEvaluationsPanelProps) {
+export function MyEvaluationsPanel({
+  tasks,
+  forms,
+  answered,
+  isAdmin,
+}: MyEvaluationsPanelProps) {
   const [scope, setScope] = useState<EvaluationScope>("internas");
   const [detail, setDetail] = useState<AnsweredEvaluation | null>(null);
   const [active, setActive] = useState<ActiveTask | null>(null);
@@ -153,19 +163,37 @@ export function MyEvaluationsPanel({ tasks, forms, answered }: MyEvaluationsPane
         </button>
       )}
 
-      {/* Formulário anônimo não guarda quem respondeu, por desenho. Dizer isso
-          evita que a pessoa ache que o envio dela se perdeu. */}
+      {/* A frase MUDA com o papel, e não é enfeite: deixar "só as suas
+          respostas" escrito enquanto o Admin vê o trabalho de todo mundo
+          seria a interface afirmando o contrário do que ela faz.
+
+          Formulário anônimo não guarda quem respondeu, por desenho. Dizer
+          isso evita que a pessoa ache que o envio dela se perdeu. */}
       <p className="border-t border-border pt-3 text-[11px] text-muted">
-        Só as suas respostas — ninguém mais alcança este quadro. Formulários anônimos não aparecem
-        aqui: eles não guardam quem respondeu, e é isso que os torna anônimos.
+        {isAdmin
+          ? "Como Admin, as concluídas trazem também o que outras pessoas preencheram, com o nome de quem preencheu."
+          : "Só as suas respostas — ninguém mais alcança este quadro."}{" "}
+        Formulários anônimos não aparecem aqui: eles não guardam quem respondeu, e é isso que os
+        torna anônimos.
       </p>
 
       {active && (
         <EvaluationFormModal
           open
           form={active.form}
-          subjectId={active.task.roundId}
+          /*
+           * O Pré-Efetivo usa o ENVIO PADRÃO do modal (`submitEvaluation`), o
+           * mesmo da aba do setor: o alvo dele é uma pessoa e um ciclo, não
+           * uma rodada. Passar `onSubmit` aqui substituiria esse caminho por
+           * um que não sabe fechar ciclo nem agendar o seguinte.
+           */
+          subjectId={
+            active.task.kind === "PRE_EFETIVO"
+              ? (active.task.subjectId ?? "")
+              : active.task.roundId
+          }
           subjectName={active.task.subjectName}
+          cycle={active.task.kind === "PRE_EFETIVO" ? active.task.cycle : undefined}
           eyebrow={active.task.self ? "Autoavaliação" : `Avaliação de ${active.task.subjectName}`}
           onClose={() => setActive(null)}
           onSubmitted={() => {
@@ -174,13 +202,16 @@ export function MyEvaluationsPanel({ tasks, forms, answered }: MyEvaluationsPane
             // ciclo do poll nem o router.refresh() chegar ao layout.
             refreshPendingCount();
           }}
-          onSubmit={(payload) =>
-            submitRoundEvaluation({
-              roundId: active.task.roundId,
-              self: active.task.self,
-              observations: payload.observations,
-              answers: payload.answers,
-            })
+          onSubmit={
+            active.task.kind === "PRE_EFETIVO"
+              ? undefined
+              : (payload) =>
+                  submitRoundEvaluation({
+                    roundId: active.task.roundId,
+                    self: active.task.self,
+                    observations: payload.observations,
+                    answers: payload.answers,
+                  })
           }
         />
       )}
