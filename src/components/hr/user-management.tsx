@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { paginate } from "@/lib/paginate";
 import { Pagination } from "@/components/ui/pagination";
 import { useRouter } from "next/navigation";
-import { Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { ExternalLink, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { ROLE_LABEL } from "@/lib/permissions";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +24,13 @@ const ROLE_TONE: Record<Role, "neutral" | "info" | "accent"> = {
   ADMIN: "accent",
 };
 
-export function UserManagementPanel({ users }: { users: readonly ManagedUser[] }) {
+export interface UserManagementPanelProps {
+  users: readonly ManagedUser[];
+  /** Leva à aba da Página de Integração (módulo do convidado). */
+  onOpenIntegration: () => void;
+}
+
+export function UserManagementPanel({ users, onOpenIntegration }: UserManagementPanelProps) {
   const router = useRouter();
   const { role } = useRole();
   const [query, setQuery] = useState("");
@@ -95,10 +101,16 @@ export function UserManagementPanel({ users }: { users: readonly ManagedUser[] }
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted">Cadastre, edite e remova usuários da plataforma.</p>
-        <Button onClick={openCreate}>
-          <Plus className="h-4 w-4" />
-          Novo usuário
-        </Button>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="secondary" onClick={onOpenIntegration}>
+            <ExternalLink className="h-4 w-4" />
+            Página de Integração
+          </Button>
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4" />
+            Novo usuário
+          </Button>
+        </div>
       </div>
 
       <div className="relative max-w-md">

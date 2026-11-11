@@ -41,3 +41,7 @@ npm-debug.log*
 # dependia de alguém lembrar de repetir a linha.
 Instruções_BCA.md
 RESUMO-*.md
+
+# Grafo de conhecimento gerado pelo /graphify. Saída de ferramenta, refeita
+# a partir do código a qualquer momento — versionar seria commitar um cache.
+graphify-out/

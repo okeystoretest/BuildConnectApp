@@ -31,5 +31,9 @@ export function formatBytes(bytes: number): string {
   const kb = bytes / 1024;
   if (kb < 1024) return `${Math.round(kb)} KB`;
   const mb = kb / 1024;
-  return `${mb.toFixed(1)} MB`;
+  // GB existe desde que o teto de vídeo subiu para 4 GB (28/10/2026). Sem
+  // este degrau, o limite aparecia como "4096.0 MB" no rótulo do seletor e na
+  // mensagem de recusa — certo na conta e ilegível para quem lê.
+  if (mb < 1024) return `${mb.toFixed(1)} MB`;
+  return `${(mb / 1024).toFixed(1)} GB`;
 }

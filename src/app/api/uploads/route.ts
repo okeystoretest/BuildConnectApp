@@ -12,6 +12,7 @@ import { uploadIntegrationMap } from "@/lib/hr-actions";
 import { uploadPersonnelFile } from "@/lib/personnel-actions";
 import { createItTicket } from "@/lib/tickets/actions";
 import { submitAnonymousReport } from "@/lib/reports/actions";
+import { uploadIntegrationAssetFile } from "@/lib/integration/admin-actions";
 
 /**
  * Porta única dos envios de arquivo — e ela existe por UM motivo: progresso.
@@ -50,6 +51,10 @@ const HANDLERS: Record<string, Handler> = {
   "dp-documento": uploadPersonnelFile,
   chamado: createItTicket,
   denuncia: submitAnonymousReport,
+  // Filme, vídeo complementar e documento da Página de Integração. Passa por
+  // aqui pelo mesmo motivo dos demais: filme ultrapassa 100 MB e a tela
+  // precisa mostrar progresso. A guarda (administrar o DHO) está na função.
+  "integracao-arquivo": uploadIntegrationAssetFile,
 };
 
 export async function POST(request: Request) {

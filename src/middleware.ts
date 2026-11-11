@@ -18,7 +18,12 @@ import { isRevokedSessionLogin } from "@/lib/auth/login-redirect";
 const COOKIE_NAME = "bc_session";
 
 // Rotas públicas (prefixos). O restante exige sessão.
-const PUBLIC_PATHS = ["/login"];
+//
+// `/integracao` é a Página de Integração do convidado: módulo ISOLADO, sem
+// conta no sistema. Ela não fica sem portão — tem o seu, e é outro: link de
+// convite não revogado + cookie `bc_convidado` (lib/integration). O portão
+// daqui não serve lá, e o de lá não abre nada daqui.
+const PUBLIC_PATHS = ["/login", "/integracao"];
 
 function bytesToBase64url(bytes: ArrayBuffer): string {
   const arr = new Uint8Array(bytes);
@@ -88,8 +93,11 @@ export async function middleware(request: NextRequest) {
     return response;
   }
 
-  // Logado tentando ver o login → manda pra home.
-  if (authed && isPublic) {
+  // Logado tentando ver o login → manda pra home. SÓ o login: a Página de
+  // Integração também é pública, e mandar quem tem sessão para a home fazia o
+  // DHO cair no sistema ao abrir o convite que acabou de copiar — e punha a
+  // sessão daqui decidindo sobre um módulo que não a consulta.
+  if (authed && pathname === "/login") {
     return NextResponse.redirect(new URL("/", request.url));
   }
 
@@ -119,8 +127,12 @@ export async function middleware(request: NextRequest) {
 // é o portão que derrubava os envios de vídeo (ver RESUMO-UPLOAD.md), hoje
 // aberto até 145 MB no next.config.mjs. Pagar essa cópia só para conferir um
 // cookie é desperdício: a própria rota confere a sessão na primeira linha.
+//
+// Os ícones de `public/` ficam de fora porque o `Logo` aparece justamente nas
+// telas de quem NÃO tem sessão — login e integração. Redirecionados para
+// /login, viram alt text quebrado no topo das duas.
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|api/health|api/cron|api/integracao|api/uploads|uploads|favicon.png|favicon.ico).*)",
+    "/((?!_next/static|_next/image|api/health|api/cron|api/integracao|api/uploads|uploads|favicon.png|favicon.ico|build-connect-icon.png|apple-touch-icon.png).*)",
   ],
 };

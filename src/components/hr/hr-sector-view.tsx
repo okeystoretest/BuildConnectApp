@@ -11,6 +11,7 @@ import { EvaluationResultsPanel } from "@/components/hr/evaluation-results-panel
 import { IntegrationMapsPanel } from "@/components/hr/integration-maps";
 import { PersonnelPanel } from "@/components/hr/personnel-panel";
 import { UserManagementPanel } from "@/components/hr/user-management";
+import { IntegrationPagePanel } from "@/components/hr/integration-page-panel";
 import { WhatsappPanel } from "@/components/hr/whatsapp-panel";
 import { MapUploadModal } from "@/components/hr/map-upload-modal";
 import { ReportBoard } from "@/components/reports/report-board";
@@ -33,6 +34,7 @@ import type {
 } from "@/types/evaluation";
 import type { ReportItem } from "@/types/report";
 import type { FormListItem } from "@/types/form";
+import type { IntegrationAdminData } from "@/types/integration";
 
 export interface HrSectorViewProps {
   /** Administra o DHO: Admin, ou Gestor lotado no DHO. Libera todas as abas. */
@@ -56,6 +58,8 @@ export interface HrSectorViewProps {
   canReports: boolean;
   /** Denúncias em tratativa (as encerradas há mais de 30 min ficam no histórico). */
   reports: ReportItem[];
+  /** Página de Integração do convidado: links, peças e respostas. */
+  integration: IntegrationAdminData;
   /** Vídeo de boas-vindas do setor (modal + card de gestão). */
   welcome?: SectorWelcomeVideoData | null;
   /** Formulários do DHO, recortados por setor na consulta. */
@@ -79,6 +83,7 @@ export function HrSectorView({
   reports,
   welcome,
   forms,
+  integration,
 }: HrSectorViewProps) {
   const { can } = useRole();
   const [mapModalOpen, setMapModalOpen] = useState(false);
@@ -104,6 +109,9 @@ export function HrSectorView({
       // A Central de Denúncias é do DHO e só aparece para quem pode tratá-la.
       ...(canReports ? [{ id: "denuncias", label: "Central de Denúncias" }] : []),
       { id: "usuarios", label: "Gestão de Usuários" },
+      // Módulo isolado, para quem NÃO tem conta. Fica ao lado da Gestão de
+      // Usuários porque é de lá que o botão leva até aqui.
+      { id: "integracao", label: "Página de Integração" },
       // Parear o número e ler o log de envios mexe na credencial da empresa,
       // não em formulário — por isso fica junto da gestão de usuários e não
       // do bloco de Formulários.
@@ -134,7 +142,8 @@ export function HrSectorView({
       // colaborador, e a trilha de progresso nasce mais larga que a coluna de
       // leitura. As demais abas são listas e formulários, que ficam melhores
       // na largura confortável.
-      wide={active === "documentos"}
+      // O quadro da integração é kanban e pede largura, como o de chamados.
+      wide={active === "documentos" || active === "integracao"}
     >
       <PageHeader
         title="DHO"
@@ -174,7 +183,12 @@ export function HrSectorView({
         {active === "documentos" && canHrAdmin && <PersonnelPanel roster={personnel} />}
         {active === "denuncias" && canReports && <ReportBoard reports={reports} />}
 
-        {active === "usuarios" && canHrAdmin && <UserManagementPanel users={users} />}
+        {active === "usuarios" && canHrAdmin && (
+          <UserManagementPanel users={users} onOpenIntegration={() => setActive("integracao")} />
+        )}
+        {active === "integracao" && canHrAdmin && (
+          <IntegrationPagePanel data={integration} />
+        )}
 
         {active === "whatsapp" && canHrAdmin && <WhatsappPanel />}
       </TabPanel>

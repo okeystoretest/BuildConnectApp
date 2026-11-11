@@ -17,6 +17,7 @@ import { getSectorWelcomeVideo } from "@/lib/welcome-video-data";
 import { getReportsBoard } from "@/lib/reports/data";
 import { getFormsForViewer } from "@/lib/forms/data";
 import { getVideoComprehensionResults } from "@/lib/video-comprehension-data";
+import { getIntegrationAdmin } from "@/lib/integration/admin-data";
 import { HrSectorView } from "@/components/hr/hr-sector-view";
 import type { Role } from "@/types";
 
@@ -68,6 +69,7 @@ export default async function HrSectorPage() {
     reports,
     forms,
     comprehension,
+    integration,
   ] = await Promise.all([
     canHrAdmin ? getManagedUsers() : Promise.resolve([]),
     // Departamento Pessoal: a lista de ativos. As pastas de cada um só são
@@ -86,6 +88,11 @@ export default async function HrSectorPage() {
     canForms ? getFormsForViewer() : Promise.resolve([]),
     // Respostas de compreensão já avaliadas, com o mesmo recorte dos resultados.
     getVideoComprehensionResults(sectorScope),
+    // Página de Integração: links, peças e convidados. Só para quem
+    // administra o DHO — é ele quem convida e quem lê as respostas.
+    canHrAdmin
+      ? getIntegrationAdmin()
+      : Promise.resolve({ links: [], assets: [], guests: [] }),
   ]);
 
   const welcome = await getSectorWelcomeVideo("rh", session.userId);
@@ -108,6 +115,7 @@ export default async function HrSectorPage() {
       reports={reports}
       welcome={welcome}
       forms={forms}
+      integration={integration}
     />
   );
 }
