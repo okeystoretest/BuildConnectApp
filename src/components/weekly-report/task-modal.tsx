@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { salvarTarefa } from "@/lib/weekly-report/actions";
 import { TASK_CATEGORIES } from "@/lib/weekly-report/math";
 import { TASK_CATEGORY_LABEL, TASK_PRIORITY_LABEL } from "@/lib/weekly-report/labels";
+import { EvidenceField } from "./evidence-field";
 import type {
   MarketingTaskCategory,
   MarketingTaskItem,
@@ -145,11 +146,12 @@ export function TaskModal({
         </div>
 
         <div className="space-y-1.5">
-          <Label htmlFor="tarefa-evidencia">Evidência (link ou print)</Label>
-          <Input
+          <Label htmlFor="tarefa-evidencia">Evidência</Label>
+          <EvidenceField
             id="tarefa-evidencia"
+            slug={slug}
             value={evidence}
-            onChange={(e) => setEvidence(e.target.value)}
+            onChange={setEvidence}
           />
           <p className="text-[11px] text-muted">
             Obrigatória para mover o cartão para Publicado.

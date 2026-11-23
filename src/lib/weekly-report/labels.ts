@@ -50,12 +50,51 @@ export const TASK_STATUS_LABEL: Record<MarketingTaskStatus, string> = {
   PUBLICADO: "Publicado",
 };
 
+/**
+ * Cor do STATUS — o ponto no cabeçalho da coluna e na legenda do rodapé.
+ *
+ * Mesma receita do `lib/funnel.ts`, que é o vocabulário visual do Cronograma:
+ * hex fixo, para valer nos dois temas. A cor avança de cinza a verde conforme
+ * o cartão caminha, que é o que a coluna já diz pela posição — a cor só
+ * reforça.
+ *
+ * A cor nunca viaja sozinha: o nome do status está sempre escrito ao lado. O
+ * quadro é auditado na sexta, às vezes impresso, e cerca de 1 em 12 homens não
+ * distingue vermelho de verde.
+ */
+export const TASK_STATUS_COLOR: Record<MarketingTaskStatus, string> = {
+  BACKLOG: "#94a3b8",
+  A_FAZER: "#3b82f6",
+  EM_ANDAMENTO: "#f5a524",
+  REVISAO: "#f97316",
+  PUBLICADO: "#22c55e",
+};
+
 export const TASK_CATEGORY_LABEL: Record<MarketingTaskCategory, string> = {
   CONTEUDO: "Conteúdo",
   PUBLICACAO: "Publicação",
   COMUNIDADE: "Comunidade",
   RELATORIO: "Relatório",
   PROCESSO: "Processo",
+};
+
+/**
+ * Cor da categoria no cartão do quadro.
+ *
+ * Mesma receita do `lib/funnel.ts`, que é o vocabulário visual do Cronograma:
+ * hex fixo, para valer nos dois temas, e o ponto colorido no cartão sai daqui.
+ * Nenhum componente escolhe cor de categoria por conta própria.
+ *
+ * A cor nunca viaja sozinha — o rótulo escrito está sempre ao lado. O quadro
+ * é auditado na sexta, às vezes impresso, e cerca de 1 em 12 homens não
+ * distingue vermelho de verde.
+ */
+export const TASK_CATEGORY_COLOR: Record<MarketingTaskCategory, string> = {
+  CONTEUDO: "#3b82f6",
+  PUBLICACAO: "#8b5cf6",
+  COMUNIDADE: "#f5a524",
+  RELATORIO: "#14b8a6",
+  PROCESSO: "#94a3b8",
 };
 
 export const TASK_PRIORITY_LABEL: Record<MarketingTaskPriority, string> = {
@@ -125,4 +164,15 @@ export function formatarPercentual(fracao?: number): string {
 export function formatarNumero(valor?: number): string {
   if (valor === undefined) return "—";
   return valor.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+}
+
+/**
+ * A evidência é uma imagem nossa, ou um endereço?
+ *
+ * O campo é um só (ver `evidence-field`): caminho começando no prefixo de
+ * uploads é print enviado, o resto é link. Uma coluna a mais para guardar essa
+ * distinção seria uma coluna que pode discordar do valor ao lado dela.
+ */
+export function evidenciaEhImagem(evidence?: string): boolean {
+  return !!evidence && evidence.startsWith("/uploads/");
 }

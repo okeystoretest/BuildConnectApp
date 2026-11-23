@@ -4,8 +4,9 @@ import { z } from "zod";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth/require-user";
+import { ImageProcessingError, processAndStoreImage } from "@/lib/storage/images";
 import { requireApprover, requireWeeklyScope, revalidateWeekly } from "./guards";
-import { AGENDA, DELIVERIES, METRICS, OKRS } from "./templates";
+import { AGENDA } from "./templates";
 
 /**
  * Escritas do Relatório Semanal.
@@ -39,6 +40,24 @@ const EM_PORTUGUES: z.ZodErrorMap = (issue) => {
 const dia = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Data inválida.");
 const health = z.enum(["NO_RITMO", "ATENCAO", "TRAVADO"]).nullish();
 const textoCurto = z.string().trim().max(200, "Texto muito longo.").nullish();
+
+/**
+ * Evidência: um caminho de upload nosso ou um endereço http(s). Nada mais.
+ *
+ * A tela mostra a evidência como `<img src>` ou como `<a href>`, e é por isso
+ * que o esquema é conferido AQUI: um `javascript:` digitado no campo de link
+ * viraria execução de script no clique de quem lê o relatório. Fronteira de
+ * confiança não se valida só no navegador.
+ */
+const evidencia = z
+  .string()
+  .trim()
+  .max(500, "Endereço muito longo.")
+  .refine(
+    (v) => v === "" || v.startsWith("/uploads/") || /^https?:\/\//i.test(v),
+    "A evidência precisa ser um link http(s) ou uma imagem enviada.",
+  )
+  .nullish();
 const textoLongo = z.string().trim().max(2000, "Texto muito longo.").nullish();
 
 /**
@@ -150,28 +169,9 @@ export async function criarRelatorio(input: unknown): Promise<WeeklyActionResult
       weekNumber,
       periodStart: lerDia(periodStart),
       periodEnd: lerDia(periodEnd),
-      deliveries: {
-        create: DELIVERIES.map((d, order) => ({ order, ...d })),
-      },
-      metrics: {
-        create: METRICS.map((m, order) => ({
-          order,
-          channel: m.channel,
-          metric: m.metric,
-          target: m.target ?? null,
-        })),
-      },
-      okrs: {
-        create: OKRS.map((o, order) => ({
-          order,
-          objective: o.objective,
-          keyResult: o.keyResult,
-          measure: o.measure,
-          goalLabel: o.goalLabel,
-          goalValue: o.goalValue ?? null,
-          monthlyRead: o.monthlyRead ?? false,
-        })),
-      },
+      // Só a PAUTA nasce pronta. Entregas, métricas e OKRs são montados pela
+      // semana: eram listas fixas da planilha, e a predefinição saiu em
+      // 23/11/2026 — linha que não se apaga vira linha que se ignora.
       agenda: {
         create: AGENDA.map((a, order) => ({ order, ...a })),
       },
@@ -225,20 +225,27 @@ export async function salvarResumo(input: unknown): Promise<WeeklyActionResult> 
 }
 
 /**
- * Uma seção inteira de modelo fixo, numa transação.
+ * Uma seção de linhas, substituída inteira numa transação.
  *
- * Quatro seções na mesma action porque o ato é o mesmo — gravar linhas que já
- * existem, dentro de um relatório já conferido. Quatro actions seriam quatro
- * cópias do mesmo preâmbulo, e o preâmbulo é a parte que não pode divergir.
+ * As quatro na mesma action porque o ato é o mesmo — gravar as linhas de um
+ * relatório já conferido. Quatro actions seriam quatro cópias do mesmo
+ * preâmbulo, e o preâmbulo é a parte que não pode divergir.
  *
- * A seção inteira, e não linha a linha, porque é assim que a planilha era
- * usada: preenche-se a aba e fecha-se o arquivo. Vinte linhas em vinte
- * chamadas deixariam a tela em um estado que não existe no banco se a décima
- * falhasse.
+ * A seção inteira, e não linha a linha, porque é assim que se preenche: abre-se
+ * a seção, mexe-se em várias linhas e salva-se. Vinte linhas em vinte chamadas
+ * deixariam a tela num estado que não existe no banco se a décima falhasse.
  *
- * O texto do modelo (dia, bloco, entrega prevista, pergunta) NÃO entra aqui:
- * é a cópia congelada na criação, e deixá-lo editável apagaria a diferença
- * entre "não cumpri a rotina" e "mudei a rotina".
+ * ENTREGAS, MÉTRICAS e OKRs são APAGADOS E RECRIADOS, como `substituirEtapas`
+ * no Funil: desde 23/11/2026 a semana monta as próprias linhas, então criar,
+ * editar, reordenar e excluir são o mesmo gesto — mandar a lista como ela
+ * ficou. A `order` vem da POSIÇÃO no array, nunca do cliente, e é isso que
+ * impede buraco (0,1,3) e empate (0,1,1). Os ids mudam a cada salvamento, e
+ * ninguém aponta para eles: a média de 4 semanas casa os OKRs pelo TEXTO do
+ * resultado-chave, justamente por isso.
+ *
+ * A PAUTA é a exceção: ela continua sendo roteiro fixo, então aqui só a
+ * RESPOSTA é gravada. Deixar o bloco e a pergunta editáveis apagaria a
+ * diferença entre "não respondi" e "mudei a pergunta".
  */
 const secaoSchema = z.discriminatedUnion("kind", [
   z.object({
@@ -247,9 +254,20 @@ const secaoSchema = z.discriminatedUnion("kind", [
     reportId: z.string().min(1),
     rows: z
       .array(
-        z.object({ id: z.string().min(1), health, evidence: textoCurto, note: textoLongo }),
+        z.object({
+          day: textoCurto,
+          block: textoCurto,
+          expected: z
+            .string()
+            .trim()
+            .min(1, "Toda entrega precisa de uma descrição.")
+            .max(500, "Descrição muito longa."),
+          health,
+          evidence: evidencia,
+          note: textoLongo,
+        }),
       )
-      .max(60, "Seção com linhas demais."),
+      .max(60, "Máximo de 60 entregas por semana."),
   }),
   z.object({
     kind: z.literal("metric"),
@@ -258,7 +276,16 @@ const secaoSchema = z.discriminatedUnion("kind", [
     rows: z
       .array(
         z.object({
-          id: z.string().min(1),
+          channel: z
+            .string()
+            .trim()
+            .min(1, "Toda métrica precisa de um canal.")
+            .max(80, "Nome de canal muito longo."),
+          metric: z
+            .string()
+            .trim()
+            .min(1, "Toda linha precisa do nome da métrica.")
+            .max(120, "Nome de métrica muito longo."),
           previous: numero,
           current: numero,
           target: textoCurto,
@@ -266,7 +293,7 @@ const secaoSchema = z.discriminatedUnion("kind", [
           reading: textoLongo,
         }),
       )
-      .max(60, "Seção com linhas demais."),
+      .max(60, "Máximo de 60 métricas por semana."),
   }),
   z.object({
     kind: z.literal("okr"),
@@ -274,9 +301,23 @@ const secaoSchema = z.discriminatedUnion("kind", [
     reportId: z.string().min(1),
     rows: z
       .array(
-        z.object({ id: z.string().min(1), achieved: numero, health, nextStep: textoLongo }),
+        z.object({
+          objective: textoCurto,
+          keyResult: z
+            .string()
+            .trim()
+            .min(1, "Todo resultado-chave precisa de um nome.")
+            .max(300, "Nome muito longo."),
+          measure: textoLongo,
+          goalLabel: textoCurto,
+          goalValue: numero,
+          monthlyRead: z.boolean().optional(),
+          achieved: numero,
+          health,
+          nextStep: textoLongo,
+        }),
       )
-      .max(60, "Seção com linhas demais."),
+      .max(60, "Máximo de 60 resultados-chave por semana."),
   }),
   z.object({
     kind: z.literal("agenda"),
@@ -284,24 +325,9 @@ const secaoSchema = z.discriminatedUnion("kind", [
     reportId: z.string().min(1),
     rows: z
       .array(z.object({ id: z.string().min(1), answer: textoLongo }))
-      .max(60, "Seção com linhas demais."),
+      .max(20, "Seção com linhas demais."),
   }),
 ]);
-
-/** As linhas que REALMENTE pertencem a este relatório, por tabela. */
-async function idsDaSecao(kind: string, reportId: string): Promise<Set<string>> {
-  const where = { reportId };
-  const select = { id: true };
-  const rows =
-    kind === "delivery"
-      ? await prisma.weeklyReportDelivery.findMany({ where, select })
-      : kind === "metric"
-        ? await prisma.weeklyReportMetric.findMany({ where, select })
-        : kind === "okr"
-          ? await prisma.weeklyReportOkr.findMany({ where, select })
-          : await prisma.weeklyReportAgendaItem.findMany({ where, select });
-  return new Set(rows.map((r) => r.id));
-}
 
 export async function salvarSecao(input: unknown): Promise<WeeklyActionResult> {
   const parsed = secaoSchema.safeParse(input, { errorMap: EM_PORTUGUES });
@@ -312,68 +338,84 @@ export async function salvarSecao(input: unknown): Promise<WeeklyActionResult> {
   const { report, error } = await abrirRelatorio(data.slug, data.reportId);
   if (!report) return { ok: false, error: error ?? undefined };
 
-  // Os ids são conferidos ANTES de escrever: o relatório já foi conferido
-  // contra o setor, e cada linha é conferida contra o relatório. Um id de
-  // fora não escreve em nada — e também não passa em silêncio.
-  const validos = await idsDaSecao(data.kind, report.id);
-  if (data.rows.some((r) => !validos.has(r.id))) {
-    return { ok: false, error: "Esta seção mudou. Recarregue a página e tente de novo." };
-  }
-  if (data.rows.length === 0) return { ok: true, id: report.id };
-
-  // Um array só, montado por `push`: o ternário aninhado produzia uma UNIÃO
-  // de tipos de array, que a sobrecarga do `$transaction` não aceita.
-  const ops: Prisma.PrismaPromise<unknown>[] = [];
-  if (data.kind === "delivery") {
-    for (const r of data.rows) {
-      ops.push(
-        prisma.weeklyReportDelivery.update({
-          where: { id: r.id },
-          data: {
-            health: r.health ?? null,
-            evidence: r.evidence || null,
-            note: r.note || null,
-          },
-        }),
-      );
+  // A pauta é roteiro fixo: só a resposta muda, e a linha é conferida contra o
+  // relatório pelo `reportId` no WHERE.
+  if (data.kind === "agenda") {
+    const validos = await prisma.weeklyReportAgendaItem.findMany({
+      where: { reportId: report.id },
+      select: { id: true },
+    });
+    const conhecidos = new Set(validos.map((r) => r.id));
+    if (data.rows.some((r) => !conhecidos.has(r.id))) {
+      return { ok: false, error: "Esta seção mudou. Recarregue a página e tente de novo." };
     }
-  } else if (data.kind === "metric") {
-    for (const r of data.rows) {
-      ops.push(
-        prisma.weeklyReportMetric.update({
-          where: { id: r.id },
-          data: {
-            previous: r.previous ?? null,
-            current: r.current ?? null,
-            target: r.target || null,
-            health: r.health ?? null,
-            reading: r.reading || null,
-          },
-        }),
-      );
-    }
-  } else if (data.kind === "okr") {
-    for (const r of data.rows) {
-      ops.push(
-        prisma.weeklyReportOkr.update({
-          where: { id: r.id },
-          data: {
-            achieved: r.achieved ?? null,
-            health: r.health ?? null,
-            nextStep: r.nextStep || null,
-          },
-        }),
-      );
-    }
-  } else {
-    for (const r of data.rows) {
-      ops.push(
+    await prisma.$transaction(
+      data.rows.map((r) =>
         prisma.weeklyReportAgendaItem.update({
           where: { id: r.id },
           data: { answer: r.answer || null },
         }),
-      );
-    }
+      ),
+    );
+    revalidateWeekly(data.slug);
+    return { ok: true, id: report.id };
+  }
+
+  // As demais: apaga e recria dentro de UMA transação. O id que veio do
+  // cliente é ignorado de propósito — a linha é identificada pela posição.
+  const ops: Prisma.PrismaPromise<unknown>[] = [];
+  if (data.kind === "delivery") {
+    ops.push(prisma.weeklyReportDelivery.deleteMany({ where: { reportId: report.id } }));
+    ops.push(
+      prisma.weeklyReportDelivery.createMany({
+        data: data.rows.map((r, order) => ({
+          reportId: report.id,
+          order,
+          day: r.day || "",
+          block: r.block || "",
+          expected: r.expected,
+          health: r.health ?? null,
+          evidence: r.evidence || null,
+          note: r.note || null,
+        })),
+      }),
+    );
+  } else if (data.kind === "metric") {
+    ops.push(prisma.weeklyReportMetric.deleteMany({ where: { reportId: report.id } }));
+    ops.push(
+      prisma.weeklyReportMetric.createMany({
+        data: data.rows.map((r, order) => ({
+          reportId: report.id,
+          order,
+          channel: r.channel,
+          metric: r.metric,
+          previous: r.previous ?? null,
+          current: r.current ?? null,
+          target: r.target || null,
+          health: r.health ?? null,
+          reading: r.reading || null,
+        })),
+      }),
+    );
+  } else {
+    ops.push(prisma.weeklyReportOkr.deleteMany({ where: { reportId: report.id } }));
+    ops.push(
+      prisma.weeklyReportOkr.createMany({
+        data: data.rows.map((r, order) => ({
+          reportId: report.id,
+          order,
+          objective: r.objective || "",
+          keyResult: r.keyResult,
+          measure: r.measure || "",
+          goalLabel: r.goalLabel || "",
+          goalValue: r.goalValue ?? null,
+          monthlyRead: r.monthlyRead ?? false,
+          achieved: r.achieved ?? null,
+          health: r.health ?? null,
+          nextStep: r.nextStep || null,
+        })),
+      }),
+    );
   }
 
   await prisma.$transaction(ops);
@@ -577,7 +619,7 @@ const tarefaSchema = z.object({
   priority: z.enum(["ALTA", "MEDIA", "BAIXA"]),
   assignee: textoCurto,
   dueDate: dia.nullish(),
-  evidence: textoCurto,
+  evidence: evidencia,
   note: textoLongo,
 });
 
@@ -700,4 +742,47 @@ export async function excluirTarefa(input: unknown): Promise<WeeklyActionResult>
 
   revalidateWeekly(parsed.data.slug);
   return { ok: true };
+}
+
+/**
+ * Envia um print como evidência e devolve o caminho público.
+ *
+ * Server Action, e não a rota `/api/uploads`: aquela existe para dar PROGRESSO
+ * em arquivo grande (vídeo de 110 MB), e um print não precisa de barra de
+ * progresso. O que ela faria aqui de útil, a action já faz.
+ *
+ * A imagem é reprocessada por `processAndStoreImage` — redimensiona, corrige a
+ * orientação do EXIF e converte para .webp. O banco guarda só o CAMINHO, como
+ * todo arquivo do sistema; nunca o binário.
+ *
+ * Grava, mas NÃO associa: quem escreve o caminho no cartão é `salvarTarefa`,
+ * com o resto do formulário. Separá-los é o que permite trocar a imagem antes
+ * de salvar sem deixar o cartão apontando para um arquivo descartado.
+ */
+export async function enviarEvidencia(
+  formData: FormData,
+): Promise<{ ok: boolean; path?: string; error?: string }> {
+  const slug = String(formData.get("slug") ?? "");
+  const file = formData.get("file");
+
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, error: "Nenhuma imagem recebida." };
+  }
+
+  const { scope, error } = await abrirEscopo(slug);
+  if (!scope) return { ok: false, error: error ?? undefined };
+
+  try {
+    // Categoria `conteudo`: é material de marketing, com a mesma retenção do
+    // resto do conteúdo de setor. Não é dado sensível e não pede pasta própria.
+    const imagem = await processAndStoreImage(file, "conteudo");
+    return { ok: true, path: imagem.publicPath };
+  } catch (e) {
+    const motivo =
+      e instanceof ImageProcessingError ? e.message : "Falha ao processar a imagem.";
+    if (!(e instanceof ImageProcessingError)) {
+      console.error("[weekly-report] evidência:", e);
+    }
+    return { ok: false, error: motivo };
+  }
 }

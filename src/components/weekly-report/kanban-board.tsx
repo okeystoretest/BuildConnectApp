@@ -2,53 +2,144 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarClock, Link2, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { CalendarClock, Image as ImageIcon, Inbox, Link2, Loader2, Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Select } from "@/components/ui/select";
 import { Modal } from "@/components/ui/modal";
 import { excluirTarefa, moverTarefa } from "@/lib/weekly-report/actions";
 import { TASK_STATUSES } from "@/lib/weekly-report/math";
 import {
+  TASK_CATEGORY_COLOR,
   TASK_CATEGORY_LABEL,
   TASK_PRIORITY_LABEL,
-  TASK_PRIORITY_TONE,
+  TASK_STATUS_COLOR,
   TASK_STATUS_LABEL,
-  formatarData,
+  evidenciaEhImagem,
+  formatarDiaMes,
 } from "@/lib/weekly-report/labels";
-import type { MarketingTaskItem, MarketingTaskStatus } from "@/types/weekly-report";
+import type {
+  KanbanSummary,
+  MarketingTaskItem,
+  MarketingTaskStatus,
+} from "@/types/weekly-report";
 import { TaskModal } from "./task-modal";
+import { TaskDetailsModal } from "./task-details-modal";
 
 /**
- * O quadro das abas 7 e 8 da planilha.
+ * O quadro das abas 7 e 8 da planilha, na estética do Cronograma.
  *
- * As colunas não arrastam. O cartão troca de coluna por uma lista suspensa —
- * é o que funciona com teclado, com leitor de tela e no telefone, e arrastar
- * numa planilha também nunca existiu: movia-se a célula de status. Uma
- * biblioteca de drag-and-drop custaria uma dependência para desfazer as três
- * coisas.
+ * O cartão segue o card do calendário: moldura `rounded-lg border p-2`, título
+ * em duas linhas no máximo e selos minúsculos. A coluna segue o quadro do
+ * calendário — `rounded-xl border`, cabeçalho em `bg-surface-2`.
+ *
+ * A COR MARCA O STATUS, não a categoria: é o que a referência de 23/11/2026
+ * mostrava, e faz mais sentido — a coluna já diz o status pela posição, e a
+ * cor reforça a mesma leitura em vez de competir com ela.
+ *
+ * ARRASTAR move o cartão. É drag-and-drop NATIVO do HTML (`draggable`,
+ * `onDragOver`, `onDrop`), sem biblioteca: o navegador já faz isso há vinte
+ * anos, e uma dependência aqui pagaria por recursos que este quadro não usa
+ * (reordenar dentro da coluna, animação de deslocamento, arrasto em toque).
+ *
+ * Arrastar é mouse. O caminho de quem usa teclado ou leitor de tela é o CLIQUE
+ * — Enter no cartão abre a ficha, e lá o status é uma lista suspensa. Por isso
+ * o cartão não tem mais botões próprios: eles viviam num alvo de 20 px dentro
+ * de um cartão que agora inteiro é clicável, e a ficha faz as duas coisas
+ * melhor.
  */
+
+/** Selo minúsculo, o do Cronograma. */
+function Selo({
+  children,
+  className,
+  style,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <span
+      style={style}
+      className={cn(
+        "rounded border px-1.5 py-0.5 text-[10px] font-semibold leading-none",
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+/** Prioridade: a cor acompanha a palavra, nunca a substitui. */
+const PRIORITY_BADGE: Record<MarketingTaskItem["priority"], string> = {
+  ALTA: "border-danger/35 bg-danger/15 text-danger",
+  MEDIA: "border-warning/35 bg-warning/15 text-warning",
+  BAIXA: "border-border bg-surface-3 text-muted",
+};
+
+/** Um número do topo do quadro. */
+function Numero({
+  rotulo,
+  valor,
+  destaque,
+}: {
+  rotulo: string;
+  valor: number;
+  destaque?: "primary" | "warning";
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-surface px-4 py-3">
+      <p className="text-[11px] text-muted">{rotulo}</p>
+      <p
+        className={cn(
+          "mt-1 text-2xl font-bold tracking-tight",
+          destaque === "primary" && valor > 0 && "text-primary",
+          destaque === "warning" && valor > 0 && "text-warning",
+          (!destaque || valor === 0) && "text-foreground",
+        )}
+      >
+        {valor}
+      </p>
+    </div>
+  );
+}
+
 export function KanbanBoard({
   slug,
   tasks,
+  summary,
   canEdit,
 }: {
   slug: string;
   tasks: readonly MarketingTaskItem[];
+  summary: KanbanSummary;
   canEdit: boolean;
 }) {
   const router = useRouter();
   const [novo, setNovo] = useState(false);
+  const [abertoId, setAbertoId] = useState<string | null>(null);
   const [editando, setEditando] = useState<MarketingTaskItem | null>(null);
   const [excluindo, setExcluindo] = useState<MarketingTaskItem | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
+  const [arrastando, setArrastando] = useState<string | null>(null);
+  const [alvo, setAlvo] = useState<MarketingTaskStatus | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
-  async function mover(task: MarketingTaskItem, status: MarketingTaskStatus) {
+  // O cartão aberto é buscado pela lista, não guardado em estado: assim ele
+  // reflete o `router.refresh()` depois de uma edição, em vez de mostrar a
+  // versão congelada no momento do clique.
+  const aberto = tasks.find((t) => t.id === abertoId) ?? null;
+
+  const contagemDe = (status: MarketingTaskStatus) =>
+    summary.byStatus.find((l) => l.status === status)?.count ?? 0;
+
+  async function mover(taskId: string, status: MarketingTaskStatus) {
     if (ocupado) return;
-    setOcupado(task.id);
+    setOcupado(taskId);
     setErro(null);
-    const r = await moverTarefa({ slug, taskId: task.id, status });
+    const r = await moverTarefa({ slug, taskId, status });
     setOcupado(null);
     if (!r.ok) {
       setErro(r.error ?? "Não foi possível mover a tarefa.");
@@ -68,15 +159,27 @@ export function KanbanBoard({
       return;
     }
     setExcluindo(null);
+    setAbertoId(null);
     router.refresh();
+  }
+
+  function soltarNaColuna(status: MarketingTaskStatus, e: React.DragEvent) {
+    e.preventDefault();
+    setAlvo(null);
+    setArrastando(null);
+    const id = e.dataTransfer.getData("text/plain");
+    if (!id) return;
+    const task = tasks.find((t) => t.id === id);
+    if (!task || task.status === status) return;
+    void mover(id, status);
   }
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-muted">
-          Mova os cartões da esquerda para a direita conforme a tarefa avança. Nada chega a
-          Publicado sem evidência.
+          Arraste os cartões da esquerda para a direita conforme a tarefa avança, ou clique para
+          ver a ficha. Nada chega a Publicado sem evidência.
         </p>
         {canEdit && (
           <Button size="sm" onClick={() => setNovo(true)}>
@@ -86,110 +189,180 @@ export function KanbanBoard({
         )}
       </div>
 
+      {/* Os números ACIMA do quadro, não depois dele: quem abre o Kanban na
+          sexta quer o total e o atraso antes de olhar cartão por cartão. */}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        <Numero rotulo="Total de tarefas" valor={summary.total} />
+        <Numero rotulo="Em andamento" valor={contagemDe("EM_ANDAMENTO")} />
+        <Numero rotulo="Em revisão" valor={contagemDe("REVISAO")} />
+        <Numero rotulo="Publicadas" valor={summary.published} destaque="primary" />
+        <Numero rotulo="Atrasadas" valor={summary.overdue} destaque="warning" />
+      </div>
+
       {erro && <p className="text-xs text-danger">{erro}</p>}
 
-      <div className="scrollbar-slim -mx-1 overflow-x-auto px-1 pb-2">
-        <div className="flex min-w-max gap-3">
+      <div className="scrollbar-slim overflow-x-auto rounded-xl border border-border bg-surface">
+        <div className="flex min-w-max divide-x divide-border">
           {TASK_STATUSES.map((status) => {
             const coluna = tasks.filter((t) => t.status === status);
+            const recebendo = alvo === status;
             return (
               <section
                 key={status}
                 aria-label={TASK_STATUS_LABEL[status]}
-                className="w-[260px] shrink-0 rounded-xl border border-border bg-surface-2/40 p-2"
+                className={cn(
+                  "w-[232px] shrink-0 transition-colors",
+                  recebendo && "bg-primary/[0.07]",
+                )}
+                onDragOver={(e) => {
+                  if (!canEdit || !arrastando) return;
+                  // Sem o preventDefault o navegador recusa a soltura: o
+                  // padrão de toda área da página é "aqui não se solta".
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  setAlvo(status);
+                }}
+                onDragLeave={(e) => {
+                  // Só limpa ao sair da COLUNA: passar por cima de um cartão
+                  // filho dispara dragleave e piscaria o destaque.
+                  if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+                  setAlvo((atual) => (atual === status ? null : atual));
+                }}
+                onDrop={(e) => canEdit && soltarNaColuna(status, e)}
               >
-                <header className="flex items-center justify-between px-1 pb-2">
-                  <h4 className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                <header
+                  className={cn(
+                    "flex items-center gap-1.5 border-b border-border px-2.5 py-2 transition-colors",
+                    recebendo ? "bg-primary/10" : "bg-surface-2",
+                  )}
+                >
+                  <span
+                    aria-hidden
+                    className="h-2 w-2 shrink-0 rounded-full"
+                    style={{ backgroundColor: TASK_STATUS_COLOR[status] }}
+                  />
+                  <h4 className="text-[10px] font-semibold uppercase tracking-wide text-muted">
                     {TASK_STATUS_LABEL[status]}
                   </h4>
-                  <span className="text-[11px] text-muted">{coluna.length}</span>
+                  <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-md bg-surface-3 px-1 text-[11px] font-semibold text-muted">
+                    {coluna.length}
+                  </span>
                 </header>
 
-                <div className="space-y-2">
-                  {coluna.length === 0 && (
-                    <p className="px-1 py-3 text-[11px] text-muted">Nenhum cartão.</p>
-                  )}
-                  {coluna.map((task) => (
-                    <article
-                      key={task.id}
-                      className="rounded-lg border border-border bg-surface p-2.5"
+                <div className="min-h-[120px] space-y-1.5 p-2">
+                  {coluna.length === 0 ? (
+                    <div
+                      className={cn(
+                        "flex flex-col items-center gap-1.5 rounded-lg border border-dashed px-2 py-6 text-center transition-colors",
+                        recebendo ? "border-primary/50" : "border-border",
+                      )}
                     >
-                      <div className="flex items-start justify-between gap-1">
-                        <span className="font-mono text-[10px] text-muted">{task.code}</span>
-                        <div className="flex items-center gap-1">
-                          <Badge tone={TASK_PRIORITY_TONE[task.priority]} className="text-[10px]">
-                            {TASK_PRIORITY_LABEL[task.priority]}
-                          </Badge>
-                          {canEdit && (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => setEditando(task)}
-                                aria-label={`Editar ${task.code}`}
-                                className="focus-ring flex h-6 w-6 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-2 hover:text-foreground"
-                              >
-                                <Pencil className="h-3 w-3" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setExcluindo(task)}
-                                aria-label={`Excluir ${task.code}`}
-                                className="focus-ring flex h-6 w-6 items-center justify-center rounded-md text-danger transition-colors hover:bg-danger/15"
-                              >
-                                <Trash2 className="h-3 w-3" />
-                              </button>
-                            </>
-                          )}
-                        </div>
-                      </div>
-
-                      <p className="mt-1 text-xs text-foreground">{task.title}</p>
-
-                      <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-muted">
-                        <span>{TASK_CATEGORY_LABEL[task.category]}</span>
-                        {task.assignee && <span>· {task.assignee}</span>}
-                        {task.evidence && (
-                          <span className="inline-flex items-center gap-0.5 text-primary">
-                            <Link2 className="h-3 w-3" />
-                            evidência
-                          </span>
-                        )}
+                      <Inbox className="h-5 w-5 text-muted/60" aria-hidden />
+                      <p className="text-[11px] leading-tight text-muted">
+                        {recebendo
+                          ? "Solte aqui"
+                          : `Nenhuma tarefa em ${TASK_STATUS_LABEL[status].toLowerCase()}`}
                       </p>
-
-                      {task.dueDate && (
-                        <p
-                          className={`mt-1 inline-flex items-center gap-1 text-[10px] ${
-                            task.overdue ? "font-semibold text-danger" : "text-muted"
-                          }`}
-                        >
-                          <CalendarClock className="h-3 w-3" />
-                          {task.overdue ? "atrasado · " : ""}
-                          {formatarData(task.dueDate)}
-                        </p>
-                      )}
-
-                      {canEdit && (
-                        <div className="mt-2 flex items-center gap-1.5">
-                          <Select
-                            aria-label={`Mover ${task.code}`}
-                            className="h-8 text-[11px]"
-                            disabled={ocupado === task.id}
-                            value={task.status}
-                            onChange={(e) =>
-                              mover(task, e.target.value as MarketingTaskStatus)
-                            }
-                            options={TASK_STATUSES.map((s) => ({
-                              value: s,
-                              label: TASK_STATUS_LABEL[s],
-                            }))}
-                          />
+                    </div>
+                  ) : (
+                    coluna.map((task) => (
+                      <article
+                        key={task.id}
+                        /* Div com papel de botão, não `<button>`: o cartão tem
+                           um link de evidência e selos dentro, e botão dentro
+                           de botão é HTML inválido — a mesma armadilha do card
+                           de vídeo e do atalho de aplicativo. */
+                        role="button"
+                        tabIndex={0}
+                        draggable={canEdit && ocupado === null}
+                        onClick={() => setAbertoId(task.id)}
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter" && e.key !== " ") return;
+                          e.preventDefault();
+                          setAbertoId(task.id);
+                        }}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("text/plain", task.id);
+                          e.dataTransfer.effectAllowed = "move";
+                          setArrastando(task.id);
+                        }}
+                        onDragEnd={() => {
+                          setArrastando(null);
+                          setAlvo(null);
+                        }}
+                        className={cn(
+                          "focus-ring rounded-lg border border-border bg-surface-2 p-2 text-left transition-all",
+                          canEdit ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
+                          "hover:border-border-strong",
+                          arrastando === task.id && "opacity-40",
+                          ocupado === task.id && "opacity-60",
+                        )}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-[10px] leading-none text-muted">
+                            {task.code}
+                          </span>
                           {ocupado === task.id && (
-                            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted" />
+                            <Loader2 className="ml-auto h-3 w-3 animate-spin text-muted" />
                           )}
                         </div>
-                      )}
-                    </article>
-                  ))}
+
+                        <p className="mt-1 line-clamp-2 text-[11px] font-semibold leading-tight text-foreground">
+                          {task.title}
+                        </p>
+
+                        <div className="mt-1.5 flex items-center gap-1">
+                          <Selo
+                            className="border-transparent"
+                            style={{
+                              backgroundColor: `${TASK_CATEGORY_COLOR[task.category]}26`,
+                              color: TASK_CATEGORY_COLOR[task.category],
+                            }}
+                          >
+                            {TASK_CATEGORY_LABEL[task.category]}
+                          </Selo>
+                          <Selo className={PRIORITY_BADGE[task.priority]}>
+                            {TASK_PRIORITY_LABEL[task.priority]}
+                          </Selo>
+                          {task.assignee && (
+                            <Avatar
+                              name={task.assignee}
+                              size="ml-auto h-5 w-5"
+                              textSize="text-[9px]"
+                              className="shrink-0"
+                            />
+                          )}
+                        </div>
+
+                        {(task.evidence || task.dueDate) && (
+                          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px]">
+                            {task.evidence && (
+                              <span className="inline-flex items-center gap-0.5 text-primary">
+                                {evidenciaEhImagem(task.evidence) ? (
+                                  <ImageIcon className="h-3 w-3" />
+                                ) : (
+                                  <Link2 className="h-3 w-3" />
+                                )}
+                                evidência
+                              </span>
+                            )}
+                            {task.dueDate && (
+                              <span
+                                className={cn(
+                                  "inline-flex items-center gap-0.5",
+                                  task.overdue ? "font-semibold text-danger" : "text-muted",
+                                )}
+                              >
+                                <CalendarClock className="h-3 w-3" />
+                                {task.overdue && "atrasado · "}
+                                {formatarDiaMes(task.dueDate)}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </article>
+                    ))
+                  )}
                 </div>
               </section>
             );
@@ -197,7 +370,40 @@ export function KanbanBoard({
         </div>
       </div>
 
-      {/* A chave remonta o modal a cada cartão: todo o estado dele vive em
+      {/* Legenda e a regra de auditoria, que era a frase da aba de instruções
+          da planilha ("o board é auditado toda sexta, no bloco das 17h"). Com
+          a aba "Como usar" fora, esta é a única linha que ainda a diz. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-border pt-2.5">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          {TASK_STATUSES.map((status) => (
+            <span key={status} className="flex items-center gap-1.5 text-[11px] text-muted">
+              <span
+                aria-hidden
+                className="h-2 w-2 rounded-full"
+                style={{ backgroundColor: TASK_STATUS_COLOR[status] }}
+              />
+              {TASK_STATUS_LABEL[status]}
+            </span>
+          ))}
+        </div>
+        <span className="flex items-center gap-1.5 text-[11px] text-muted">
+          <CalendarClock className="h-3.5 w-3.5" aria-hidden />
+          Auditoria do quadro: sexta, 17h
+        </span>
+      </div>
+
+      {aberto && !editando && !excluindo && (
+        <TaskDetailsModal
+          slug={slug}
+          task={aberto}
+          canEdit={canEdit}
+          onClose={() => setAbertoId(null)}
+          onEdit={() => setEditando(aberto)}
+          onDelete={() => setExcluindo(aberto)}
+        />
+      )}
+
+      {/* A chave remonta o formulário a cada cartão: todo o estado dele vive em
           inicializadores de useState, e sem ela abrir o segundo cartão
           mostraria os dados do primeiro. */}
       {novo && <TaskModal key="novo" slug={slug} open onClose={() => setNovo(false)} />}

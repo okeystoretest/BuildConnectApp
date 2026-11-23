@@ -33,6 +33,27 @@ export function useSecao<T extends { id: string }>(
     setRows((atuais) => atuais.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   }, []);
 
+  /**
+   * Acrescenta uma linha no fim.
+   *
+   * O `id` é de mentira e serve só de chave do React enquanto a linha não foi
+   * gravada. Nas seções dinâmicas a action APAGA e RECRIA tudo, identificando
+   * a linha pela posição — então o id que vai daqui é ignorado de propósito, e
+   * não há como ele colidir com um id de verdade.
+   */
+  const adicionar = useCallback((row: Omit<T, "id">) => {
+    setSalvo(false);
+    setRows((atuais) => [
+      ...atuais,
+      { ...row, id: `nova-${Date.now()}-${atuais.length}` } as T,
+    ]);
+  }, []);
+
+  const remover = useCallback((id: string) => {
+    setSalvo(false);
+    setRows((atuais) => atuais.filter((r) => r.id !== id));
+  }, []);
+
   const salvar = useCallback(async () => {
     if (salvando) return;
     setSalvando(true);
@@ -52,7 +73,7 @@ export function useSecao<T extends { id: string }>(
     router.refresh();
   }, [enviar, rows, salvando, router]);
 
-  return { rows, alterar, sujo, salvar, salvando, erro, salvo };
+  return { rows, alterar, adicionar, remover, sujo, salvar, salvando, erro, salvo };
 }
 
 /**

@@ -392,11 +392,7 @@ export function SectorPage({
       title={sector.name}
       // Só o Cronograma ocupa a tela toda; as demais abas mantêm a largura
       // de leitura confortável.
-      wide={
-        activeId === "cronograma" ||
-        activeId === "funil-vendas" ||
-        activeId === "relatorio-semanal"
-      }
+      wide={activeId === "cronograma" || activeId === "funil-vendas"}
     >
       <PageHeader
         title={sector.name}

@@ -3,7 +3,7 @@ import test, { after, before } from "node:test";
 import { prisma } from "@/lib/db/prisma";
 import { requireApprover, requireWeeklyScope } from "./guards";
 import { getWeeklyReportData, getWeeklyReportDetail, resolveWeeklyScope } from "./data";
-import { AGENDA, DELIVERIES, METRICS, OKRS } from "./templates";
+import { AGENDA } from "./templates";
 
 /**
  * O Relatório Semanal contra o Postgres.
@@ -32,7 +32,21 @@ let gestorDeFora = { id: "", role: "GESTOR" };
 let semanaAtual = "";
 let semanaAnterior = "";
 
-/** Cria uma semana já com as linhas dos modelos, como a action faz. */
+/** O resultado-chave usado nos testes de média — casado pelo TEXTO. */
+const KR_MENSAL = "Crescer base de seguidores";
+
+/** Entregas de teste. Fixas AQUI, porque o relatório não as traz mais prontas. */
+const ENTREGAS_DE_TESTE = [
+  { day: "Segunda", block: "Planejamento", expected: "Calendário da semana fechado" },
+  { day: "Terça", block: "Gravação", expected: "Conteúdos gravados com as consultoras" },
+  { day: "Sexta", block: "Relatório", expected: "Relatório preenchido e enviado" },
+];
+
+/**
+ * Cria uma semana como a action cria: só com a PAUTA pronta, mais as linhas
+ * que o teste precisa. Desde 23/11/2026 entregas, métricas e OKRs nascem
+ * vazios — a semana monta as próprias.
+ */
 async function criarSemana(
   subsectorId: string,
   weekNumber: number,
@@ -48,25 +62,27 @@ async function criarSemana(
       weekNumber,
       periodStart: dia(periodStart),
       periodEnd: fim,
-      deliveries: { create: DELIVERIES.map((d, order) => ({ order, ...d })) },
-      metrics: {
-        create: METRICS.map((m, order) => ({
-          order,
-          channel: m.channel,
-          metric: m.metric,
-          target: m.target ?? null,
-        })),
-      },
+      deliveries: { create: ENTREGAS_DE_TESTE.map((d, order) => ({ order, ...d })) },
       okrs: {
-        create: OKRS.map((o, order) => ({
-          order,
-          objective: o.objective,
-          keyResult: o.keyResult,
-          measure: o.measure,
-          goalLabel: o.goalLabel,
-          goalValue: o.goalValue ?? null,
-          monthlyRead: o.monthlyRead ?? false,
-        })),
+        create: [
+          {
+            order: 0,
+            objective: "Crescimento e engajamento",
+            keyResult: KR_MENSAL,
+            measure: "Insights do perfil",
+            goalLabel: "+3.000 seguidores",
+            goalValue: 3000,
+            monthlyRead: true,
+          },
+          {
+            order: 1,
+            objective: "Organização e processo",
+            keyResult: "Documentar 1 processo novo",
+            measure: "Pasta de processos",
+            goalLabel: "1 por semana",
+            goalValue: 1,
+          },
+        ],
       },
       agenda: { create: AGENDA.map((a, order) => ({ order, ...a })) },
     },
@@ -222,11 +238,30 @@ test("a lista traz as semanas da mais recente para a mais antiga", async () => {
   assert.equal(data?.reports[1]?.weekNumber, 46);
 });
 
-test("o card nasce com as 21 entregas sem resposta", async () => {
-  const data = await getWeeklyReportData(mktSlug, "GESTOR");
-  const semana = data?.reports.find((r) => r.id === semanaAtual);
-  assert.equal(semana?.pending, DELIVERIES.length);
-  assert.equal(semana?.onTrack, 0);
+test("o relatório nasce sem entregas, métricas e OKRs — só com a pauta", async () => {
+  // A predefinição saiu em 23/11/2026. Quem monta a semana é a semana.
+  const { id } = await prisma.weeklyReport.create({
+    data: {
+      subsectorId: mktId,
+      weekNumber: 40,
+      periodStart: new Date("2026-09-28T00:00:00Z"),
+      periodEnd: new Date("2026-10-02T00:00:00Z"),
+      agenda: { create: AGENDA.map((a, order) => ({ order, ...a })) },
+    },
+    select: { id: true },
+  });
+
+  const detalhe = await getWeeklyReportDetail(mktSlug, id, "GESTOR");
+  assert.equal(detalhe?.deliveries.length, 0);
+  assert.equal(detalhe?.metrics.length, 0);
+  assert.equal(detalhe?.okrs.length, 0);
+  assert.equal(detalhe?.agenda.length, AGENDA.length);
+
+  // Sem entregas, não há pendência a cobrar — nem contador a inventar.
+  assert.equal(detalhe?.pending, 0);
+  assert.equal(detalhe?.onTrack, 0);
+
+  await prisma.weeklyReport.delete({ where: { id } });
 });
 
 test("os contadores do card acompanham o que foi respondido", async () => {
@@ -250,7 +285,7 @@ test("os contadores do card acompanham o que foi respondido", async () => {
   assert.equal(semana?.onTrack, 1);
   assert.equal(semana?.attention, 1);
   assert.equal(semana?.blocked, 1);
-  assert.equal(semana?.pending, DELIVERIES.length - 3);
+  assert.equal(semana?.pending, ENTREGAS_DE_TESTE.length - 3);
 });
 
 test("a semana de uma área não é alcançável pelo slug de outra", async () => {
@@ -261,7 +296,7 @@ test("a semana de uma área não é alcançável pelo slug de outra", async () =
 });
 
 test("a média de 4 semanas atravessa os relatórios, casando o KR pelo texto", async () => {
-  const kr = OKRS[4]!.keyResult; // "Crescer base de seguidores", leitura mensal
+  const kr = KR_MENSAL;
   await prisma.weeklyReportOkr.updateMany({
     where: { reportId: semanaAnterior, keyResult: kr },
     data: { achieved: 200 },

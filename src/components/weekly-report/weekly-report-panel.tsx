@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Segmented } from "@/components/ui/segmented";
-import { INSTRUCTIONS } from "@/lib/weekly-report/templates";
 import type { WeeklyReportData, WeeklyReportDetail } from "@/types/weekly-report";
 import { ReportCard } from "./report-card";
 import { ReportEditor } from "./report-editor";
@@ -12,14 +11,13 @@ import { NewReportModal } from "./new-report-modal";
 import { KanbanBoard } from "./kanban-board";
 import { KanbanSummaryPanel } from "./kanban-summary";
 
-type Vista = "semanas" | "kanban" | "como-usar";
+type Vista = "semanas" | "kanban";
 
 /**
  * A ferramenta Relatório Semanal dentro da aba do setor.
  *
- * Três vistas, que eram as dez abas da planilha: as SEMANAS (abas 1 a 6, uma
- * por relatório), o KANBAN (abas 7 e 8, permanente) e COMO USAR (aba de
- * instruções).
+ * Duas vistas, que eram as dez abas da planilha: as SEMANAS (abas 1 a 6, uma
+ * por relatório) e o KANBAN (abas 7 e 8, permanente).
  *
  * Qual relatório está aberto vem da URL (`?semana=`), não de estado local: o
  * detalhe é carregado no servidor, e recarregar a página no meio de uma sexta
@@ -75,7 +73,6 @@ export function WeeklyReportPanel({
         options={[
           { value: "semanas", label: `Semanas (${data.reports.length})` },
           { value: "kanban", label: `Kanban (${data.summary.total})` },
-          { value: "como-usar", label: "Como usar" },
         ]}
         value={vista}
         onChange={setVista}
@@ -107,19 +104,13 @@ export function WeeklyReportPanel({
 
       {vista === "kanban" && (
         <div className="space-y-5">
-          <KanbanBoard slug={data.slug} tasks={data.tasks} canEdit={data.canEdit} />
+          <KanbanBoard
+            slug={data.slug}
+            tasks={data.tasks}
+            summary={data.summary}
+            canEdit={data.canEdit}
+          />
           <KanbanSummaryPanel summary={data.summary} />
-        </div>
-      )}
-
-      {vista === "como-usar" && (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {INSTRUCTIONS.map((item) => (
-            <div key={item.title} className="rounded-xl border border-border bg-surface p-4">
-              <h3 className="text-sm font-semibold text-foreground">{item.title}</h3>
-              <p className="mt-1 text-xs leading-relaxed text-muted">{item.body}</p>
-            </div>
-          ))}
         </div>
       )}
 
