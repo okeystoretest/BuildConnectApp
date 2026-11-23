@@ -120,6 +120,7 @@ export function WeeklyReportPanel({
             slug={data.slug}
             tasks={data.tasks}
             summary={data.summary}
+            people={data.people}
             canEdit={data.canEdit}
           />
           <KanbanSummaryPanel summary={data.summary} />

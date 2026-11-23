@@ -121,13 +121,21 @@ export interface WeeklyReportDetail extends WeeklyReportListItem {
   canApprove: boolean;
 }
 
+/** Quem toca o cartão — a mesma forma do `PostOwner` do Cronograma. */
+export interface TaskPerson {
+  id: string;
+  name: string;
+  /** Caminho público da foto já tratada. Ausente = iniciais. */
+  avatarPath?: string;
+}
+
 export interface MarketingTaskItem {
   id: string;
   code: string;
   title: string;
   category: MarketingTaskCategory;
   priority: MarketingTaskPriority;
-  assignee?: string;
+  assignee?: TaskPerson;
   /** yyyy-mm-dd. */
   enteredAt: string;
   dueDate?: string;
@@ -160,4 +168,6 @@ export interface WeeklyReportData {
   reports: readonly WeeklyReportListItem[];
   tasks: readonly MarketingTaskItem[];
   summary: KanbanSummary;
+  /** Quem pode ser responsável por um cartão: a gente do subsetor. */
+  people: readonly TaskPerson[];
 }

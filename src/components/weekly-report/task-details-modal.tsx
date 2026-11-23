@@ -1,13 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import {
   CalendarClock,
   CalendarDays,
   Clock,
   ExternalLink,
-  Loader2,
   Pencil,
   Trash2,
   User as UserIcon,
@@ -16,9 +13,6 @@ import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
-import { Select } from "@/components/ui/select";
-import { moverTarefa } from "@/lib/weekly-report/actions";
-import { TASK_STATUSES } from "@/lib/weekly-report/math";
 import {
   TASK_CATEGORY_COLOR,
   TASK_CATEGORY_LABEL,
@@ -29,7 +23,7 @@ import {
   formatarData,
   formatarDataHora,
 } from "@/lib/weekly-report/labels";
-import type { MarketingTaskItem, MarketingTaskStatus } from "@/types/weekly-report";
+import type { MarketingTaskItem } from "@/types/weekly-report";
 
 /**
  * Tudo que se sabe sobre um cartão, ao clicar nele.
@@ -41,10 +35,10 @@ import type { MarketingTaskItem, MarketingTaskStatus } from "@/types/weekly-repo
  * Duas ferramentas que abrem "a ficha de uma atividade" não podem abrir fichas
  * com desenhos diferentes.
  *
- * É também o caminho ACESSÍVEL de mover o cartão. O quadro move por arrasto,
- * que é mouse; aqui o status é uma lista suspensa, alcançável por teclado e
- * por leitor de tela. Sem isto, arrastar teria tirado a função de quem não
- * usa mouse.
+ * Aqui só se LÊ. Mover o cartão é trabalho do quadro — arrastando, ou com as
+ * setas do teclado sobre o cartão em foco. A lista "Mover para" que morava
+ * aqui saiu em 24/11/2026: duas portas para a mesma ação, e a ficha é onde se
+ * confere a atividade, não onde se opera o quadro.
  */
 
 /** Caixa de campo — a `Field` do Cronograma. */
@@ -69,42 +63,22 @@ function Campo({
 }
 
 export function TaskDetailsModal({
-  slug,
   task,
   canEdit,
   onClose,
   onEdit,
   onDelete,
 }: {
-  slug: string;
   task: MarketingTaskItem;
   canEdit: boolean;
   onClose: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const router = useRouter();
-  const [movendo, setMovendo] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-
-  async function mover(status: MarketingTaskStatus) {
-    if (movendo) return;
-    setMovendo(true);
-    setErro(null);
-    const r = await moverTarefa({ slug, taskId: task.id, status });
-    setMovendo(false);
-    if (!r.ok) {
-      setErro(r.error ?? "Não foi possível mover a tarefa.");
-      return;
-    }
-    router.refresh();
-    onClose();
-  }
-
   return (
     <Modal
       open
-      onClose={movendo ? undefined : onClose}
+      onClose={onClose}
       ariaLabel={`${task.code} — ${task.title}`}
       className="max-w-lg"
     >
@@ -171,8 +145,13 @@ export function TaskDetailsModal({
           <Campo icone={<UserIcon className="h-3 w-3" />} rotulo="Responsável">
             {task.assignee ? (
               <span className="flex items-center gap-2">
-                <Avatar name={task.assignee} size="h-6 w-6" textSize="text-[10px]" />
-                <span className="truncate">{task.assignee}</span>
+                <Avatar
+                  name={task.assignee.name}
+                  avatarPath={task.assignee.avatarPath}
+                  size="h-6 w-6"
+                  textSize="text-[10px]"
+                />
+                <span className="truncate">{task.assignee.name}</span>
               </span>
             ) : (
               <span className="text-muted">Sem responsável</span>
@@ -242,38 +221,9 @@ export function TaskDetailsModal({
           )}
         </div>
 
-        {canEdit && (
-          <div className="mt-3 rounded-lg border border-border bg-surface-2 p-3">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
-              Mover para
-            </p>
-            <div className="mt-1.5 flex items-center gap-2">
-              <Select
-                aria-label={`Mover ${task.code}`}
-                className="h-10"
-                disabled={movendo}
-                value={task.status}
-                onChange={(e) => mover(e.target.value as MarketingTaskStatus)}
-                options={TASK_STATUSES.map((s) => ({ value: s, label: TASK_STATUS_LABEL[s] }))}
-              />
-              {movendo && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted" />}
-            </div>
-            <p className="mt-1.5 text-[11px] text-muted">
-              No quadro, dá para arrastar o cartão entre as colunas.
-            </p>
-          </div>
-        )}
-
-        {erro && <p className="mt-3 text-xs text-danger">{erro}</p>}
-
         <div className="mt-6 flex items-center justify-between gap-3">
           {canEdit ? (
-            <Button
-              variant="secondary"
-              onClick={onDelete}
-              disabled={movendo}
-              className="h-11 text-danger"
-            >
+            <Button variant="secondary" onClick={onDelete} className="h-11 text-danger">
               <Trash2 className="h-4 w-4" />
               Excluir
             </Button>
@@ -282,11 +232,11 @@ export function TaskDetailsModal({
           )}
 
           <div className="flex gap-3">
-            <Button variant="secondary" onClick={onClose} disabled={movendo} className="h-11">
+            <Button variant="secondary" onClick={onClose} className="h-11">
               Fechar
             </Button>
             {canEdit && (
-              <Button onClick={onEdit} disabled={movendo} className="h-11">
+              <Button onClick={onEdit} className="h-11">
                 <Pencil className="h-4 w-4" />
                 Editar
               </Button>

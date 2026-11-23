@@ -123,7 +123,12 @@ export function ReportEditor({
           </h2>
           <p className="text-xs text-muted">
             {formatarData(detail.periodStart)} a {formatarData(detail.periodEnd)}
-            {detail.submittedAt && ` · enviado em ${formatarDataHora(detail.submittedAt)}`}
+            {/* A data de envio some ao reabrir: o relatório voltou a ser
+                rascunho, e "enviado em" ao lado de "Rascunho" fazia a tela
+                dizer duas coisas opostas sobre a mesma semana. */}
+            {detail.status !== "RASCUNHO" &&
+              detail.submittedAt &&
+              ` · enviado em ${formatarDataHora(detail.submittedAt)}`}
             {detail.status === "APROVADO" &&
               detail.approverName &&
               ` · aprovado por ${detail.approverName}`}

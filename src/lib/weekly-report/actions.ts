@@ -617,7 +617,7 @@ const tarefaSchema = z.object({
   title: z.string().trim().min(1, "Dê um nome à tarefa.").max(300, "Nome muito longo."),
   category: z.enum(["CONTEUDO", "PUBLICACAO", "COMUNIDADE", "RELATORIO", "PROCESSO"]),
   priority: z.enum(["ALTA", "MEDIA", "BAIXA"]),
-  assignee: textoCurto,
+  assigneeId: z.string().trim().max(60).nullish(),
   dueDate: dia.nullish(),
   evidence: evidencia,
   note: textoLongo,
@@ -652,11 +652,22 @@ export async function salvarTarefa(input: unknown): Promise<WeeklyActionResult> 
   const { user, scope, error } = await abrirEscopo(d.slug);
   if (!scope || !user) return { ok: false, error: error ?? undefined };
 
+  // O id do responsável vem do navegador, então ele é conferido aqui: sem
+  // isto, qualquer id de usuário colado na chamada viraria responsável por um
+  // cartão de uma área onde a pessoa nem está lotada.
+  if (d.assigneeId) {
+    const pertence = await prisma.userSubsector.findUnique({
+      where: { userId_subsectorId: { userId: d.assigneeId, subsectorId: scope.id } },
+      select: { userId: true },
+    });
+    if (!pertence) return { ok: false, error: "Escolha alguém da equipe desta área." };
+  }
+
   const campos = {
     title: d.title,
     category: d.category,
     priority: d.priority,
-    assignee: d.assignee || null,
+    assigneeId: d.assigneeId || null,
     dueDate: d.dueDate ? lerDia(d.dueDate) : null,
     evidence: d.evidence || null,
     note: d.note || null,

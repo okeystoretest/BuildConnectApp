@@ -1,8 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarClock, Image as ImageIcon, Inbox, Link2, Loader2, Plus } from "lucide-react";
+import {
+  CalendarClock,
+  Image as ImageIcon,
+  Inbox,
+  Link2,
+  Loader2,
+  Plus,
+  UserRound,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -22,6 +30,7 @@ import type {
   KanbanSummary,
   MarketingTaskItem,
   MarketingTaskStatus,
+  TaskPerson,
 } from "@/types/weekly-report";
 import { TaskModal } from "./task-modal";
 import { TaskDetailsModal } from "./task-details-modal";
@@ -110,11 +119,13 @@ export function KanbanBoard({
   slug,
   tasks,
   summary,
+  people,
   canEdit,
 }: {
   slug: string;
   tasks: readonly MarketingTaskItem[];
   summary: KanbanSummary;
+  people: readonly TaskPerson[];
   canEdit: boolean;
 }) {
   const router = useRouter();
@@ -124,8 +135,22 @@ export function KanbanBoard({
   const [excluindo, setExcluindo] = useState<MarketingTaskItem | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [arrastando, setArrastando] = useState<string | null>(null);
+  // Cartão que acabou de mudar de coluna pelo teclado. Ele é destruído e
+  // recriado dentro da coluna nova, e sem isto o foco cairia no corpo da
+  // página a cada seta — a seta seguinte rolaria a página em vez de mover o
+  // cartão. Em `ref`, e não em estado, porque reposicionar o foco não é
+  // motivo para redesenhar o quadro.
+  const foco = useRef<string | null>(null);
   const [alvo, setAlvo] = useState<MarketingTaskStatus | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+
+  // A lista nova chega pelo `router.refresh()`, depois do commit em que o
+  // cartão sai de uma coluna e nasce na outra; por isso o foco é devolvido
+  // aqui, a cada troca de `tasks`, e não no `ref` do cartão.
+  useEffect(() => {
+    if (!foco.current) return;
+    document.querySelector<HTMLElement>(`[data-cartao="${foco.current}"]`)?.focus();
+  }, [tasks]);
 
   // O cartão aberto é buscado pela lista, não guardado em estado: assim ele
   // reflete o `router.refresh()` depois de uma edição, em vez de mostrar a
@@ -179,7 +204,8 @@ export function KanbanBoard({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-muted">
           Arraste os cartões da esquerda para a direita conforme a tarefa avança, ou clique para
-          ver a ficha. Nada chega a Publicado sem evidência.
+          ver a ficha. Com o cartão em foco, ← e → movem entre as colunas. Nada chega a Publicado
+          sem evidência.
         </p>
         {canEdit && (
           <Button size="sm" onClick={() => setNovo(true)}>
@@ -284,12 +310,29 @@ export function KanbanBoard({
                            de vídeo e do atalho de aplicativo. */
                         role="button"
                         tabIndex={0}
+                        data-cartao={task.id}
                         draggable={canEdit && ocupado === null}
-                        onClick={() => setAbertoId(task.id)}
-                        onKeyDown={(e) => {
-                          if (e.key !== "Enter" && e.key !== " ") return;
-                          e.preventDefault();
+                        onClick={() => {
+                          foco.current = null;
                           setAbertoId(task.id);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            setAbertoId(task.id);
+                            return;
+                          }
+                          // Arrastar é mouse. Com o cartão em foco, as setas
+                          // fazem o mesmo caminho pelo teclado — é o que a
+                          // lista "Mover para" da ficha fazia antes de sair.
+                          if (!canEdit) return;
+                          const passo = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+                          if (passo === 0) return;
+                          const destino = TASK_STATUSES[TASK_STATUSES.indexOf(status) + passo];
+                          if (!destino) return;
+                          e.preventDefault();
+                          foco.current = task.id;
+                          void mover(task.id, destino);
                         }}
                         onDragStart={(e) => {
                           e.dataTransfer.setData("text/plain", task.id);
@@ -334,13 +377,32 @@ export function KanbanBoard({
                           <Selo className={PRIORITY_BADGE[task.priority]}>
                             {TASK_PRIORITY_LABEL[task.priority]}
                           </Selo>
-                          {task.assignee && (
-                            <Avatar
-                              name={task.assignee}
-                              size="ml-auto h-6 w-6"
-                              textSize="text-[10px]"
-                              className="shrink-0"
-                            />
+                          {/* O rosto de quem toca a tarefa. Sem responsável,
+                              o círculo fica vazio em vez de sumir: a fileira
+                              de cartões alinha, e o vazio é a pergunta "de
+                              quem é isto?". */}
+                          {task.assignee ? (
+                            <span className="ml-auto flex items-center" title={task.assignee.name}>
+                              <Avatar
+                                name={task.assignee.name}
+                                avatarPath={task.assignee.avatarPath}
+                                size="h-6 w-6"
+                                textSize="text-[10px]"
+                              />
+                              {/* As iniciais não são um nome para quem ouve a
+                                  tela; o nome inteiro vai aqui. */}
+                              <span className="sr-only">
+                                Responsável: {task.assignee.name}
+                              </span>
+                            </span>
+                          ) : (
+                            <span
+                              aria-hidden
+                              title="Sem responsável"
+                              className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-dashed border-border text-muted/70"
+                            >
+                              <UserRound className="h-3 w-3" />
+                            </span>
                           )}
                         </div>
 
@@ -404,7 +466,6 @@ export function KanbanBoard({
 
       {aberto && !editando && !excluindo && (
         <TaskDetailsModal
-          slug={slug}
           task={aberto}
           canEdit={canEdit}
           onClose={() => setAbertoId(null)}
@@ -416,13 +477,16 @@ export function KanbanBoard({
       {/* A chave remonta o formulário a cada cartão: todo o estado dele vive em
           inicializadores de useState, e sem ela abrir o segundo cartão
           mostraria os dados do primeiro. */}
-      {novo && <TaskModal key="novo" slug={slug} open onClose={() => setNovo(false)} />}
+      {novo && (
+        <TaskModal key="novo" slug={slug} open people={people} onClose={() => setNovo(false)} />
+      )}
       {editando && (
         <TaskModal
           key={editando.id}
           slug={slug}
           open
           task={editando}
+          people={people}
           onClose={() => setEditando(null)}
         />
       )}

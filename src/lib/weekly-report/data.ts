@@ -49,7 +49,7 @@ function toTask(row: {
   title: string;
   category: MarketingTaskItem["category"];
   priority: MarketingTaskItem["priority"];
-  assignee: string | null;
+  assignee: { id: string; fullName: string; avatarPath: string | null } | null;
   enteredAt: Date;
   dueDate: Date | null;
   status: MarketingTaskItem["status"];
@@ -63,7 +63,13 @@ function toTask(row: {
     title: row.title,
     category: row.category,
     priority: row.priority,
-    assignee: row.assignee ?? undefined,
+    assignee: row.assignee
+      ? {
+          id: row.assignee.id,
+          name: row.assignee.fullName,
+          avatarPath: row.assignee.avatarPath ?? undefined,
+        }
+      : undefined,
     enteredAt: isoDia(row.enteredAt),
     dueDate: row.dueDate ? isoDia(row.dueDate) : undefined,
     status: row.status,
@@ -82,7 +88,7 @@ export async function getWeeklyReportData(
   const scope = await resolveWeeklyScope(slug);
   if (!scope) return null;
 
-  const [reportRows, taskRows] = await Promise.all([
+  const [reportRows, taskRows, peopleRows] = await Promise.all([
     prisma.weeklyReport.findMany({
       where: { subsectorId: scope.id },
       orderBy: { periodStart: "desc" },
@@ -112,7 +118,7 @@ export async function getWeeklyReportData(
         title: true,
         category: true,
         priority: true,
-        assignee: true,
+        assignee: { select: { id: true, fullName: true, avatarPath: true } },
         enteredAt: true,
         dueDate: true,
         status: true,
@@ -120,6 +126,15 @@ export async function getWeeklyReportData(
         note: true,
         doneAt: true,
       },
+    }),
+    // Quem pode ser responsável: só quem está lotado NESTE subsetor. A lista
+    // do seletor é a mesma que a action confere ao gravar — se fosse a
+    // empresa inteira, um cartão do Marketing poderia cair no nome de alguém
+    // da Logística.
+    prisma.user.findMany({
+      where: { active: true, subsectors: { some: { subsectorId: scope.id } } },
+      orderBy: { fullName: "asc" },
+      select: { id: true, fullName: true, avatarPath: true },
     }),
   ]);
 
@@ -148,6 +163,11 @@ export async function getWeeklyReportData(
     reports,
     tasks,
     summary: resumirKanban(tasks),
+    people: peopleRows.map((p) => ({
+      id: p.id,
+      name: p.fullName,
+      avatarPath: p.avatarPath ?? undefined,
+    })),
   };
 }
 

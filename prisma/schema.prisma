@@ -110,6 +110,7 @@ model User {
   weeklyReports            WeeklyReport[]          @relation("WeeklyReportAuthor")
   weeklyReportApprovals    WeeklyReport[]          @relation("WeeklyReportApprover")
   marketingTasks           MarketingTask[]         @relation("MarketingTaskAuthor")
+  marketingTasksAssigned   MarketingTask[]         @relation("MarketingTaskAssignee")
   // Roteiros de card que este usuário gerou ou editou por último.
   contentScripts           ContentPost[]           @relation("ContentPostScript")
   // Configuração da IA (Retaguarda) — quem salvou por último.
@@ -2248,8 +2249,14 @@ model MarketingTask {
   category MarketingTaskCategory
   priority MarketingTaskPriority @default(MEDIA)
 
-  /// Nome do responsável, livre. Mesma razão de `needs` no bloqueio.
-  assignee String?
+  /// Responsável pelo cartão — gente da plataforma, não texto livre.
+  ///
+  /// Era `String?` até 24/11/2026. Virou relação porque o cartão do quadro
+  /// mostra a FOTO de quem toca a tarefa, e foto só existe para usuário de
+  /// verdade; um nome digitado à mão nunca viraria rosto. `SetNull` para que
+  /// o desligamento de alguém não leve embora o cartão junto.
+  assigneeId String?
+  assignee   User?   @relation("MarketingTaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
 
   enteredAt DateTime  @default(now()) @db.Date
   dueDate   DateTime? @db.Date

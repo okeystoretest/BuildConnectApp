@@ -67,7 +67,6 @@ async function main() {
         title: modelo.title,
         category: modelo.category,
         priority: modelo.priority,
-        assignee: null,
       },
     });
     criados += 1;

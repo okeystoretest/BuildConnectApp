@@ -17,6 +17,7 @@ import type {
   MarketingTaskCategory,
   MarketingTaskItem,
   MarketingTaskPriority,
+  TaskPerson,
 } from "@/types/weekly-report";
 
 /** Cadastro e edição de um cartão do quadro. */
@@ -24,19 +25,22 @@ export function TaskModal({
   slug,
   open,
   task,
+  people,
   onClose,
 }: {
   slug: string;
   open: boolean;
   /** Ausente = cartão novo. */
   task?: MarketingTaskItem | null;
+  /** Quem pode ser responsável: a gente lotada neste subsetor. */
+  people: readonly TaskPerson[];
   onClose: () => void;
 }) {
   const router = useRouter();
   const [title, setTitle] = useState(task?.title ?? "");
   const [category, setCategory] = useState<MarketingTaskCategory>(task?.category ?? "CONTEUDO");
   const [priority, setPriority] = useState<MarketingTaskPriority>(task?.priority ?? "MEDIA");
-  const [assignee, setAssignee] = useState(task?.assignee ?? "");
+  const [assigneeId, setAssigneeId] = useState(task?.assignee?.id ?? "");
   const [dueDate, setDueDate] = useState(task?.dueDate ?? "");
   const [evidence, setEvidence] = useState(task?.evidence ?? "");
   const [note, setNote] = useState(task?.note ?? "");
@@ -53,7 +57,7 @@ export function TaskModal({
       title,
       category,
       priority,
-      assignee: assignee || null,
+      assigneeId: assigneeId || null,
       dueDate: dueDate || null,
       evidence: evidence || null,
       note: note || null,
@@ -128,10 +132,14 @@ export function TaskModal({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="tarefa-responsavel">Responsável</Label>
-            <Input
+            <Select
               id="tarefa-responsavel"
-              value={assignee}
-              onChange={(e) => setAssignee(e.target.value)}
+              value={assigneeId}
+              onChange={(e) => setAssigneeId(e.target.value)}
+              options={[
+                { value: "", label: "Sem responsável" },
+                ...people.map((p) => ({ value: p.id, label: p.name })),
+              ]}
             />
           </div>
           <div className="space-y-1.5">
