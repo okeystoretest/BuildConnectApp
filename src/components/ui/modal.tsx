@@ -10,6 +10,8 @@ export interface ModalProps {
   onClose?: () => void;
   title?: string;
   description?: string;
+  /** Nome do diálogo quando o título é escrito dentro do corpo, sem `title`. */
+  ariaLabel?: string;
   dismissible?: boolean;
   className?: string;
   children: React.ReactNode;
@@ -21,6 +23,7 @@ export function Modal({
   onClose,
   title,
   description,
+  ariaLabel,
   dismissible = true,
   className,
   children,
@@ -63,7 +66,7 @@ export function Modal({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-label={title ?? ariaLabel}
         className={cn(
           "animate-scale-in relative z-10 flex max-h-[calc(100dvh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-surface shadow-2xl",
           className,

@@ -2,7 +2,16 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarClock, ExternalLink, Loader2, Pencil, Trash2 } from "lucide-react";
+import {
+  CalendarClock,
+  CalendarDays,
+  Clock,
+  ExternalLink,
+  Loader2,
+  Pencil,
+  Trash2,
+  User as UserIcon,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -25,10 +34,12 @@ import type { MarketingTaskItem, MarketingTaskStatus } from "@/types/weekly-repo
 /**
  * Tudo que se sabe sobre um cartão, ao clicar nele.
  *
- * O cartão do quadro mostra o mínimo para caber em 232 px; o resto — prazo,
- * entrada, responsável, observação inteira, a imagem da evidência — mora aqui.
- * Segue o `post-details-modal` do Cronograma: LER é o estado padrão, e editar
- * é um botão que abre o formulário.
+ * É o `post-details-modal` do Cronograma aplicado ao quadro: mesma moldura
+ * (`max-w-lg`, com o cabeçalho escrito dentro do corpo), mesma fileira de
+ * selos em maiúsculas, mesmas caixas de campo (`rounded-lg border bg-surface-2
+ * p-3`) com rótulo minúsculo e ícone, e o mesmo rodapé de botões de 44 px.
+ * Duas ferramentas que abrem "a ficha de uma atividade" não podem abrir fichas
+ * com desenhos diferentes.
  *
  * É também o caminho ACESSÍVEL de mover o cartão. O quadro move por arrasto,
  * que é mouse; aqui o status é uma lista suspensa, alcançável por teclado e
@@ -36,12 +47,23 @@ import type { MarketingTaskItem, MarketingTaskStatus } from "@/types/weekly-repo
  * usa mouse.
  */
 
-/** Um par rótulo/valor da ficha. */
-function Campo({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
+/** Caixa de campo — a `Field` do Cronograma. */
+function Campo({
+  icone,
+  rotulo,
+  children,
+}: {
+  icone: React.ReactNode;
+  rotulo: string;
+  children: React.ReactNode;
+}) {
   return (
-    <div>
-      <p className="text-[11px] uppercase tracking-wide text-muted">{rotulo}</p>
-      <div className="mt-0.5 text-sm text-foreground">{children}</div>
+    <div className="rounded-lg border border-border bg-surface-2 p-3">
+      <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
+        {icone}
+        {rotulo}
+      </p>
+      <div className="mt-1.5 text-sm text-foreground">{children}</div>
     </div>
   );
 }
@@ -83,54 +105,28 @@ export function TaskDetailsModal({
     <Modal
       open
       onClose={movendo ? undefined : onClose}
-      title={`${task.code} — ${task.title}`}
-      className="max-w-xl"
-      footer={
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            {canEdit && (
-              <>
-                <Button variant="secondary" size="sm" onClick={onEdit} disabled={movendo}>
-                  <Pencil className="h-3.5 w-3.5" />
-                  Editar
-                </Button>
-                <Button variant="danger" size="sm" onClick={onDelete} disabled={movendo}>
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Excluir
-                </Button>
-              </>
-            )}
-          </div>
-          <Button variant="ghost" size="sm" onClick={onClose} disabled={movendo}>
-            Fechar
-          </Button>
-        </div>
-      }
+      ariaLabel={`${task.code} — ${task.title}`}
+      className="max-w-lg"
     >
-      <div className="space-y-4 p-6">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="p-6">
+        {/* Cabeçalho: código, título e status, como no Cronograma. */}
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Detalhes da atividade · <span className="font-mono">{task.code}</span>
+            </p>
+            <h2 className="mt-1 break-words text-lg font-semibold text-foreground">
+              {task.title}
+            </h2>
+          </div>
           <span
-            className="rounded border border-transparent px-1.5 py-0.5 text-[10px] font-semibold"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
             style={{
-              backgroundColor: `${TASK_CATEGORY_COLOR[task.category]}26`,
-              color: TASK_CATEGORY_COLOR[task.category],
+              backgroundColor: `${TASK_STATUS_COLOR[task.status]}1f`,
+              borderColor: `${TASK_STATUS_COLOR[task.status]}59`,
+              color: TASK_STATUS_COLOR[task.status],
             }}
           >
-            {TASK_CATEGORY_LABEL[task.category]}
-          </span>
-          <span
-            className={cn(
-              "rounded border px-1.5 py-0.5 text-[10px] font-semibold",
-              task.priority === "ALTA"
-                ? "border-danger/35 bg-danger/15 text-danger"
-                : task.priority === "MEDIA"
-                  ? "border-warning/35 bg-warning/15 text-warning"
-                  : "border-border bg-surface-3 text-muted",
-            )}
-          >
-            Prioridade {TASK_PRIORITY_LABEL[task.priority]}
-          </span>
-          <span className="flex items-center gap-1.5 text-[11px] text-muted">
             <span
               aria-hidden
               className="h-2 w-2 rounded-full"
@@ -140,54 +136,86 @@ export function TaskDetailsModal({
           </span>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Campo rotulo="Responsável">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span
+            className="rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+            style={{
+              backgroundColor: `${TASK_CATEGORY_COLOR[task.category]}26`,
+              borderColor: `${TASK_CATEGORY_COLOR[task.category]}59`,
+              color: TASK_CATEGORY_COLOR[task.category],
+            }}
+          >
+            {TASK_CATEGORY_LABEL[task.category]}
+          </span>
+          <span
+            className={cn(
+              "rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+              task.priority === "ALTA"
+                ? "border-danger/35 bg-danger/15 text-danger"
+                : task.priority === "MEDIA"
+                  ? "border-warning/35 bg-warning/15 text-warning"
+                  : "border-border bg-surface-3 text-muted",
+            )}
+          >
+            Prioridade {TASK_PRIORITY_LABEL[task.priority]}
+          </span>
+          {task.overdue && (
+            <span className="inline-flex items-center gap-1 rounded border border-danger/35 bg-danger/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-danger">
+              <CalendarClock className="h-3 w-3" />
+              Atrasado
+            </span>
+          )}
+        </div>
+
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <Campo icone={<UserIcon className="h-3 w-3" />} rotulo="Responsável">
             {task.assignee ? (
               <span className="flex items-center gap-2">
                 <Avatar name={task.assignee} size="h-6 w-6" textSize="text-[10px]" />
-                {task.assignee}
+                <span className="truncate">{task.assignee}</span>
               </span>
             ) : (
-              <span className="text-muted">—</span>
+              <span className="text-muted">Sem responsável</span>
             )}
           </Campo>
 
-          <Campo rotulo="Prazo">
+          <Campo icone={<CalendarClock className="h-3 w-3" />} rotulo="Prazo">
             {task.dueDate ? (
-              <span
-                className={cn(
-                  "inline-flex items-center gap-1.5",
-                  task.overdue && "font-semibold text-danger",
-                )}
-              >
-                <CalendarClock className="h-3.5 w-3.5" aria-hidden />
+              <span className={cn(task.overdue && "font-semibold text-danger")}>
                 {formatarData(task.dueDate)}
-                {task.overdue && " · atrasado"}
               </span>
             ) : (
-              <span className="text-muted">sem prazo</span>
+              <span className="text-muted">Sem prazo</span>
             )}
           </Campo>
 
-          <Campo rotulo="Entrou no quadro">{formatarData(task.enteredAt)}</Campo>
+          <Campo icone={<CalendarDays className="h-3 w-3" />} rotulo="Entrou no quadro">
+            {formatarData(task.enteredAt)}
+          </Campo>
 
-          <Campo rotulo="Publicado em">
+          <Campo icone={<Clock className="h-3 w-3" />} rotulo="Publicado em">
             {task.doneAt ? formatarDataHora(task.doneAt) : <span className="text-muted">—</span>}
           </Campo>
         </div>
 
-        <Campo rotulo="Evidência">
+        <div className="mt-3 rounded-lg border border-border bg-surface-2 p-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Evidência</p>
           {!task.evidence ? (
-            <span className="text-muted">
+            <p className="mt-1.5 text-sm text-muted">
               Nenhuma. É ela que libera o cartão para Publicado.
-            </span>
+            </p>
           ) : evidenciaEhImagem(task.evidence) ? (
-            <a href={task.evidence} target="_blank" rel="noreferrer" className="focus-ring block">
+            <a
+              href={task.evidence}
+              target="_blank"
+              rel="noreferrer"
+              className="focus-ring mt-1.5 block"
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={task.evidence}
                 alt={`Evidência de ${task.code}`}
-                className="max-h-64 w-full rounded-xl border border-border bg-surface-2 object-contain"
+                className="max-h-64 w-full rounded-lg border border-border bg-surface object-contain"
               />
             </a>
           ) : (
@@ -195,26 +223,31 @@ export function TaskDetailsModal({
               href={task.evidence}
               target="_blank"
               rel="noreferrer"
-              className="focus-ring inline-flex max-w-full items-center gap-1.5 break-all text-primary hover:underline"
+              className="focus-ring mt-1.5 inline-flex max-w-full items-center gap-1.5 break-all text-sm text-primary hover:underline"
             >
               <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden />
               {task.evidence}
             </a>
           )}
-        </Campo>
+        </div>
 
-        <Campo rotulo="Observação">
+        <div className="mt-3 rounded-lg border border-border bg-surface-2 p-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">Observação</p>
           {task.note ? (
-            <p className="whitespace-pre-wrap">{task.note}</p>
+            <p className="mt-1.5 whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">
+              {task.note}
+            </p>
           ) : (
-            <span className="text-muted">—</span>
+            <p className="mt-1.5 text-sm text-muted">Nenhuma observação registrada.</p>
           )}
-        </Campo>
+        </div>
 
         {canEdit && (
-          <div className="space-y-1.5 border-t border-border pt-4">
-            <p className="text-[11px] uppercase tracking-wide text-muted">Mover para</p>
-            <div className="flex items-center gap-2">
+          <div className="mt-3 rounded-lg border border-border bg-surface-2 p-3">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+              Mover para
+            </p>
+            <div className="mt-1.5 flex items-center gap-2">
               <Select
                 aria-label={`Mover ${task.code}`}
                 className="h-10"
@@ -225,13 +258,41 @@ export function TaskDetailsModal({
               />
               {movendo && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted" />}
             </div>
-            <p className="text-[11px] text-muted">
+            <p className="mt-1.5 text-[11px] text-muted">
               No quadro, dá para arrastar o cartão entre as colunas.
             </p>
           </div>
         )}
 
-        {erro && <p className="text-xs text-danger">{erro}</p>}
+        {erro && <p className="mt-3 text-xs text-danger">{erro}</p>}
+
+        <div className="mt-6 flex items-center justify-between gap-3">
+          {canEdit ? (
+            <Button
+              variant="secondary"
+              onClick={onDelete}
+              disabled={movendo}
+              className="h-11 text-danger"
+            >
+              <Trash2 className="h-4 w-4" />
+              Excluir
+            </Button>
+          ) : (
+            <span />
+          )}
+
+          <div className="flex gap-3">
+            <Button variant="secondary" onClick={onClose} disabled={movendo} className="h-11">
+              Fechar
+            </Button>
+            {canEdit && (
+              <Button onClick={onEdit} disabled={movendo} className="h-11">
+                <Pencil className="h-4 w-4" />
+                Editar
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
     </Modal>
   );

@@ -27,15 +27,27 @@ export function WeeklyReportPanel({
   data,
   detail,
   onSelect,
+  onVista,
 }: {
   data: WeeklyReportData;
   /** Relatório aberto, resolvido no servidor a partir de `?semana=`. */
   detail?: WeeklyReportDetail | null;
   /** Escreve `?semana=` na URL. Null volta para a lista. */
   onSelect: (id: string | null) => void;
+  /**
+   * Avisa qual vista está aberta. Serve só ao layout: o Kanban tem cinco
+   * colunas e pede a página larga, as semanas ficam na coluna de leitura — e
+   * quem decide a largura é a casca da página, não esta ferramenta.
+   */
+  onVista?: (vista: Vista) => void;
 }) {
   const [vista, setVista] = useState<Vista>("semanas");
   const [novo, setNovo] = useState(false);
+
+  function trocarVista(v: Vista) {
+    setVista(v);
+    onVista?.(v);
+  }
 
   // Com um relatório aberto, as vistas saem de cena: o editor É a tela.
   if (detail) {
@@ -75,7 +87,7 @@ export function WeeklyReportPanel({
           { value: "kanban", label: `Kanban (${data.summary.total})` },
         ]}
         value={vista}
-        onChange={setVista}
+        onChange={trocarVista}
         ariaLabel="Vista do Relatório Semanal"
       />
 
@@ -85,7 +97,7 @@ export function WeeklyReportPanel({
             title="Nenhuma semana registrada"
             description={
               data.canEdit
-                ? "Crie a semana: o relatório nasce com as entregas, as métricas, os OKRs e a pauta já montados."
+                ? "Crie a semana: ela nasce com a pauta do one-on-one, e as entregas, as métricas e os OKRs você adiciona conforme a semana pede."
                 : "Quando a área registrar a primeira semana, ela aparece aqui."
             }
             action={

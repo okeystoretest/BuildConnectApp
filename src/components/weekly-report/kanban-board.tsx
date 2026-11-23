@@ -202,7 +202,11 @@ export function KanbanBoard({
       {erro && <p className="text-xs text-danger">{erro}</p>}
 
       <div className="scrollbar-slim overflow-x-auto rounded-xl border border-border bg-surface">
-        <div className="flex min-w-max divide-x divide-border">
+        {/* A partir de `lg` as cinco colunas DIVIDEM a largura disponível
+            (`flex-1`), e aí não há barra horizontal nenhuma. Abaixo disso elas
+            voltam à largura fixa e o quadro rola de lado: cinco colunas num
+            telefone não caberiam sem virar cinco tiras ilegíveis. */}
+        <div className="flex min-w-max divide-x divide-border lg:min-w-0">
           {TASK_STATUSES.map((status) => {
             const coluna = tasks.filter((t) => t.status === status);
             const recebendo = alvo === status;
@@ -211,7 +215,7 @@ export function KanbanBoard({
                 key={status}
                 aria-label={TASK_STATUS_LABEL[status]}
                 className={cn(
-                  "w-[232px] shrink-0 transition-colors",
+                  "w-[248px] shrink-0 transition-colors lg:w-auto lg:min-w-0 lg:flex-1",
                   recebendo && "bg-primary/[0.07]",
                 )}
                 onDragOver={(e) => {
@@ -249,7 +253,13 @@ export function KanbanBoard({
                   </span>
                 </header>
 
-                <div className="min-h-[120px] space-y-1.5 p-2">
+                {/* Cinco cartões e a coluna para de crescer — o resto rola
+                    dentro dela. É altura fixa porque o CSS não sabe contar
+                    filhos; a conta é 5 × ~112 px + os espaços.
+                    shortcut: cartão muito mais alto que o normal (título de
+                    duas linhas, prazo e evidência) mostra 4 em vez de 5; se o
+                    cartão mudar de forma, refazer a conta. */}
+                <div className="scrollbar-slim max-h-[600px] min-h-[120px] space-y-2 overflow-y-auto p-2">
                   {coluna.length === 0 ? (
                     <div
                       className={cn(
@@ -291,7 +301,7 @@ export function KanbanBoard({
                           setAlvo(null);
                         }}
                         className={cn(
-                          "focus-ring rounded-lg border border-border bg-surface-2 p-2 text-left transition-all",
+                          "focus-ring rounded-lg border border-border bg-surface-2 p-3 text-left transition-all",
                           canEdit ? "cursor-grab active:cursor-grabbing" : "cursor-pointer",
                           "hover:border-border-strong",
                           arrastando === task.id && "opacity-40",
@@ -299,19 +309,19 @@ export function KanbanBoard({
                         )}
                       >
                         <div className="flex items-center gap-1.5">
-                          <span className="font-mono text-[10px] leading-none text-muted">
+                          <span className="font-mono text-[11px] leading-none text-muted">
                             {task.code}
                           </span>
                           {ocupado === task.id && (
-                            <Loader2 className="ml-auto h-3 w-3 animate-spin text-muted" />
+                            <Loader2 className="ml-auto h-3.5 w-3.5 animate-spin text-muted" />
                           )}
                         </div>
 
-                        <p className="mt-1 line-clamp-2 text-[11px] font-semibold leading-tight text-foreground">
+                        <p className="mt-1.5 line-clamp-2 text-sm font-semibold leading-snug text-foreground">
                           {task.title}
                         </p>
 
-                        <div className="mt-1.5 flex items-center gap-1">
+                        <div className="mt-2 flex items-center gap-1">
                           <Selo
                             className="border-transparent"
                             style={{
@@ -327,15 +337,15 @@ export function KanbanBoard({
                           {task.assignee && (
                             <Avatar
                               name={task.assignee}
-                              size="ml-auto h-5 w-5"
-                              textSize="text-[9px]"
+                              size="ml-auto h-6 w-6"
+                              textSize="text-[10px]"
                               className="shrink-0"
                             />
                           )}
                         </div>
 
                         {(task.evidence || task.dueDate) && (
-                          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px]">
+                          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
                             {task.evidence && (
                               <span className="inline-flex items-center gap-0.5 text-primary">
                                 {evidenciaEhImagem(task.evidence) ? (

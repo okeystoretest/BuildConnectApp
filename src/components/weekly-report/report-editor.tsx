@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2, Lock, Send, Trash2, Undo2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Loader2, Lock, Send, Trash2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Modal } from "@/components/ui/modal";
 import {
@@ -30,15 +31,29 @@ import {
 } from "./report-sections";
 import { BlockersSection } from "./blockers-section";
 
+/** Os seis blocos do relatório, na ordem em que se preenchem. */
+const PASSOS = [
+  { id: "resumo", label: "1 · Resumo" },
+  { id: "entregas", label: "2 · Entregas" },
+  { id: "metricas", label: "3 · Canais e métricas" },
+  { id: "okrs", label: "4 · OKRs" },
+  { id: "bloqueios", label: "5 · Bloqueios" },
+  { id: "pauta", label: "6 · Pauta" },
+] as const;
+
 /**
- * O relatório de uma semana aberto — as seis abas da planilha, numa página.
+ * O relatório de uma semana aberto — os seis blocos da planilha, um por vez.
  *
- * Numa página, e não em abas internas, porque a planilha tinha abas e isso era
- * o problema: ninguém via o número da aba 3 ao escrever o aprendizado da aba
- * 1. A conversa de sexta é sobre as seis coisas juntas.
+ * Um por vez, e não os seis empilhados, porque a página inteira de uma sexta
+ * cansa antes do terceiro bloco: "Próximo" avança, e a barra de cima mostra
+ * onde se está e deixa pular direto para qualquer bloco.
+ *
+ * Os seis ficam MONTADOS; só o do passo atual aparece. Cada bloco guarda o que
+ * foi digitado em estado local, e desmontá-lo ao avançar jogaria fora o texto
+ * ainda não salvo.
  *
  * Cada seção grava por conta própria. Não existe "Salvar tudo": uma sexta
- * interrompida no meio da aba de métricas não pode perder as entregas já
+ * interrompida no meio das métricas não pode perder as entregas já
  * respondidas.
  */
 export function ReportEditor({
@@ -54,6 +69,15 @@ export function ReportEditor({
   const [acao, setAcao] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [confirmarExclusao, setConfirmarExclusao] = useState(false);
+  const [passo, setPasso] = useState(0);
+  const barra = useRef<HTMLDivElement>(null);
+
+  function irPara(indice: number) {
+    setPasso(indice);
+    // Quem chegou ao fim de uma tabela longa está com a barra de passos fora
+    // da tela; sem isto o bloco seguinte abriria acima do campo visível.
+    barra.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
 
   async function transicionar(a: "enviar" | "aprovar" | "reabrir") {
     if (acao) return;
@@ -161,38 +185,79 @@ export function ReportEditor({
         </p>
       )}
 
-      <ResumoSection slug={slug} detail={detail} />
+      <div ref={barra}>
+        <Tabs
+          items={PASSOS}
+          value={PASSOS[passo]!.id}
+          onValueChange={(id) => irPara(PASSOS.findIndex((p) => p.id === id))}
+        />
+      </div>
 
-      <DeliveriesSection
-        slug={slug}
-        reportId={detail.id}
-        canEdit={detail.canEdit}
-        deliveries={detail.deliveries}
-      />
-      <MetricsSection
-        slug={slug}
-        reportId={detail.id}
-        canEdit={detail.canEdit}
-        metrics={detail.metrics}
-      />
-      <OkrsSection
-        slug={slug}
-        reportId={detail.id}
-        canEdit={detail.canEdit}
-        okrs={detail.okrs}
-      />
-      <BlockersSection
-        slug={slug}
-        reportId={detail.id}
-        canEdit={detail.canEdit}
-        blockers={detail.blockers}
-      />
-      <AgendaSection
-        slug={slug}
-        reportId={detail.id}
-        canEdit={detail.canEdit}
-        agenda={detail.agenda}
-      />
+      {[
+        <ResumoSection key="resumo" slug={slug} detail={detail} />,
+        <DeliveriesSection
+          key="entregas"
+          slug={slug}
+          reportId={detail.id}
+          canEdit={detail.canEdit}
+          deliveries={detail.deliveries}
+        />,
+        <MetricsSection
+          key="metricas"
+          slug={slug}
+          reportId={detail.id}
+          canEdit={detail.canEdit}
+          metrics={detail.metrics}
+        />,
+        <OkrsSection
+          key="okrs"
+          slug={slug}
+          reportId={detail.id}
+          canEdit={detail.canEdit}
+          okrs={detail.okrs}
+        />,
+        <BlockersSection
+          key="bloqueios"
+          slug={slug}
+          reportId={detail.id}
+          canEdit={detail.canEdit}
+          blockers={detail.blockers}
+        />,
+        <AgendaSection
+          key="pauta"
+          slug={slug}
+          reportId={detail.id}
+          canEdit={detail.canEdit}
+          agenda={detail.agenda}
+        />,
+      ].map((secao, i) => (
+        <div key={PASSOS[i]!.id} className={i === passo ? undefined : "hidden"}>
+          {secao}
+        </div>
+      ))}
+
+      <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => irPara(passo - 1)}
+          disabled={passo === 0}
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Anterior
+        </Button>
+        <span className="text-xs text-muted">
+          Passo {passo + 1} de {PASSOS.length}
+        </span>
+        <Button
+          size="sm"
+          onClick={() => irPara(passo + 1)}
+          disabled={passo === PASSOS.length - 1}
+        >
+          Próximo
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Button>
+      </div>
 
       <Modal
         open={confirmarExclusao}

@@ -254,6 +254,9 @@ export function SectorPage({
   const [activeFilters, setActiveFilters] = useState<readonly string[]>([]);
   const [page, setPage] = useState(1);
   const [mediaModal, setMediaModal] = useState<MediaUploadKind | null>(null);
+  // Só para a largura: o Kanban do Relatório Semanal tem cinco colunas e pede
+  // a página inteira; a lista de semanas fica na coluna de leitura.
+  const [relatorioKanban, setRelatorioKanban] = useState(false);
   /** Temporada/Coleção/Ano da vitrine. Zerado a cada troca de aba. */
   const [collectionFilter, setCollectionFilter] = useState<CollectionFilter>(
     EMPTY_COLLECTION_FILTER,
@@ -390,9 +393,13 @@ export function SectorPage({
     <AppShell
       eyebrow={`Setores · ${sector.parent}`}
       title={sector.name}
-      // Só o Cronograma ocupa a tela toda; as demais abas mantêm a largura
+      // Quadros de coluna ocupam a tela toda; as demais abas mantêm a largura
       // de leitura confortável.
-      wide={activeId === "cronograma" || activeId === "funil-vendas"}
+      wide={
+        activeId === "cronograma" ||
+        activeId === "funil-vendas" ||
+        (activeId === "relatorio-semanal" && relatorioKanban)
+      }
     >
       <PageHeader
         title={sector.name}
@@ -586,6 +593,7 @@ export function SectorPage({
             data={weeklyReport}
             detail={weeklyReportDetail}
             onSelect={selecionarSemana}
+            onVista={(vista) => setRelatorioKanban(vista === "kanban")}
           />
         )}
       </TabPanel>

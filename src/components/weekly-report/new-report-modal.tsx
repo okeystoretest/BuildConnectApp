@@ -80,7 +80,7 @@ export function NewReportModal({
       open={open}
       onClose={salvando ? undefined : onClose}
       title="Nova semana"
-      description="O relatório nasce com as entregas, as métricas, os OKRs e a pauta já montados."
+      description="A semana nasce com a pauta do one-on-one. As entregas, as métricas e os OKRs você adiciona dentro dela."
       className="max-w-lg"
       footer={
         <div className="flex justify-end gap-2">
