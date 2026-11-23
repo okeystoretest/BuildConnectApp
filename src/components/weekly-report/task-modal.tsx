@@ -79,7 +79,7 @@ export function TaskModal({
       description={
         task
           ? undefined
-          : "O cartão entra no Backlog. O código é gerado pelo quadro, na sequência."
+          : "O cartão entra no Brainstorm. O código é gerado pelo quadro, na sequência."
       }
       className="max-w-lg"
       footer={
