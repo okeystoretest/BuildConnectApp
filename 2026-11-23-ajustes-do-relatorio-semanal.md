@@ -110,16 +110,32 @@ vista "Kanban" vira tela própria por mérito. **Nada a fazer agora.**
 
 ## 3. O que ficou pendente
 
-### 3.1 Produção não tem a ferramenta
+### 3.1 Produção: falta LIGAR a ferramenta na área
+
+O deploy de 23/11 aplicou as duas migrations
+(`..._relatorio_semanal_marketing` e `..._tarefa_responsavel_vira_usuario`) —
+está no log do entrypoint, "All migrations have been successfully applied".
+**As tabelas existem em produção.**
+
+Falta o segundo comando, no console do container (`/app`):
 
 ```
-npx prisma migrate deploy
 npm run setup:relatorio
 ```
 
-São **duas** migrations (`..._relatorio_semanal_marketing` e
-`..._tarefa_responsavel_vira_usuario`). Enquanto o segundo comando não rodar, a
-aba não aparece — não quebra nada, só não existe.
+A aba não é ligada pelo schema, e sim por um DADO: a coluna
+`weeklyReportEnabled` do subsetor, que nasce `false`. O entrypoint aplica
+migrations e sobe a aplicação; habilitar uma ferramenta numa área é decisão,
+não migração, e por isso não está lá. Enquanto esse comando não rodar, a aba
+simplesmente não aparece — não quebra nada.
+
+O script roda no container porque o `Dockerfile` mantém o `node_modules`
+completo de propósito, para as migrations e os scripts de manutenção. Depois
+dele, basta recarregar a página: `/setores/[slug]` é renderizada por
+requisição.
+
+**Não rode `scripts/semana-exemplo.ts` em produção** — ele cria sete semanas
+de demonstração.
 
 ### 3.2 O dado de exemplo está no banco de desenvolvimento
 

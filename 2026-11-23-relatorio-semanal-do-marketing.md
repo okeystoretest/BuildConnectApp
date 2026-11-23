@@ -27,17 +27,21 @@ build` limpo · **503/503** testes de unidade · **188/188** testes de banco ·
 
 ## 0. ⏳ PENDÊNCIAS
 
-### 0.1 Produção ainda não tem a ferramenta — faltam dois comandos
+### 0.1 Produção tem as tabelas, falta LIGAR a ferramenta na área
 
-Nada do que foi feito chega à produção sozinho:
+As duas migrations (`20261123040447_relatorio_semanal_marketing` e
+`20261123140323_tarefa_responsavel_vira_usuario`) foram aplicadas no deploy de
+23/11 — o entrypoint roda `prisma migrate deploy` a cada subida. Falta o
+comando que liga a ferramenta, no console do container (`/app`):
 
 ```
-npx prisma migrate deploy
 npm run setup:relatorio          # habilita no Marketing + cria os 12 cartões
 ```
 
-São **duas** migrations a aplicar (`20261123040447_relatorio_semanal_marketing`
-e `20261123140323_tarefa_responsavel_vira_usuario`).
+A aba não depende do schema, e sim de um DADO: `Subsector.weeklyReportEnabled`
+nasce `false`. Habilitar uma ferramenta numa área é decisão, não migração — por
+isso não está no entrypoint. Depois do comando, recarregar a página basta:
+`/setores/[slug]` é renderizada por requisição.
 
 O `setup` é **idempotente**: rodar duas vezes não duplica cartão, porque a
 chave é o `code` (`K-01`…), único por subsetor. Para habilitar em outra área:
