@@ -3,7 +3,9 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Pagination } from "@/components/ui/pagination";
 import { Segmented } from "@/components/ui/segmented";
+import { paginate } from "@/lib/paginate";
 import type { WeeklyReportData, WeeklyReportDetail } from "@/types/weekly-report";
 import { ReportCard } from "./report-card";
 import { ReportEditor } from "./report-editor";
@@ -52,6 +54,12 @@ export function WeeklyReportPanel({
    * que é o modo seguro dos dois.
    */
   const [modo, setModo] = useState<"ver" | "editar">("ver");
+  const [pagina, setPagina] = useState(1);
+
+  // Seis por página: duas fileiras de três, a mesma altura do quadro ao lado.
+  // `paginate` puxa a página para dentro do intervalo, então excluir a última
+  // semana de uma página não deixa ninguém olhando para uma lista vazia.
+  const semanas = paginate(data.reports, pagina, 6);
 
   function abrir(id: string, como: "ver" | "editar") {
     setModo(como);
@@ -122,16 +130,19 @@ export function WeeklyReportPanel({
             }
           />
         ) : (
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-            {data.reports.map((report) => (
-              <ReportCard
-                key={report.id}
-                report={report}
-                canEdit={data.canEdit}
-                onOpen={(id) => abrir(id, "ver")}
-                onEdit={(id) => abrir(id, "editar")}
-              />
-            ))}
+          <div className="space-y-4">
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {semanas.items.map((report) => (
+                <ReportCard
+                  key={report.id}
+                  report={report}
+                  canEdit={data.canEdit}
+                  onOpen={(id) => abrir(id, "ver")}
+                  onEdit={(id) => abrir(id, "editar")}
+                />
+              ))}
+            </div>
+            <Pagination page={semanas} onChange={setPagina} noun="semanas" />
           </div>
         ))}
 
@@ -148,7 +159,19 @@ export function WeeklyReportPanel({
         </div>
       )}
 
-      {novo && <NewReportModal slug={data.slug} open onClose={() => setNovo(false)} />}
+      {novo && (
+        <NewReportModal
+          slug={data.slug}
+          open
+          onClose={() => {
+            setNovo(false);
+            // A semana nova entra em PRIMEIRO na lista (a ordem é da mais
+            // recente para a mais antiga). Quem criou estando na página 2
+            // voltaria para uma lista onde ela não aparece.
+            setPagina(1);
+          }}
+        />
+      )}
 
       {detail && (
         <ReportViewModal

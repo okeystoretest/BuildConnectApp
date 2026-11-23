@@ -5,12 +5,15 @@
  * leitura com as seis abas, e os números que a tela calcula sozinha
  * (variação, % da meta, média de 4 semanas).
  *
- * Cria DUAS semanas no subsetor que tem o relatório habilitado:
+ * Cria SETE semanas no subsetor que tem o relatório habilitado:
  *
+ *   · 30/11 a 04/12/2026 — a semana cheia, com os seis blocos preenchidos.
  *   · 16 a 20/11/2026 — enxuta, só com os OKRs apurados. Existe para a média
  *     de 4 semanas ter de onde sair: ela é retrospectiva, e com uma semana só
  *     a coluna mostraria "—".
- *   · 30/11 a 04/12/2026 — a semana cheia.
+ *   · outubro e novembro — cinco semanas curtas (41 a 46), com destaque e uma
+ *     ou duas entregas. São elas que levam a lista acima das seis por página,
+ *     que é onde a paginação passa a existir.
  *
  * É DADO DE DEMONSTRAÇÃO. Para tirar tudo:
  *
@@ -34,6 +37,64 @@ const dia = (iso: string) => new Date(`${iso}T00:00:00.000Z`);
 const SEMANA_ANTERIOR = "2026-11-16";
 const SEMANA_CHEIA = "2026-11-30";
 
+/**
+ * Semanas antigas, curtas — só para a lista ter history.
+ *
+ * Elas existem por dois motivos: a paginação só aparece a partir da sétima
+ * semana (são seis por página), e um card com destaque e entregas respondidas
+ * mostra a barra de progresso em estados diferentes do da semana cheia.
+ */
+const ANTIGAS = [
+  {
+    weekNumber: 41,
+    inicio: "2026-10-05",
+    fim: "2026-10-09",
+    highlight: "Mês aberto com o estoque da coleção nova fotografado.",
+    entregas: [
+      { day: "Segunda", block: "Conteúdo", expected: "Fotografar as peças da coleção nova", health: "NO_RITMO" as const },
+    ],
+  },
+  {
+    weekNumber: 42,
+    inicio: "2026-10-12",
+    fim: "2026-10-16",
+    highlight: "Feriado no meio da semana derrubou a frequência de publicação.",
+    entregas: [
+      { day: "Terça", block: "Publicação", expected: "Publicar os três posts da semana", health: "ATENCAO" as const },
+    ],
+  },
+  {
+    weekNumber: 43,
+    inicio: "2026-10-19",
+    fim: "2026-10-23",
+    highlight: "Primeira semana com o calendário editorial fechado na segunda.",
+    entregas: [
+      { day: "Terça", block: "Conteúdo", expected: "Gravar os looks da coleção nova", health: "NO_RITMO" as const },
+      { day: "Quinta", block: "Publicação", expected: "Agendar a semana inteira de uma vez", health: "NO_RITMO" as const },
+    ],
+  },
+  {
+    weekNumber: 44,
+    inicio: "2026-10-26",
+    fim: "2026-10-30",
+    highlight: "Campanha de Halloween saiu no dia, mas o engajamento ficou abaixo do esperado.",
+    entregas: [
+      { day: "Segunda", block: "Conteúdo", expected: "Produzir a campanha de Halloween", health: "ATENCAO" as const },
+      { day: "Sexta", block: "Relatório", expected: "Fechar os números de outubro", health: "NO_RITMO" as const },
+    ],
+  },
+  {
+    weekNumber: 46,
+    inicio: "2026-11-09",
+    fim: "2026-11-13",
+    highlight: "Semana sem publicação no YouTube — o canal segue sem dono.",
+    entregas: [
+      { day: "Quarta", block: "Comunidade", expected: "Repostar os UGC da Black Friday", health: "NO_RITMO" as const },
+      { day: "Quinta", block: "Conteúdo", expected: "Roteirizar os vídeos do canal", health: "TRAVADO" as const },
+    ],
+  },
+];
+
 /** As respostas da pauta, na ordem das cinco perguntas do roteiro. */
 const RESPOSTAS = [
   "Semana puxada na gravação (três dias em loja), mas sem hora extra. Energia boa.",
@@ -53,8 +114,9 @@ async function main() {
     throw new Error(`O Relatório Semanal não está habilitado em ${sub.label}. Rode \`npm run setup:relatorio\` antes.`);
   }
 
+  const periodos = [dia(SEMANA_ANTERIOR), dia(SEMANA_CHEIA), ...ANTIGAS.map((a) => dia(a.inicio))];
   const existentes = await prisma.weeklyReport.findMany({
-    where: { subsectorId: sub.id, periodStart: { in: [dia(SEMANA_ANTERIOR), dia(SEMANA_CHEIA)] } },
+    where: { subsectorId: sub.id, periodStart: { in: periodos } },
     select: { id: true, weekNumber: true },
   });
 
@@ -90,6 +152,22 @@ async function main() {
       orderBy: { fullName: "asc" },
       select: { id: true, fullName: true },
     }));
+
+  // ── As semanas antigas, curtas ──
+  for (const a of ANTIGAS) {
+    await prisma.weeklyReport.create({
+      data: {
+        subsectorId: sub.id,
+        createdById: autor?.id ?? null,
+        weekNumber: a.weekNumber,
+        periodStart: dia(a.inicio),
+        periodEnd: dia(a.fim),
+        highlight: a.highlight,
+        deliveries: { create: a.entregas.map((e, order) => ({ order, ...e })) },
+        agenda: { create: AGENDA.map((item, order) => ({ order, ...item })) },
+      },
+    });
+  }
 
   // ── A semana anterior: só os OKRs, para a média ter história ──
   await prisma.weeklyReport.create({
@@ -317,7 +395,10 @@ async function main() {
     },
   });
 
-  console.log(`  ✓ Semana 47 (enxuta) e Semana 49 (cheia) criadas em ${sub.label}`);
+  console.log(
+    `  ✓ ${ANTIGAS.length + 2} semanas criadas em ${sub.label}: a 49 cheia, a 47 com os OKRs da média e ` +
+      `${ANTIGAS.map((a) => a.weekNumber).join(", ")} curtas (é o que faz a paginação aparecer)`,
+  );
   if (autor) console.log(`  · Autor: ${autor.fullName}`);
   console.log(`\nAbra /setores/${slug} → aba Relatório Semanal e clique no card da Semana 49.`);
   console.log("Para remover: npx tsx scripts/semana-exemplo.ts --limpar");
