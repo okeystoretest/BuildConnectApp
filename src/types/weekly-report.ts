@@ -92,6 +92,8 @@ export interface WeeklyReportListItem {
   periodStart: string;
   periodEnd: string;
   authorName?: string;
+  /** A frase que a reunião lê primeiro — o card mostra as duas linhas dela. */
+  highlight?: string;
   /** Contadores das entregas, calculados no servidor. */
   onTrack: number;
   attention: number;
@@ -101,7 +103,6 @@ export interface WeeklyReportListItem {
 }
 
 export interface WeeklyReportDetail extends WeeklyReportListItem {
-  highlight?: string;
   learning?: string;
   nextPriority?: string;
   deliveries: readonly DeliveryItem[];

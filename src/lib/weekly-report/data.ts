@@ -97,6 +97,7 @@ export async function getWeeklyReportData(
         weekNumber: true,
         periodStart: true,
         periodEnd: true,
+        highlight: true,
         createdBy: { select: { fullName: true } },
         // Só a saúde: o card mostra os três contadores do rodapé da aba 2, e
         // trazer evidência e observação de 22 linhas por semana para montar
@@ -140,6 +141,7 @@ export async function getWeeklyReportData(
     periodStart: isoDia(row.periodStart),
     periodEnd: isoDia(row.periodEnd),
     authorName: row.createdBy?.fullName,
+    highlight: row.highlight ?? undefined,
     ...contarEntregas(row.deliveries),
   }));
 

@@ -8,6 +8,7 @@ import type { WeeklyReportData, WeeklyReportDetail } from "@/types/weekly-report
 import { ReportCard } from "./report-card";
 import { ReportEditor } from "./report-editor";
 import { NewReportModal } from "./new-report-modal";
+import { ReportViewModal } from "./report-view-modal";
 import { KanbanBoard } from "./kanban-board";
 import { KanbanSummaryPanel } from "./kanban-summary";
 
@@ -43,14 +44,28 @@ export function WeeklyReportPanel({
 }) {
   const [vista, setVista] = useState<Vista>("semanas");
   const [novo, setNovo] = useState(false);
+  /**
+   * O que fazer com a semana que a URL aponta: ler ou editar.
+   *
+   * Fica aqui, e não na URL, porque é escolha do clique — o card abre a
+   * leitura, o lápis abre a edição. Recarregar a página volta para a leitura,
+   * que é o modo seguro dos dois.
+   */
+  const [modo, setModo] = useState<"ver" | "editar">("ver");
+
+  function abrir(id: string, como: "ver" | "editar") {
+    setModo(como);
+    onSelect(id);
+  }
 
   function trocarVista(v: Vista) {
     setVista(v);
     onVista?.(v);
   }
 
-  // Com um relatório aberto, as vistas saem de cena: o editor É a tela.
-  if (detail) {
+  // Com um relatório aberto para EDIÇÃO, as vistas saem de cena: o editor é a
+  // tela. A leitura é modal, e fica por cima da lista.
+  if (detail && modo === "editar") {
     return (
       <ReportEditor
         /* A chave garante a remontagem ao trocar de semana: o estado do
@@ -109,7 +124,13 @@ export function WeeklyReportPanel({
         ) : (
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
             {data.reports.map((report) => (
-              <ReportCard key={report.id} report={report} onOpen={onSelect} />
+              <ReportCard
+                key={report.id}
+                report={report}
+                canEdit={data.canEdit}
+                onOpen={(id) => abrir(id, "ver")}
+                onEdit={(id) => abrir(id, "editar")}
+              />
             ))}
           </div>
         ))}
@@ -127,8 +148,15 @@ export function WeeklyReportPanel({
         </div>
       )}
 
-      {novo && (
-        <NewReportModal slug={data.slug} open onClose={() => setNovo(false)} />
+      {novo && <NewReportModal slug={data.slug} open onClose={() => setNovo(false)} />}
+
+      {detail && (
+        <ReportViewModal
+          key={detail.id}
+          detail={detail}
+          onClose={() => onSelect(null)}
+          onEdit={() => setModo("editar")}
+        />
       )}
     </div>
   );
