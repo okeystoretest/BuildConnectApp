@@ -9,6 +9,7 @@ import { excluirBloqueio, salvarBloqueio } from "@/lib/weekly-report/actions";
 import type { BlockerItem, WeeklyHealth } from "@/types/weekly-report";
 import { HealthSelect } from "./health-select";
 import { SectionCard } from "./section-card";
+import { useRegistrarPendencia } from "./pendencias";
 
 /**
  * Aba 5 — Bloqueios e Decisões.
@@ -54,12 +55,20 @@ export function BlockersSection({
   blockers: readonly BlockerItem[];
 }) {
   const router = useRouter();
+  /**
+   * A lista que a tela mostra.
+   *
+   * Estado, e não as props: dentro do modal da semana nova o `detail` é o
+   * que a criação devolveu e não muda mais — um bloqueio gravado ali sumiria
+   * da tela no instante em que o rascunho fechasse.
+   */
+  const [linhas, setLinhas] = useState<readonly BlockerItem[]>(blockers);
   const [novo, setNovo] = useState<Rascunho | null>(null);
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
-  async function gravar(id: string | undefined, dados: Rascunho) {
-    if (ocupado) return;
+  async function gravar(id: string | undefined, dados: Rascunho): Promise<boolean> {
+    if (ocupado) return false;
     setOcupado(id ?? "novo");
     setErro(null);
     const r = await salvarBloqueio({
@@ -74,12 +83,26 @@ export function BlockersSection({
       resolution: dados.resolution || null,
     });
     setOcupado(null);
-    if (!r.ok) {
+    if (!r.ok || !r.id) {
       setErro(r.error ?? "Não foi possível salvar o bloqueio.");
-      return;
+      return false;
     }
+    const salvo: BlockerItem = {
+      id: r.id,
+      order: linhas.find((l) => l.id === id)?.order ?? linhas.length,
+      title: dados.title,
+      impact: dados.impact || undefined,
+      needs: dados.needs || undefined,
+      dueDate: dados.dueDate || undefined,
+      health: dados.health,
+      resolution: dados.resolution || undefined,
+    };
+    setLinhas((atuais) =>
+      id ? atuais.map((l) => (l.id === id ? salvo : l)) : [...atuais, salvo],
+    );
     setNovo(null);
     router.refresh();
+    return true;
   }
 
   async function remover(id: string) {
@@ -92,6 +115,7 @@ export function BlockersSection({
       setErro(r.error ?? "Não foi possível excluir o bloqueio.");
       return;
     }
+    setLinhas((atuais) => atuais.filter((l) => l.id !== id));
     router.refresh();
   }
 
@@ -110,14 +134,14 @@ export function BlockersSection({
       }
     >
       <div className="space-y-2">
-        {blockers.length === 0 && !novo && (
+        {linhas.length === 0 && !novo && (
           <p className="py-2 text-xs text-muted">
             Nenhum bloqueio registrado nesta semana. Uma semana sem bloqueio é um ótimo relatório
             — só não vale deixar de registrar o que travou.
           </p>
         )}
 
-        {blockers.map((b) => (
+        {linhas.map((b) => (
           <BlockerRow
             key={b.id}
             blocker={b}
@@ -154,7 +178,7 @@ function BlockerRow({
   novo?: boolean;
   canEdit: boolean;
   ocupado: boolean;
-  onSave: (dados: Rascunho) => void;
+  onSave: (dados: Rascunho) => Promise<boolean>;
   onDelete: () => void;
 }) {
   const [dados, setDados] = useState<Rascunho>({
@@ -168,6 +192,19 @@ function BlockerRow({
 
   const alterar = (patch: Partial<Rascunho>) => setDados((d) => ({ ...d, ...patch }));
   const pronto = dados.title.trim().length > 0;
+
+  // O "Próximo" dos passos e o "Salvar" do cabeçalho gravam esta linha também
+  // — sem isto, o bloqueio seria o único bloco que o fluxo em etapas deixaria
+  // para trás. Sem título não há o que gravar (o servidor recusa), então a
+  // linha só se registra quando já dá para salvá-la.
+  const sujo =
+    dados.title !== (blocker?.title ?? "") ||
+    dados.impact !== (blocker?.impact ?? "") ||
+    dados.needs !== (blocker?.needs ?? "") ||
+    dados.dueDate !== (blocker?.dueDate ?? "") ||
+    dados.health !== blocker?.health ||
+    dados.resolution !== (blocker?.resolution ?? "");
+  useRegistrarPendencia(canEdit && pronto && sujo, () => onSave(dados));
 
   return (
     <div className="rounded-lg border border-border bg-surface-2/40 p-3">
@@ -232,7 +269,7 @@ function BlockerRow({
         </div>
         {canEdit && (
           <div className="flex items-center justify-end gap-1.5 lg:col-span-3">
-            <Button size="sm" onClick={() => onSave(dados)} disabled={!pronto || ocupado}>
+            <Button size="sm" onClick={() => void onSave(dados)} disabled={!pronto || ocupado}>
               {ocupado && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
               Salvar
             </Button>
