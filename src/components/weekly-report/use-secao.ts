@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useRegistrarPendencia } from "./pendencias";
 
 /**
  * Estado de uma seção de linhas com um salvamento só.
@@ -55,14 +56,14 @@ export function useSecao<T extends { id: string }>(
   }, []);
 
   const salvar = useCallback(async () => {
-    if (salvando) return;
+    if (salvando) return false;
     setSalvando(true);
     setErro(null);
     const r = await enviar(rows);
     setSalvando(false);
     if (!r.ok) {
       setErro(r.error ?? "Não foi possível salvar.");
-      return;
+      return false;
     }
     // A nova base é o que ACABOU de ser gravado: sem isto, o "Salvar"
     // continuaria aceso depois de um salvamento bem-sucedido.
@@ -71,7 +72,11 @@ export function useSecao<T extends { id: string }>(
     // O refresh é o que atualiza o que o SERVIDOR calcula (contadores do
     // card, média de 4 semanas) — a tela não recalcula esses números sozinha.
     router.refresh();
+    return true;
   }, [enviar, rows, salvando, router]);
+
+  // O "Salvar" do cabeçalho e o "Próximo" dos passos gravam por aqui.
+  useRegistrarPendencia(sujo, salvar);
 
   return { rows, alterar, adicionar, remover, sujo, salvar, salvando, erro, salvo };
 }

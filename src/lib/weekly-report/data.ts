@@ -97,11 +97,7 @@ export async function getWeeklyReportData(
         weekNumber: true,
         periodStart: true,
         periodEnd: true,
-        status: true,
-        submittedAt: true,
-        approvedAt: true,
         createdBy: { select: { fullName: true } },
-        approvedBy: { select: { fullName: true } },
         // Só a saúde: o card mostra os três contadores do rodapé da aba 2, e
         // trazer evidência e observação de 22 linhas por semana para montar
         // uma contagem seria carregar o relatório inteiro para desenhar um
@@ -143,11 +139,7 @@ export async function getWeeklyReportData(
     weekNumber: row.weekNumber,
     periodStart: isoDia(row.periodStart),
     periodEnd: isoDia(row.periodEnd),
-    status: row.status,
-    submittedAt: row.submittedAt?.toISOString(),
-    approvedAt: row.approvedAt?.toISOString(),
     authorName: row.createdBy?.fullName,
-    approverName: row.approvedBy?.fullName,
     ...contarEntregas(row.deliveries),
   }));
 
@@ -192,10 +184,7 @@ export async function getWeeklyReportDetail(
       highlight: true,
       learning: true,
       nextPriority: true,
-      submittedAt: true,
-      approvedAt: true,
       createdBy: { select: { fullName: true } },
-      approvedBy: { select: { fullName: true } },
       deliveries: { orderBy: { order: "asc" } },
       metrics: { orderBy: { order: "asc" } },
       okrs: { orderBy: { order: "asc" } },
@@ -235,11 +224,7 @@ export async function getWeeklyReportDetail(
     weekNumber: row.weekNumber,
     periodStart: isoDia(row.periodStart),
     periodEnd: isoDia(row.periodEnd),
-    status: row.status,
-    submittedAt: row.submittedAt?.toISOString(),
-    approvedAt: row.approvedAt?.toISOString(),
     authorName: row.createdBy?.fullName,
-    approverName: row.approvedBy?.fullName,
     ...contarEntregas(row.deliveries),
     highlight: row.highlight ?? undefined,
     learning: row.learning ?? undefined,

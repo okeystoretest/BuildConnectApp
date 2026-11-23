@@ -3,8 +3,6 @@
 /** 🟢 No ritmo · 🟡 Atenção · 🔴 Travado. */
 export type WeeklyHealth = "NO_RITMO" | "ATENCAO" | "TRAVADO";
 
-export type WeeklyReportStatus = "RASCUNHO" | "ENVIADO" | "APROVADO";
-
 export type MarketingTaskStatus =
   | "BACKLOG"
   | "A_FAZER"
@@ -93,12 +91,7 @@ export interface WeeklyReportListItem {
   /** yyyy-mm-dd. */
   periodStart: string;
   periodEnd: string;
-  status: WeeklyReportStatus;
-  /** ISO completo — a hora do envio faz parte do compromisso (sexta, 18h). */
-  submittedAt?: string;
-  approvedAt?: string;
   authorName?: string;
-  approverName?: string;
   /** Contadores das entregas, calculados no servidor. */
   onTrack: number;
   attention: number;

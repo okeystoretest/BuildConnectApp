@@ -1,12 +1,6 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
-import {
-  REPORT_STATUS_LABEL,
-  REPORT_STATUS_TONE,
-  formatarDataHora,
-  formatarDiaMes,
-} from "@/lib/weekly-report/labels";
+import { formatarDiaMes } from "@/lib/weekly-report/labels";
 import type { WeeklyReportListItem } from "@/types/weekly-report";
 
 /**
@@ -37,9 +31,6 @@ export function ReportCard({
             {formatarDiaMes(report.periodStart)} a {formatarDiaMes(report.periodEnd)}/{ano}
           </p>
         </div>
-        <Badge tone={REPORT_STATUS_TONE[report.status]}>
-          {REPORT_STATUS_LABEL[report.status]}
-        </Badge>
       </div>
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
@@ -51,13 +42,9 @@ export function ReportCard({
         )}
       </div>
 
-      <p className="text-[11px] text-muted">
-        {report.status === "APROVADO" && report.approverName
-          ? `Aprovado por ${report.approverName} em ${formatarDataHora(report.approvedAt)}`
-          : report.submittedAt
-            ? `Enviado em ${formatarDataHora(report.submittedAt)}`
-            : `Preenchendo${report.authorName ? ` · ${report.authorName}` : ""}`}
-      </p>
+      {report.authorName && (
+        <p className="text-[11px] text-muted">Criada por {report.authorName}</p>
+      )}
     </button>
   );
 }

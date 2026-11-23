@@ -6,7 +6,10 @@ import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth/require-user";
 import { ImageProcessingError, processAndStoreImage } from "@/lib/storage/images";
 import { requireApprover, requireWeeklyScope, revalidateWeekly } from "./guards";
+import { getWeeklyReportDetail } from "./data";
 import { AGENDA } from "./templates";
+import type { Role } from "@/types";
+import type { WeeklyReportDetail } from "@/types/weekly-report";
 
 /**
  * Escritas do Relatório Semanal.
@@ -16,9 +19,10 @@ import { AGENDA } from "./templates";
  * entra sempre no `where` junto do `subsectorId`: sem isso, um id vazado
  * editaria a semana de uma área que o usuário não enxerga.
  *
- * O relatório APROVADO não aceita escrita de linha. A checagem está em
- * `abrirRelatorio`, num lugar só — espalhá-la por action deixaria uma de
- * fora, e seria a que reabre o número depois da aprovação.
+ * Não há mais enviar nem aprovar: a semana se preenche e se salva. A trava do
+ * relatório APROVADO segue em `abrirRelatorio` porque a coluna continua no
+ * banco — uma semana marcada assim por fora não volta a aceitar escrita de
+ * quem não aprova.
  */
 
 export interface WeeklyActionResult {
@@ -141,7 +145,9 @@ const criarSchema = z.object({
  * escrita aninhada só — é uma transação implícita do Prisma, e é o que impede
  * um relatório nascer com as entregas e sem as métricas.
  */
-export async function criarRelatorio(input: unknown): Promise<WeeklyActionResult> {
+export async function criarRelatorio(
+  input: unknown,
+): Promise<WeeklyActionResult & { detail?: WeeklyReportDetail }> {
   const parsed = criarSchema.safeParse(input, { errorMap: EM_PORTUGUES });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
@@ -180,7 +186,11 @@ export async function criarRelatorio(input: unknown): Promise<WeeklyActionResult
   });
 
   revalidateWeekly(slug);
-  return { ok: true, id: criado.id };
+  // O detalhe volta junto: o modal abre os blocos na sequência, e a pauta
+  // nasce pronta no servidor — sem isto, a tela teria de adivinhar os ids
+  // dela ou dar uma segunda volta ao banco para lê-los.
+  const detail = await getWeeklyReportDetail(slug, criado.id, user.role as Role);
+  return { ok: true, id: criado.id, detail: detail ?? undefined };
 }
 
 const resumoSchema = z.object({
@@ -502,84 +512,8 @@ export async function excluirBloqueio(input: unknown): Promise<WeeklyActionResul
 }
 
 // ─────────────────────────────────────────────────────────────
-// O ciclo da semana: enviar → aprovar → (reabrir)
+// Excluir a semana
 // ─────────────────────────────────────────────────────────────
-
-const cicloSchema = z.object({
-  slug: z.string().min(1),
-  reportId: z.string().min(1),
-  acao: z.enum(["enviar", "aprovar", "reabrir"]),
-});
-
-/**
- * As três transições de estado, numa action.
- *
- * As datas de envio e de aprovação são gravadas AQUI, pelo servidor. Na
- * planilha eram duas células digitadas — e uma entrega atrasada vinha com o
- * horário que o preenchimento quisesse.
- */
-export async function definirStatusRelatorio(input: unknown): Promise<WeeklyActionResult> {
-  const parsed = cicloSchema.safeParse(input, { errorMap: EM_PORTUGUES });
-  if (!parsed.success) return { ok: false, error: "Dados inválidos." };
-  const { slug, reportId, acao } = parsed.data;
-
-  const user = await getCurrentUser();
-  if (!user) return { ok: false, error: "Sessão expirada. Faça login novamente." };
-
-  const { scope, error } = await requireWeeklyScope(slug, user);
-  if (!scope) return { ok: false, error: error ?? undefined };
-
-  if (acao !== "enviar") {
-    const permissao = requireApprover(user);
-    if (permissao.error) return { ok: false, error: permissao.error };
-  }
-
-  const report = await prisma.weeklyReport.findFirst({
-    where: { id: reportId, subsectorId: scope.id },
-    select: { id: true, status: true, submittedAt: true },
-  });
-  if (!report) return { ok: false, error: "Relatório não encontrado." };
-
-  if (acao === "enviar") {
-    if (report.status !== "RASCUNHO") {
-      return { ok: false, error: "Este relatório já foi enviado." };
-    }
-    await prisma.weeklyReport.update({
-      where: { id: report.id },
-      data: { status: "ENVIADO", submittedAt: new Date() },
-    });
-  } else if (acao === "aprovar") {
-    if (report.status === "APROVADO") {
-      return { ok: false, error: "Este relatório já está aprovado." };
-    }
-    const agora = new Date();
-    await prisma.weeklyReport.update({
-      where: { id: report.id },
-      data: {
-        status: "APROVADO",
-        // Aprovar um rascunho aprova também a entrega: sem isto a semana
-        // ficaria aprovada e sem data de envio, e a planilha registrava as
-        // duas coisas. Quem já havia enviado mantém a hora do envio.
-        submittedAt: report.submittedAt ?? agora,
-        approvedAt: agora,
-        approvedById: user.id,
-      },
-    });
-  } else {
-    if (report.status === "RASCUNHO") {
-      return { ok: false, error: "Este relatório já está em rascunho." };
-    }
-    // Reabrir volta ao rascunho e APAGA a aprovação. Guardar quem aprovou uma
-    // versão que já mudou seria assinar um relatório que não existe mais.
-    await prisma.weeklyReport.update({
-      where: { id: report.id },
-      data: { status: "RASCUNHO", approvedAt: null, approvedById: null },
-    });
-  }
-
-  revalidateWeekly(slug);
-  return { ok: true, id: report.id };
-}
 
 export async function excluirRelatorio(input: unknown): Promise<WeeklyActionResult> {
   const parsed = z

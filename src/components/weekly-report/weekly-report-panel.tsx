@@ -128,15 +128,7 @@ export function WeeklyReportPanel({
       )}
 
       {novo && (
-        <NewReportModal
-          slug={data.slug}
-          open
-          onClose={() => setNovo(false)}
-          onCreated={(id) => {
-            setNovo(false);
-            onSelect(id);
-          }}
-        />
+        <NewReportModal slug={data.slug} open onClose={() => setNovo(false)} />
       )}
     </div>
   );

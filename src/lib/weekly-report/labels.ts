@@ -12,7 +12,6 @@ import type {
   MarketingTaskPriority,
   MarketingTaskStatus,
   WeeklyHealth,
-  WeeklyReportStatus,
 } from "@/types/weekly-report";
 
 export const HEALTH_LABEL: Record<WeeklyHealth, string> = {
@@ -28,18 +27,6 @@ export const HEALTH_TONE: Record<WeeklyHealth, "primary" | "warning" | "danger">
   NO_RITMO: "primary",
   ATENCAO: "warning",
   TRAVADO: "danger",
-};
-
-export const REPORT_STATUS_LABEL: Record<WeeklyReportStatus, string> = {
-  RASCUNHO: "Rascunho",
-  ENVIADO: "Enviado",
-  APROVADO: "Aprovado",
-};
-
-export const REPORT_STATUS_TONE: Record<WeeklyReportStatus, "neutral" | "info" | "primary"> = {
-  RASCUNHO: "neutral",
-  ENVIADO: "info",
-  APROVADO: "primary",
 };
 
 export const TASK_STATUS_LABEL: Record<MarketingTaskStatus, string> = {
