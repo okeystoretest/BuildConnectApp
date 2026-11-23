@@ -39,9 +39,11 @@ import type { SectorWelcomeVideo as SectorWelcomeVideoData } from "@/lib/welcome
 import { EvaluationsPanel } from "@/components/hr/evaluations-panel";
 import { CronogramaPanel } from "@/components/cronograma/cronograma-panel";
 import { SalesFunnelPanel } from "@/components/sales-funnel/sales-funnel-panel";
+import { WeeklyReportPanel } from "@/components/weekly-report/weekly-report-panel";
 import type { SectorEvaluations } from "@/types/evaluation";
 import type { CronogramaData } from "@/types/cronograma";
 import type { SalesFunnelData, SalesFunnelDetail } from "@/types/sales-funnel";
+import type { WeeklyReportData, WeeklyReportDetail } from "@/types/weekly-report";
 
 interface TabDef extends TabItem {
   id: TabId;
@@ -84,6 +86,8 @@ const AVALIACOES_TAB: TabDef = {
 const CRONOGRAMA_TAB: TabDef = { id: "cronograma", label: "Cronograma" };
 /** Aba da ferramenta Funil de Vendas — só entra quando o subsetor a habilita. */
 const FUNIL_TAB: TabDef = { id: "funil-vendas", label: "Funil de Vendas" };
+/** Aba da ferramenta Relatório Semanal — só entra quando o subsetor a habilita. */
+const RELATORIO_TAB: TabDef = { id: "relatorio-semanal", label: "Relatório Semanal" };
 
 /*
  * Aplicativos não é mais aba. Os atalhos vivem abaixo da barra de abas, à
@@ -118,6 +122,8 @@ export function SectorPage({
   cronograma,
   salesFunnel,
   salesFunnelDetail,
+  weeklyReport,
+  weeklyReportDetail,
   initialTab,
   welcome,
 }: {
@@ -128,6 +134,10 @@ export function SectorPage({
   salesFunnel?: SalesFunnelData | null;
   /** Funil aberto, resolvido no servidor a partir de `?funil=`. */
   salesFunnelDetail?: SalesFunnelDetail | null;
+  /** Relatório Semanal: null quando o subsetor não habilita a ferramenta. */
+  weeklyReport?: WeeklyReportData | null;
+  /** Semana aberta, resolvida no servidor a partir de `?semana=`. */
+  weeklyReportDetail?: WeeklyReportDetail | null;
   initialTab?: string;
   /** Vídeo de boas-vindas do setor (modal + card de gestão). */
   welcome?: SectorWelcomeVideoData | null;
@@ -149,6 +159,21 @@ export function SectorPage({
       if (id) url.searchParams.set("funil", id);
       else url.searchParams.delete("funil");
       url.searchParams.set("aba", "funil-vendas");
+      router.push(`${url.pathname}${url.search}`, { scroll: false });
+    },
+    [router],
+  );
+
+  /**
+   * Abre (ou fecha) uma semana escrevendo `?semana=` na URL. Mesma razão do
+   * `selecionarFunil`: o DETALHE é carregado no servidor.
+   */
+  const selecionarSemana = useCallback(
+    (id: string | null) => {
+      const url = new URL(window.location.href);
+      if (id) url.searchParams.set("semana", id);
+      else url.searchParams.delete("semana");
+      url.searchParams.set("aba", "relatorio-semanal");
       router.push(`${url.pathname}${url.search}`, { scroll: false });
     },
     [router],
@@ -178,8 +203,17 @@ export function SectorPage({
           ...source.slice(source.indexOf(CRONOGRAMA_TAB) + 1 || source.length),
         ]
       : source;
-    return comFunil.filter((tab) => !tab.permission || can(tab.permission));
-  }, [sector.kind, can, cronograma, salesFunnel]);
+    // O Relatório Semanal fecha o trio de planejamento do setor: ele LÊ o
+    // que as outras duas planejam, e vem por último por isso.
+    const comRelatorio = weeklyReport
+      ? [
+          ...comFunil.slice(0, comFunil.indexOf(FUNIL_TAB) + 1 || comFunil.length),
+          RELATORIO_TAB,
+          ...comFunil.slice(comFunil.indexOf(FUNIL_TAB) + 1 || comFunil.length),
+        ]
+      : comFunil;
+    return comRelatorio.filter((tab) => !tab.permission || can(tab.permission));
+  }, [sector.kind, can, cronograma, salesFunnel, weeklyReport]);
 
   const [active, setActive] = useState<TabId>(() => {
     const requested = tabs.find((tab) => tab.id === initialTab)?.id;
@@ -358,7 +392,11 @@ export function SectorPage({
       title={sector.name}
       // Só o Cronograma ocupa a tela toda; as demais abas mantêm a largura
       // de leitura confortável.
-      wide={activeId === "cronograma" || activeId === "funil-vendas"}
+      wide={
+        activeId === "cronograma" ||
+        activeId === "funil-vendas" ||
+        activeId === "relatorio-semanal"
+      }
     >
       <PageHeader
         title={sector.name}
@@ -544,6 +582,14 @@ export function SectorPage({
             data={salesFunnel}
             detail={salesFunnelDetail}
             onSelect={selecionarFunil}
+          />
+        )}
+
+        {activeId === "relatorio-semanal" && weeklyReport && (
+          <WeeklyReportPanel
+            data={weeklyReport}
+            detail={weeklyReportDetail}
+            onSelect={selecionarSemana}
           />
         )}
       </TabPanel>

@@ -25,6 +25,10 @@ export type Permission =
   // é definir a META e as TAXAS — o número que a equipe inteira passa a
   // perseguir.
   | "funnel.manage"
+  // Aprovar (e reabrir) o Relatório Semanal da área. PREENCHER não exige
+  // permissão: é o trabalho de quem toca o setor. O que é de gestão é dizer
+  // "a semana fechou assim" — e, uma vez aprovado, só quem aprova reabre.
+  | "weeklyReport.approve"
   | "users.manage"
   | "tickets.create"
   | "tickets.viewOwn"

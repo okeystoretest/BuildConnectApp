@@ -6,6 +6,7 @@ import { getSectorContent } from "@/lib/sector-data";
 import { getSectorEvaluations } from "@/lib/sector-evaluations-data";
 import { getCronogramaData } from "@/lib/cronograma-data";
 import { getSalesFunnelData, getSalesFunnelDetail } from "@/lib/sales-funnel/data";
+import { getWeeklyReportData, getWeeklyReportDetail } from "@/lib/weekly-report/data";
 import { getSectorWelcomeVideo } from "@/lib/welcome-video-data";
 import { getVerifiedSession } from "@/lib/auth/require-user";
 import { resolveAccessibleSlugs, canAccessSlug } from "@/lib/auth/access";
@@ -14,8 +15,14 @@ import { prisma } from "@/lib/db/prisma";
 import type { Role } from "@/types";
 
 /** Query da URL depois de resolvida (Next 15 entrega como Promise). */
-/** `funil` guarda qual funil está aberto no editor. */
-type SectorSearchParams = { aba?: string; ano?: string; mes?: string; funil?: string };
+/** `funil` e `semana` guardam qual funil e qual relatório estão abertos. */
+type SectorSearchParams = {
+  aba?: string;
+  ano?: string;
+  mes?: string;
+  funil?: string;
+  semana?: string;
+};
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -93,6 +100,16 @@ export default async function Page({ params, searchParams }: PageProps) {
   const salesFunnelDetail =
     salesFunnel && query?.funil ? await getSalesFunnelDetail(slug, query.funil) : null;
 
+  // Relatório Semanal: null quando o subsetor não habilita a ferramenta. NÃO
+  // segue a herança de aplicativos — o relatório é da área que o preenche.
+  const weeklyReport = await getWeeklyReportData(slug, role);
+  // Mesma regra do funil: o id passa pelo servidor, que o confere contra o
+  // subsetor. Id de outra área devolve null e a tela cai na lista.
+  const weeklyReportDetail =
+    weeklyReport && query?.semana
+      ? await getWeeklyReportDetail(slug, query.semana, role)
+      : null;
+
   return (
     <SectorPage
       sector={sector}
@@ -101,6 +118,8 @@ export default async function Page({ params, searchParams }: PageProps) {
       cronograma={cronograma}
       salesFunnel={salesFunnel}
       salesFunnelDetail={salesFunnelDetail}
+      weeklyReport={weeklyReport}
+      weeklyReportDetail={weeklyReportDetail}
       initialTab={query?.aba}
     />
   );

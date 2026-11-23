@@ -96,46 +96,50 @@ model User {
   contentProgress          ContentProgress[]
   // Respostas de compreensão das Instruções em Vídeo: as que este usuário
   // escreveu e as que ele avaliou como Gestor.
-  videoComprehensions      VideoComprehension[]   @relation("VideoComprehensionAuthor")
-  videoComprehensionGrades VideoComprehension[]   @relation("VideoComprehensionGrader")
+  videoComprehensions      VideoComprehension[]    @relation("VideoComprehensionAuthor")
+  videoComprehensionGrades VideoComprehension[]    @relation("VideoComprehensionGrader")
   // Patamar de fila já avisado a este Gestor (aviso de 5 em 5).
-  graderAlertState         GraderAlertState?      @relation("GraderAlertState")
+  graderAlertState         GraderAlertState?       @relation("GraderAlertState")
   // Avaliações de qualidade que este usuário deu a vídeos.
-  videoRatings             VideoRating[]          @relation("VideoRatingAuthor")
-  contentPosts             ContentPost[]          @relation("ContentPostOwner")
-  authoredPosts            ContentPost[]          @relation("ContentPostAuthor")
-  salesFunnels             SalesFunnel[]          @relation("SalesFunnelAuthor")
-  funnelScenarios          SalesFunnelScenario[]  @relation("FunnelScenarioAuthor")
+  videoRatings             VideoRating[]           @relation("VideoRatingAuthor")
+  contentPosts             ContentPost[]           @relation("ContentPostOwner")
+  authoredPosts            ContentPost[]           @relation("ContentPostAuthor")
+  salesFunnels             SalesFunnel[]           @relation("SalesFunnelAuthor")
+  funnelScenarios          SalesFunnelScenario[]   @relation("FunnelScenarioAuthor")
+  // Relatório Semanal: os que esta pessoa preencheu e os que aprovou.
+  weeklyReports            WeeklyReport[]          @relation("WeeklyReportAuthor")
+  weeklyReportApprovals    WeeklyReport[]          @relation("WeeklyReportApprover")
+  marketingTasks           MarketingTask[]         @relation("MarketingTaskAuthor")
   // Roteiros de card que este usuário gerou ou editou por último.
-  contentScripts           ContentPost[]          @relation("ContentPostScript")
+  contentScripts           ContentPost[]           @relation("ContentPostScript")
   // Configuração da IA (Retaguarda) — quem salvou por último.
-  aiSettingsEdits          AiSettings[]           @relation("AiSettingsEditor")
-  aiInstructionEdits       AiInstruction[]        @relation("AiInstructionEditor")
-  requestedTickets         Ticket[]               @relation("TicketRequester")
-  assignedTickets          Ticket[]               @relation("TicketAssignee")
+  aiSettingsEdits          AiSettings[]            @relation("AiSettingsEditor")
+  aiInstructionEdits       AiInstruction[]         @relation("AiInstructionEditor")
+  requestedTickets         Ticket[]                @relation("TicketRequester")
+  assignedTickets          Ticket[]                @relation("TicketAssignee")
   // Notificações de WhatsApp endereçadas a este usuário (fila + auditoria).
-  whatsappMessages         WhatsappMessage[]      @relation("WhatsappRecipient")
+  whatsappMessages         WhatsappMessage[]       @relation("WhatsappRecipient")
   // Formulários do DHO: criados, atribuídos a responder, e respondidos.
-  authoredForms            Form[]                 @relation("FormAuthor")
-  formAssignments          FormAssignment[]       @relation("FormAssignee")
-  formResponses            FormResponse[]         @relation("FormRespondent")
+  authoredForms            Form[]                  @relation("FormAuthor")
+  formAssignments          FormAssignment[]        @relation("FormAssignee")
+  formResponses            FormResponse[]          @relation("FormRespondent")
   // Chamados que este usuário atribuiu (a si mesmo ou a outra pessoa).
-  ticketsAssignedOut       Ticket[]               @relation("TicketAssigner")
-  evaluationsReceived      Evaluation[]           @relation("EvaluationSubject")
-  evaluationsGiven         Evaluation[]           @relation("EvaluationEvaluator")
-  evaluationCycles         EvaluationCycle[]      @relation("EvaluationCycleSubject")
+  ticketsAssignedOut       Ticket[]                @relation("TicketAssigner")
+  evaluationsReceived      Evaluation[]            @relation("EvaluationSubject")
+  evaluationsGiven         Evaluation[]            @relation("EvaluationEvaluator")
+  evaluationCycles         EvaluationCycle[]       @relation("EvaluationCycleSubject")
   // Rodadas multidirecionais (Eficácia): como avaliado e como avaliador designado.
-  evaluationRounds         EvaluationRound[]      @relation("EvaluationRoundSubject")
-  evaluationAssignments    EvaluationAssignment[] @relation("EvaluationAssignmentRater")
+  evaluationRounds         EvaluationRound[]       @relation("EvaluationRoundSubject")
+  evaluationAssignments    EvaluationAssignment[]  @relation("EvaluationAssignmentRater")
   integrationMaps          IntegrationMap[]
-  integrationGuests        IntegrationGuest[]     @relation("IntegrationGuestAuthor")
+  integrationGuests        IntegrationGuest[]      @relation("IntegrationGuestAuthor")
   // Denúncias recebidas (o denunciante é sempre anônimo — não há relação).
-  reportsReceived          Report[]               @relation("ReportTarget")
+  reportsReceived          Report[]                @relation("ReportTarget")
   notifications            NotificationRead[]
   // Notificações direcionadas a este usuário (alvo individual).
-  directNotifications      Notification[]         @relation("NotificationTarget")
+  directNotifications      Notification[]          @relation("NotificationTarget")
   // Departamento Pessoal: a documentação pessoal arquivada deste colaborador.
-  personnelFiles           PersonnelFile[]        @relation("PersonnelFileOwner")
+  personnelFiles           PersonnelFile[]         @relation("PersonnelFileOwner")
   // Vencimento das pastas deste colaborador (só as que vencem têm linha).
   personnelExpiries        PersonnelFolderExpiry[] @relation("PersonnelExpiryOwner")
 
@@ -206,6 +210,12 @@ model Subsector {
   // mesma herança de `appsSourceId`: quem herda não configura, recebe.
   funnelEnabled Boolean @default(false)
 
+  // Habilita a ferramenta Relatório Semanal neste subsetor. NÃO segue a
+  // herança de `appsSourceId`: o relatório é da área que o preenche, e
+  // compartilhá-lo com o subsetor de origem (Vendas) daria a ele o poder de
+  // aprovar a semana de outra equipe. Quem habilita, habilita para si.
+  weeklyReportEnabled Boolean @default(false)
+
   // Vídeo de boas-vindas do setor, exibido na PRIMEIRA visita de cada usuário.
   // Como todo arquivo do sistema, o banco guarda só o caminho público
   // (/uploads/conteudo/ano/mes/arquivo.mp4) — nunca o binário.
@@ -216,13 +226,16 @@ model Subsector {
   welcomeVideoAt    DateTime?
 
   // Conteúdo do subsetor.
-  photos       Photo[]
-  videos       Video[]
-  documents    Document[]
-  links        ExternalLink[]
-  posts        ContentPost[]
-  sharedVideos VideoShare[]
-  salesFunnels SalesFunnel[]
+  photos         Photo[]
+  videos         Video[]
+  documents      Document[]
+  links          ExternalLink[]
+  posts          ContentPost[]
+  sharedVideos   VideoShare[]
+  salesFunnels   SalesFunnel[]
+  // Relatório Semanal: os relatórios e o quadro Kanban desta área.
+  weeklyReports  WeeklyReport[]
+  marketingTasks MarketingTask[]
 
   members      UserSubsector[]
   welcomeViews SubsectorWelcomeView[]
@@ -1069,9 +1082,9 @@ model TicketEvent {
   ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
   /// Status para o qual o chamado passou nesta transição.
-  status TicketStatus
+  status       TicketStatus
   /// Quem executou a ação.
-  actorName String
+  actorName    String
   /// Responsável que ficou com o chamado, quando a transição define um.
   assigneeName String?
 
@@ -1845,7 +1858,7 @@ model IntegrationGuest {
   // Anulável só por causa dos convites criados ANTES de 28/10/2026, que
   // nasceram sem telefone. A tela exige; aqueles continuam navegando e apenas
   // não recebem aviso.
-  phone String?
+  phone    String?
 
   /// Abriu o convite e confirmou o nome. Null = ainda não entrou.
   confirmedAt DateTime?
@@ -1895,19 +1908,19 @@ enum IntegrationAssetKind {
 /// Um filme de integração caindo nessas listas seria conteúdo de setor que
 /// ninguém cadastrou.
 model IntegrationAsset {
-  id       String               @id @default(cuid())
-  kind     IntegrationAssetKind
-  title    String
+  id            String               @id @default(cuid())
+  kind          IntegrationAssetKind
+  title         String
   // Subtítulo do PDF de ordem ("Autoconhecimento e Presença").
-  focus    String?
+  focus         String?
   // A "lição chave" do filme, exibida ao lado dele.
-  lesson   String?
+  lesson        String?
   // Caminho público do arquivo. Nulo enquanto o DHO não subiu o arquivo.
-  filePath String?
+  filePath      String?
   /// Capa do filme (.webp), em tamanho padronizado. Nula = a tela desenha o
   /// bloco sem imagem; nada quebra sem ela.
   thumbnailPath String?
-  order    Int                  @default(0)
+  order         Int                  @default(0)
 
   questions IntegrationQuestion[]
   attempts  IntegrationAttempt[]
@@ -1944,8 +1957,8 @@ model IntegrationOption {
   questionId String
   question   IntegrationQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
 
-  label String
-  order Int     @default(0)
+  label   String
+  order   Int     @default(0)
   // O gabarito. Uma por pergunta — a tela do DHO garante, o banco não.
   correct Boolean @default(false)
 
@@ -1999,4 +2012,266 @@ model IntegrationAnswer {
   // Uma resposta por pergunta em cada tentativa.
   @@unique([attemptId, questionId])
   @@index([questionId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Relatório Semanal de Marketing
+// ─────────────────────────────────────────────────────────────
+//
+// Conversão da planilha "Relatório Semanal — Okey Store" (10 abas) em
+// ferramenta. Cada aba virou uma seção do relatório, menos o Kanban, que é
+// quadro PERMANENTE e por isso pende do subsetor, não do relatório da semana.
+//
+// Nada do que a planilha CALCULAVA é coluna aqui: variação, % da meta,
+// contadores de entrega e o painel do Kanban saem de `lib/weekly-report/math`
+// na leitura. Gravar o resultado criaria uma segunda verdade que envelhece na
+// primeira correção de um número.
+//
+// O ESCOPO é o próprio subsetor, e não `appsSource` como no Cronograma e no
+// Funil: o relatório é da pessoa que toca o Marketing e passa pelo gestor
+// dela. Herdar de Vendas faria Vendas e Criação abrirem — e aprovarem — o
+// relatório de uma área que não é a delas.
+
+/// 🟢 No ritmo · 🟡 Atenção · 🔴 Travado. A legenda da planilha, em três
+/// linhas da lista suspensa, vale para entrega, métrica, OKR e bloqueio.
+enum WeeklyHealth {
+  NO_RITMO
+  ATENCAO
+  TRAVADO
+}
+
+/// Rascunho (sendo preenchido) → Enviado (sexta até 18h) → Aprovado (gestor).
+enum WeeklyReportStatus {
+  RASCUNHO
+  ENVIADO
+  APROVADO
+}
+
+model WeeklyReport {
+  id String @id @default(cuid())
+
+  subsectorId String
+  subsector   Subsector @relation(fields: [subsectorId], references: [id], onDelete: Cascade)
+
+  /// Nº da semana, como na linha 1 da aba "Resumo da Semana".
+  weekNumber  Int
+  periodStart DateTime @db.Date
+  periodEnd   DateTime @db.Date
+
+  status WeeklyReportStatus @default(RASCUNHO)
+
+  /// Os três campos longos do resumo.
+  highlight    String? @db.Text
+  learning     String? @db.Text
+  nextPriority String? @db.Text
+
+  /// "Data e hora do envio" e "Data da aprovação" da planilha. São datas de
+  /// FATO, gravadas pela ação, nunca digitadas: era o furo do arquivo, onde
+  /// quem entregava atrasado escrevia o horário que quisesse.
+  submittedAt DateTime?
+  approvedAt  DateTime?
+
+  approvedById String?
+  approvedBy   User?   @relation("WeeklyReportApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  createdById  String?
+  createdBy    User?   @relation("WeeklyReportAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  deliveries WeeklyReportDelivery[]
+  metrics    WeeklyReportMetric[]
+  okrs       WeeklyReportOkr[]
+  blockers   WeeklyReportBlocker[]
+  agenda     WeeklyReportAgendaItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Um relatório por semana em cada subsetor. É o que impede dois rascunhos
+  /// da mesma sexta disputando qual é o verdadeiro.
+  @@unique([subsectorId, periodStart])
+  @@index([subsectorId, periodStart])
+  @@index([createdById])
+}
+
+/// Uma linha da aba "Entregas da Semana".
+///
+/// `day`, `block` e `expected` são CÓPIA do modelo no momento em que o
+/// relatório nasce, não referência a ele. Mudar a rotina em janeiro não pode
+/// reescrever o que foi cobrado em dezembro.
+model WeeklyReportDelivery {
+  id       String       @id @default(cuid())
+  reportId String
+  report   WeeklyReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  order    Int
+  day      String
+  block    String
+  expected String @db.Text
+
+  health   WeeklyHealth?
+  evidence String?
+  note     String?       @db.Text
+
+  @@index([reportId])
+}
+
+/// Uma linha da aba "Canais e Métricas".
+model WeeklyReportMetric {
+  id       String       @id @default(cuid())
+  reportId String
+  report   WeeklyReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  order   Int
+  channel String
+  metric  String
+
+  /// Semana anterior e semana atual. Float porque a mesma coluna guarda
+  /// contagem (5 posts) e percentual (2,5% vira 2.5).
+  previous Float?
+  current  Float?
+
+  /// "Meta/Benchmark" é TEXTO na planilha ("149.500/mês", "Reduzir de 48%").
+  /// Continua texto: é referência de leitura, não número de conta.
+  target String?
+
+  health  WeeklyHealth?
+  reading String?       @db.Text
+
+  @@index([reportId])
+}
+
+/// Um resultado-chave. As duas abas de OKR da planilha (semanal e trimestral)
+/// são a MESMA lista de 9 KRs vista em duas apurações — aqui é uma linha só,
+/// com o realizado da semana e a meta do trimestre lado a lado.
+model WeeklyReportOkr {
+  id       String       @id @default(cuid())
+  reportId String
+  report   WeeklyReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  order     Int
+  objective String
+  keyResult String @db.Text
+  measure   String @db.Text
+
+  /// Meta como ela se lê ("100% na semana", "+3.000 seguidores").
+  goalLabel String
+
+  /// A mesma meta em número, quando ela TEM número. Nulo em metas como
+  /// "0 falhas" — e é por isso que a % da meta é opcional na tela, em vez de
+  /// uma divisão por zero disfarçada de resultado.
+  goalValue Float?
+  achieved  Float?
+
+  /// true no KR de leitura MENSAL: a decisão sai da média de 4 semanas, nunca
+  /// de uma semana isolada (as linhas amarelas da planilha).
+  monthlyRead Boolean @default(false)
+
+  health   WeeklyHealth?
+  nextStep String?       @db.Text
+
+  @@index([reportId])
+}
+
+/// Uma linha da aba "Bloqueios e Decisões". Aqui não há modelo fixo: a
+/// planilha trazia cinco linhas vazias numeradas, que é o mesmo que nenhuma.
+model WeeklyReportBlocker {
+  id       String       @id @default(cuid())
+  reportId String
+  report   WeeklyReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  order  Int
+  title  String  @db.Text
+  impact String? @db.Text
+  /// "Precisa de quem" — nome livre, não FK: o bloqueio às vezes depende de
+  /// alguém que não tem conta no sistema (fornecedor, agência).
+  needs  String?
+
+  dueDate    DateTime?     @db.Date
+  health     WeeklyHealth?
+  resolution String?       @db.Text
+
+  @@index([reportId])
+}
+
+/// Um bloco da aba "Pauta do One-on-One".
+model WeeklyReportAgendaItem {
+  id       String       @id @default(cuid())
+  reportId String
+  report   WeeklyReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  order    Int
+  block    String
+  minutes  Int
+  question String  @db.Text
+  answer   String? @db.Text
+
+  @@index([reportId])
+}
+
+enum MarketingTaskStatus {
+  BACKLOG
+  A_FAZER
+  EM_ANDAMENTO
+  REVISAO
+  PUBLICADO
+}
+
+enum MarketingTaskCategory {
+  CONTEUDO
+  PUBLICACAO
+  COMUNIDADE
+  RELATORIO
+  PROCESSO
+}
+
+enum MarketingTaskPriority {
+  ALTA
+  MEDIA
+  BAIXA
+}
+
+/// Um cartão do Kanban (abas 7 e 8 da planilha).
+///
+/// Pende do SUBSETOR, e não do relatório: o quadro atravessa as semanas, e é
+/// auditado toda sexta. A aba 8 ("Painel Kanban") não tem modelo — ela era
+/// uma folha de COUNTIFs sobre esta tabela, e virou leitura calculada.
+model MarketingTask {
+  id String @id @default(cuid())
+
+  subsectorId String
+  subsector   Subsector @relation(fields: [subsectorId], references: [id], onDelete: Cascade)
+
+  /// "K-01". Legível, estável e único no subsetor — é assim que o cartão é
+  /// citado na reunião de sexta.
+  code  String
+  title String @db.Text
+
+  category MarketingTaskCategory
+  priority MarketingTaskPriority @default(MEDIA)
+
+  /// Nome do responsável, livre. Mesma razão de `needs` no bloqueio.
+  assignee String?
+
+  enteredAt DateTime  @default(now()) @db.Date
+  dueDate   DateTime? @db.Date
+
+  status MarketingTaskStatus @default(BACKLOG)
+
+  /// "Toda tarefa precisa de evidência antes de ir para Publicado" — a regra
+  /// da planilha. Quem a aplica é a action, não uma constraint: um quadro que
+  /// recusa o arraste sem explicar é pior do que um que avisa.
+  evidence String?
+  note     String? @db.Text
+
+  /// Quando o cartão chegou a Publicado. Zera se ele voltar.
+  doneAt DateTime?
+
+  createdById String?
+  createdBy   User?   @relation("MarketingTaskAuthor", fields: [createdById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([subsectorId, code])
+  @@index([subsectorId, status])
+  @@index([subsectorId, dueDate])
 }

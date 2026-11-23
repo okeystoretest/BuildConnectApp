@@ -15,6 +15,7 @@ export type TabId =
   | "avaliacoes"
   | "cronograma"
   | "funil-vendas"
+  | "relatorio-semanal"
   | "material";
 
 /** Situação da resposta de compreensão (Instruções em Vídeo) do usuário logado. */
