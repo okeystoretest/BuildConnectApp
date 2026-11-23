@@ -32,7 +32,7 @@ export const HEALTH_TONE: Record<WeeklyHealth, "primary" | "warning" | "danger">
 /**
  * O nome que aparece na coluna do quadro.
  *
- * `BACKLOG` se lê "Brainstorm" desde 24/11/2026: a primeira coluna é onde a
+ * `BACKLOG` se lê "Brainstorm" desde 23/11/2026: a primeira coluna é onde a
  * ideia nasce, e não uma fila de pendência. O VALOR no banco continua
  * `BACKLOG` de propósito — renomear o enum custaria uma migration em todos os
  * cartões para mudar uma palavra na tela.

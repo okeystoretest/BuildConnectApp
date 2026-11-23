@@ -1,8 +1,8 @@
 # O Relatório Semanal do Marketing
 
-Começado em 23 de novembro de 2026 · **atualizado em 24 de novembro de 2026**
+23 de novembro de 2026 — reescrito ao fim do dia, depois de sete commits
 
-Este documento descreve a ferramenta **como ela está agora**. Ela mudou em seis
+Este documento descreve a ferramenta **como ela está agora**. Ela mudou em nove
 commits depois do primeiro, e o que estava escrito aqui antes descrevia uma
 tela que não existe mais — aprovação, listas prontas, Kanban sem arrasto.
 
@@ -15,6 +15,9 @@ tela que não existe mais — aprovação, listas prontas, Kanban sem arrasto.
 | `2e569a1` | A semana nova se preenche dentro do modal; saíram Enviar e Aprovar |
 | `d1709a6` | O card ficou visual; clicar nele passou a abrir a LEITURA |
 | `357852f` | O bloqueio digitado também é gravado pelo "Próximo" |
+| `ea4c036` | "Backlog" virou "Brainstorm"; este documento foi reescrito |
+| `a9a4cdd` | O script da semana de exemplo |
+| `c945132` | A lista de semanas pagina de seis em seis |
 
 **Verificação ao fim:** `tsc --noEmit` exit 0 · `eslint` limpo · `npm run
 build` limpo · **503/503** testes de unidade · **188/188** testes de banco ·

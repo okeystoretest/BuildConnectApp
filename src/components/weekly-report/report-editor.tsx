@@ -16,7 +16,7 @@ import { ReportSteps } from "./report-steps";
  * planilha, um por vez, para ler e editar.
  *
  * Não existe enviar nem aprovar. O ciclo "rascunho → enviado → aprovado" saiu
- * em 24/11/2026: a semana se preenche e se salva, e a reunião lê o que está
+ * em 23/11/2026: a semana se preenche e se salva, e a reunião lê o que está
  * salvo.
  *
  * "Salvar" aqui grava todo bloco que tem algo pendente. Cada bloco também tem

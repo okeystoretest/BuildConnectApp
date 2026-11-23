@@ -37,7 +37,7 @@ import type { MarketingTaskItem } from "@/types/weekly-report";
  *
  * Aqui só se LÊ. Mover o cartão é trabalho do quadro — arrastando, ou com as
  * setas do teclado sobre o cartão em foco. A lista "Mover para" que morava
- * aqui saiu em 24/11/2026: duas portas para a mesma ação, e a ficha é onde se
+ * aqui saiu em 23/11/2026: duas portas para a mesma ação, e a ficha é onde se
  * confere a atividade, não onde se opera o quadro.
  */
 
